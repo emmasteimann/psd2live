@@ -210,6 +210,9 @@ object RigBuilder {
 		 * the automatically paired deformer, or the parent its semantic tag implies.
 		 */
 		fun parentAndFrame(layer: ClassifiedLayer, config: PipelineConfig): Pair<DeformerId?, Bounds> {
+			if (!config.parentOverrides.containsKey(layer.source.id.raw) && config.layerGlues.containsKey(layer.source.name)) {
+				frameByDeformer[glueWarpId(layer).raw]?.let { return glueWarpId(layer) to it }
+			}
 			if (!config.parentOverrides.containsKey(layer.source.id.raw) && isAnchoredHair(layer, config)) {
 				frameByDeformer[hairAnchorWarpId(layer).raw]?.let { return hairAnchorWarpId(layer) to it }
 			}
@@ -298,7 +301,7 @@ object RigBuilder {
 			.reduce(Bounds::union)
 			.expanded(0.025f)
 		val frontHairCandidates = layoutRigLayers.filter { it.semantic.tag == SemanticTag.FRONT_HAIR && it.opaquePixels > 0 &&
-			config.hairAnchors[it.source.name]?.pinTop != true } // glued pieces would widen the bangs' head-turn bulge
+			config.hairAnchors[it.source.name]?.pinTop != true && it.source.name !in config.layerGlues } // glued pieces would widen the bangs' head-turn bulge
 		val backHairCandidates = layoutRigLayers.filter { it.semantic.tag == SemanticTag.BACK_HAIR && it.opaquePixels > 0 }
 		val frontHair = frontHairCandidates.map { it.bounds }.takeIf { it.isNotEmpty() }?.reduce(Bounds::union)?.expanded(0.04f)
 		val backHair = backHairCandidates.map { it.bounds }.takeIf { it.isNotEmpty() }?.reduce(Bounds::union)?.expanded(0.04f)
@@ -357,7 +360,7 @@ object RigBuilder {
 			}
 		}
 
-		return RigContext(
+		fun context(deformers: List<Deformer>) = RigContext(
 			analysis,
 			character,
 			head,
@@ -371,8 +374,88 @@ object RigBuilder {
 			deformerResult.pairedParentByLayerId,
 			config.rigEdits.skeleton?.enabled == true,
 			deformersEnabled,
-			deformerResult.deformers,
+			deformers,
 		)
+		val base = context(deformerResult.deformers)
+		if (!deformersEnabled || config.layerGlues.isEmpty()) return base
+		// Layerloom patch: glue warps copy their target's warp, so they are built once every other deformer exists.
+		val glues = glueWarps(base, rigLayerById, config)
+		for ((warp, frame) in glues) frameByDeformer[warp.id.raw] = frame
+		return context(deformerResult.deformers + glues.map { it.first })
+	}
+
+	// ---- Layerloom patch: glue any layer to any layer -------------------------------------------------------------
+	private fun glueWarpId(layer: ClassifiedLayer): DeformerId =
+		DeformerId("DeformGlue" + layer.source.name.filter { it.isLetterOrDigit() }.replaceFirstChar { it.uppercase() })
+
+	/** Pendulum-driven parameters: a target's sway on these is left out of a glued layer's free part. */
+	private fun isSwayParameter(id: ParameterId) =
+		id == StandardParameters.HAIR_FRONT || id == StandardParameters.HAIR_BACK || id.raw.startsWith("ParamSwing")
+
+	/** 1 = glued (moves exactly with the target), 0 = free; smoothstep across the band. [v] = 0 at the layer's top. */
+	internal fun glueWeight(v: Float, glue: LayerGlue): Float {
+		val from = minOf(glue.from, glue.to); val to = maxOf(glue.from, glue.to)
+		val above = when {
+			v <= from -> 1f
+			v >= to || to - from < 1e-4f -> 0f
+			else -> { val t = (v - from) / (to - from); 1f - t * t * (3f - 2f * t) }
+		}
+		return if (glue.glueTop) above else 1f - above
+	}
+
+	/** Bilinear point of a warp lattice at normalized (u, v); outside the lattice the edge cells extrapolate. */
+	private fun latticePoint(points: FloatArray, rows: Int, columns: Int, u: Float, v: Float): Pair<Float, Float> {
+		val cx = u * columns; val cy = v * rows
+		val col = kotlin.math.floor(cx).toInt().coerceIn(0, columns - 1); val row = kotlin.math.floor(cy).toInt().coerceIn(0, rows - 1)
+		val s = cx - col; val t = cy - row
+		fun p(r: Int, c: Int, k: Int) = points[(r * (columns + 1) + c) * 2 + k]
+		fun mix(k: Int) = (1 - s) * (1 - t) * p(row, col, k) + s * (1 - t) * p(row, col + 1, k) +
+			(1 - s) * t * p(row + 1, col, k) + s * t * p(row + 1, col + 1, k)
+		return mix(0) to mix(1)
+	}
+
+	/**
+	 * One warp per glued layer, hung beside its target's warp (same parent, same keyform axes). Each lattice point is
+	 * where the target's warp puts that spot: glued rows take every keyform as is; free rows take the keyform with the
+	 * target's sway parameters at rest, so they follow the target's head/body motion but not its swing.
+	 */
+	private fun glueWarps(context: RigContext, rigLayerById: Map<String, ClassifiedLayer>, config: PipelineConfig): List<Pair<Deformer.Warp, Bounds>> {
+		val byName = context.analysis.layers.filter { it.opaquePixels > 0 }.associateBy { it.source.name }
+		val warps = context.deformers.filterIsInstance<Deformer.Warp>().associateBy { it.id.raw }
+		return config.layerGlues.mapNotNull { (name, glue) ->
+			val layer = byName[name] ?: return@mapNotNull null.also { System.err.println("Warning: glue: no layer named \"$name\"") }
+			val target = byName[glue.target] ?: return@mapNotNull null.also { System.err.println("Warning: glue: \"$name\" -> no layer named \"${glue.target}\"") }
+			if (target.source.name in config.layerGlues || target === layer) {
+				System.err.println("Warning: glue: \"$name\" can't glue to \"${glue.target}\" (itself glued)"); return@mapNotNull null
+			}
+			val (targetParent, targetFrame) = context.parentAndFrame(target, config)
+			val warp = targetParent?.let { warps[it.raw] }
+			val grid = warp?.geometryGrid
+			if (warp == null || grid == null) {
+				System.err.println("Warning: glue: \"${glue.target}\" isn't under a warp; \"$name\" left as it was"); return@mapNotNull null
+			}
+			val raw = rigLayerById.getValue(layer.source.id.raw).bounds
+			val frame = hairAnchorFrame(raw)
+			val rest = grid.axes.map { axis -> axis.keys.indices.minBy { kotlin.math.abs(axis.keys[it]) } }
+			val rows = 8; val columns = 3
+			val cells = grid.cells.map { cell ->
+				val freeAt = IntArray(cell.coordinate.size) { a -> if (isSwayParameter(grid.axes[a].parameterId)) rest[a] else cell.coordinate[a] }
+				val freeForm = grid.cellsByLinearIndex[grid.linearIndexOf(freeAt)]?.form ?: cell.form
+				val points = FloatArray((rows + 1) * (columns + 1) * 2)
+				var i = 0
+				for (r in 0..rows) for (c in 0..columns) {
+					val y = frame.top + r.toFloat() / rows * frame.height
+					val u = normalizeX(frame.left + c.toFloat() / columns * frame.width, targetFrame); val v = normalizeY(y, targetFrame)
+					val g = glueWeight((y - raw.top) / raw.height.coerceAtLeast(1f), glue)
+					val (gx, gy) = latticePoint(cell.form.controlPoints, warp.rows, warp.columns, u, v)
+					val (fx, fy) = latticePoint(freeForm.controlPoints, warp.rows, warp.columns, u, v)
+					points[i++] = fx + g * (gx - fx); points[i++] = fy + g * (gy - fy)
+				}
+				KeyformCell(cell.coordinate.copyOf(), WarpLatticeForm(points))
+			}
+			Deformer.Warp(glueWarpId(layer), "Glue: $name to ${glue.target}", warp.parent, warp.partId, rows, columns, true,
+				KeyformGrid(grid.axes, cells)) to frame
+		}
 	}
 
 	/** Use the same generated triangles that will render the texture to place automatic deformers. */

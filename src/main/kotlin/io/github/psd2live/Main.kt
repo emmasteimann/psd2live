@@ -64,6 +64,8 @@ fun main(arguments: Array<String>) {
 		exportMoc3 = !options.flags.contains("--no-moc3"),
 		exportJson = !options.flags.contains("--no-json"),
 		hairAnchors = options.value("--hair-anchors")?.let(::readHairAnchors) ?: emptyMap(),
+		layerGlues = options.value("--glues")?.let(::readLayerGlues) ?: emptyMap(),
+		layerSwings = options.value("--swings")?.let(::readJsonObject)?.mapValues { it.value as kotlinx.serialization.json.JsonObject } ?: emptyMap(),
 	)
 	require(config.exportCmo3 || config.exportMoc3 || config.exportJson) { tr("cli.exportFormatRequired") }
 	val input = Path.of(options.required("--input"))
@@ -221,6 +223,21 @@ private fun readHairAnchors(path: String): Map<String, io.github.psd2live.core.H
 	}
 }
 
+private fun readJsonObject(path: String): kotlinx.serialization.json.JsonObject =
+	kotlinx.serialization.json.Json.parseToJsonElement(java.io.File(path).readText()) as kotlinx.serialization.json.JsonObject
+
+/** `{"front hair 2": {"target": "back hair", "from": 0.2, "to": 0.35, "glueTop": true}}` */
+private fun readLayerGlues(path: String): Map<String, io.github.psd2live.core.LayerGlue> = readJsonObject(path).mapValues { (_, value) ->
+	val o = value as kotlinx.serialization.json.JsonObject
+	fun p(key: String) = o[key] as? kotlinx.serialization.json.JsonPrimitive
+	io.github.psd2live.core.LayerGlue(
+		target = requireNotNull(p("target")?.content) { "glue needs a target layer" },
+		from = p("from")!!.content.toFloat().coerceIn(0f, 1f),
+		to = p("to")!!.content.toFloat().coerceIn(0f, 1f),
+		glueTop = p("glueTop")?.content?.toBooleanStrictOrNull() ?: true,
+	)
+}
+
 private data class CliOptions(val values: Map<String, String>, val flags: Set<String>) {
 	fun value(name: String): String? = values[name]
 	fun required(name: String): String = value(name) ?: error(tr("cli.missingRequired", name))
@@ -229,7 +246,7 @@ private data class CliOptions(val values: Map<String, String>, val flags: Set<St
 
 	companion object {
 		private val flagNames = setOf("--no-upscale-neural-alpha", "--upscale-neural-alpha", "--no-physics", "--no-cmo3", "--no-moc3", "--mesh-only", "--no-deformers", "--no-motions", "--no-json")
-		private val valueNames = setOf("--upscale", "--upscale-noise", "--upscale-python", "--nunif-dir", "--upscale-model", "--upscale-tile", "--input", "--output", "--lang", "--atlas", "--mesh-spacing", "--head-strength", "--body-strength", "--hair-anchors")
+		private val valueNames = setOf("--upscale", "--upscale-noise", "--upscale-python", "--nunif-dir", "--upscale-model", "--upscale-tile", "--input", "--output", "--lang", "--atlas", "--mesh-spacing", "--head-strength", "--body-strength", "--hair-anchors", "--glues", "--swings")
 		fun parse(arguments: Array<String>): CliOptions {
 			val values = linkedMapOf<String, String>()
 			val flags = linkedSetOf<String>()

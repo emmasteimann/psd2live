@@ -152,6 +152,15 @@ data class MeshSettings(
  */
 data class HairAnchor(val from: Float, val to: Float, val pinTop: Boolean = false)
 
+/**
+ * Layerloom patch: glue part of one layer to another layer. [target] is the PSD layer name it is glued to; [from] and
+ * [to] are fractions of the glued layer's own height (0 = top). With [glueTop] the rows above [from] move exactly with
+ * the target (its swing included), blending to free below [to]; otherwise the rows below [to] are glued and the top is
+ * free. The free part hangs from the glued part: it follows the target's motion with the target's swing left out, so
+ * it never picks up the target's sway (give it its own with a swing).
+ */
+data class LayerGlue(val target: String, val from: Float, val to: Float, val glueTop: Boolean = true)
+
 data class PipelineConfig(
 	val atlasSize: Int = 4096,
 	val textureUpscale: TextureUpscaleConfig = TextureUpscaleConfig(),
@@ -221,6 +230,10 @@ data class PipelineConfig(
 	val parentOverrides: Map<String, String?> = emptyMap(),
 	/** Layerloom patch: hair anchors by PSD layer name (see [HairAnchor]); empty = PSD2Live's own behaviour. */
 	val hairAnchors: Map<String, HairAnchor> = emptyMap(),
+	/** Layerloom patch: glues by PSD layer name (see [LayerGlue]). */
+	val layerGlues: Map<String, LayerGlue> = emptyMap(),
+	/** Layerloom patch: swings by PSD layer name, as `swing_put` arguments without id/targets (see [LayerSwings]). */
+	val layerSwings: Map<String, kotlinx.serialization.json.JsonObject> = emptyMap(),
 	/** Manual draw order overrides (layerId or drawableId -> drawOrder within 0..1000). */
 	val drawOrderOverrides: Map<String, Float> = emptyMap(),
 	/** Durable Agent/editor changes replayed over every generated base rig and retained on export. */

@@ -270,7 +270,7 @@ class PSD2LivePipeline {
 			inputAnalysis = analysis,
 			baseName = safeBaseName(psd.fileName.toString().substringBeforeLast('.')),
 			outputDirectory = outputDirectory,
-			config = config,
+			requested = config,
 			progress = progress,
 		)
 	}
@@ -289,7 +289,7 @@ class PSD2LivePipeline {
 			inputAnalysis = analysis,
 			baseName = safeBaseName(sourceName.substringBeforeLast('.')),
 			outputDirectory = outputDirectory,
-			config = config,
+			requested = config,
 			progress = progress,
 		)
 	}
@@ -298,13 +298,15 @@ class PSD2LivePipeline {
 		inputAnalysis: PipelineAnalysis,
 		baseName: String,
 		outputDirectory: Path,
-		config: PipelineConfig,
+		requested: PipelineConfig,
 		progress: ProgressListener,
 	): PipelineResult {
-        val analysis = MouthLipLayers.prepare(inputAnalysis, config)
+        val analysis = MouthLipLayers.prepare(inputAnalysis, requested)
 		progress.update(tr("progress.classify"), 0.18)
-		val atlas = AtlasPacker.pack(analysis.layers, config.atlasSize, config.texturePadding, config.textureUpscale, progress)
-		val baseRig = RigBuilder.build(analysis, atlas, config)
+		val atlas = AtlasPacker.pack(analysis.layers, requested.atlasSize, requested.texturePadding, requested.textureUpscale, progress)
+		val baseRig = RigBuilder.build(analysis, atlas, requested)
+		// Layerloom patch: per-layer swings become ordinary rig edits, so everything below (physics3, CMO3) sees them.
+		val config = LayerSwings.apply(baseRig, requested, analysis.layers)
 		val rig = baseRig.withRigEdits(config.rigEdits)
 		val generatedLabel = tr("validation.generated")
 		val neutralRig = RigIntegrityValidator.validateNeutralPose(generatedLabel, rig.puppet, rig.sourceBoundsByDrawableId)

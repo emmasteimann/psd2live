@@ -145,6 +145,13 @@ data class MeshSettings(
 	val fillParameters: MeshFillParameters = MeshFillParameters(),
 )
 
+/**
+ * Layerloom patch: a front-hair layer pinned to the back hair below a band. [from] and [to] are fractions of the
+ * layer's own height (0 = top): above [from] it moves as front hair, below [to] it moves exactly with the back hair,
+ * blending between.
+ */
+data class HairAnchor(val from: Float, val to: Float)
+
 data class PipelineConfig(
 	val atlasSize: Int = 4096,
 	val textureUpscale: TextureUpscaleConfig = TextureUpscaleConfig(),
@@ -212,6 +219,8 @@ data class PipelineConfig(
 	val deletedLayerIds: Set<String> = emptySet(),
 	/** Manual parent deformer overrides (layerId or deformerId -> parentDeformerId or null for root). */
 	val parentOverrides: Map<String, String?> = emptyMap(),
+	/** Layerloom patch: hair anchors by PSD layer name (see [HairAnchor]); empty = PSD2Live's own behaviour. */
+	val hairAnchors: Map<String, HairAnchor> = emptyMap(),
 	/** Manual draw order overrides (layerId or drawableId -> drawOrder within 0..1000). */
 	val drawOrderOverrides: Map<String, Float> = emptyMap(),
 	/** Durable Agent/editor changes replayed over every generated base rig and retained on export. */

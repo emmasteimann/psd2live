@@ -210,6 +210,9 @@ object RigBuilder {
 		 * the automatically paired deformer, or the parent its semantic tag implies.
 		 */
 		fun parentAndFrame(layer: ClassifiedLayer, config: PipelineConfig): Pair<DeformerId?, Bounds> {
+			if (!config.parentOverrides.containsKey(layer.source.id.raw) && isAnchoredHair(layer, config)) {
+				frameByDeformer[hairAnchorWarpId(layer).raw]?.let { return hairAnchorWarpId(layer) to it }
+			}
 			val paired = pairedParentByLayerId[layer.source.id.raw] ?: inferredParentAndFrame(layer, config)
 			if (!config.parentOverrides.containsKey(layer.source.id.raw)) return paired
 			val parentId = config.parentOverrides[layer.source.id.raw]
@@ -346,6 +349,11 @@ object RigBuilder {
 			frameByDeformer[backHairPhysicsWarpId.raw] = it
 		}
 		frameByDeformer.putAll(deformerResult.pairFrames)
+		if (deformersEnabled && frontHair != null && backHair != null) {
+			for (layer in analysis.layers) if (isAnchoredHair(layer, config) && layer.opaquePixels > 0) {
+				frameByDeformer[hairAnchorWarpId(layer).raw] = hairAnchorFrame(rigLayerById.getValue(layer.source.id.raw).bounds)
+			}
+		}
 
 		return RigContext(
 			analysis,
@@ -1436,9 +1444,9 @@ object RigBuilder {
 				frame,
 				head,
 				frontHairPartId,
-				-0.020f,
-				-0.006f,
-				yawPerspective = 0.10f,
+				FRONT_HAIR_YAW,
+				FRONT_HAIR_PITCH,
+				yawPerspective = FRONT_HAIR_PERSPECTIVE,
 			)
 			deformers += hairPhysicsWarp(
 				frontHairPhysicsWarpId,
@@ -1453,7 +1461,7 @@ object RigBuilder {
 			)
 		}
 		backHair?.let { frame ->
-			deformers += hairFollowWarp(backHairFollowWarpId, tr("model.deformer.backHairFollow"), frame, head, backHairPartId, -0.018f, 0.004f)
+			deformers += hairFollowWarp(backHairFollowWarpId, tr("model.deformer.backHairFollow"), frame, head, backHairPartId, BACK_HAIR_YAW, BACK_HAIR_PITCH)
 			deformers += hairPhysicsWarp(
 				backHairPhysicsWarpId,
 				tr("model.deformer.backHairPhysics"),
@@ -1465,6 +1473,13 @@ object RigBuilder {
 				swayRatio = 0.10f,
 				curlRatio = 0.025f,
 			)
+		}
+		// Layerloom patch: one anchor warp per anchored front-hair layer (needs both hair frames).
+		if (frontHair != null && backHair != null) {
+			for (layer in analysis.layers) if (isAnchoredHair(layer, config) && layer.opaquePixels > 0) {
+				deformers += hairAnchorWarp(layer, rigLayerById.getValue(layer.source.id.raw).bounds, config.hairAnchors.getValue(layer.source.name),
+					head, frontHair, backHair, frontHairPartId)
+			}
 		}
 
 		val usedDeformerIds = deformers.map { it.id.raw }.toMutableSet()
@@ -1695,6 +1710,65 @@ object RigBuilder {
 	}
 
 	/** Head-angle following for one hair depth plane; deliberately independent of the face warp. */
+	// ---- Layerloom patch: hair anchors ----------------------------------------------------------------------------
+	// A long front-hair piece (a side lock) hangs beside the back hair but rides the front-hair warp, so on head turns
+	// it drifts away from the back hair. An anchored piece instead hangs UNDER the back hair's physics warp (so its
+	// bottom moves exactly with the back hair, swing included) and its upper rows get back the difference between the
+	// front-hair and back-hair follow, fading to nothing across the anchor band.
+	private const val FRONT_HAIR_YAW = -0.020f
+	private const val FRONT_HAIR_PITCH = -0.006f
+	private const val FRONT_HAIR_PERSPECTIVE = 0.10f
+	private const val BACK_HAIR_YAW = -0.018f
+	private const val BACK_HAIR_PITCH = 0.004f
+
+	private fun isAnchoredHair(layer: ClassifiedLayer, config: PipelineConfig): Boolean =
+		layer.semantic.tag == SemanticTag.FRONT_HAIR && config.hairAnchors.containsKey(layer.source.name)
+
+	private fun hairAnchorWarpId(layer: ClassifiedLayer): DeformerId =
+		DeformerId("DeformHairAnchor" + layer.source.name.filter { it.isLetterOrDigit() }.replaceFirstChar { it.uppercase() })
+
+	private fun hairAnchorFrame(bounds: Bounds): Bounds = bounds.expanded(0.04f)
+
+	internal fun hairAnchorWeight(v: Float, anchor: HairAnchor): Float {
+		val from = minOf(anchor.from, anchor.to); val to = maxOf(anchor.from, anchor.to)
+		if (v <= from) return 1f
+		if (v >= to || to - from < 1e-4f) return 0f
+		val t = (v - from) / (to - from)
+		return 1f - t * t * (3f - 2f * t) // smoothstep: free above, pinned below
+	}
+
+	private fun hairAnchorWarp(
+		layer: ClassifiedLayer,
+		raw: Bounds,
+		anchor: HairAnchor,
+		head: Bounds,
+		frontHair: Bounds,
+		backHair: Bounds,
+		part: PartId,
+	): Deformer.Warp {
+		val frame = hairAnchorFrame(raw)
+		val inBack = mapBounds(frame, backHair)
+		val frontInHead = mapBounds(frontHair, head)
+		val backInHead = mapBounds(backHair, head)
+		val rows = 8
+		val grid = warpGrid(ninePoseAxes(), 3, rows) { u, v, values ->
+			val x = frame.left + u * frame.width
+			val y = frame.top + v * frame.height
+			val uf = normalizeX(x, frontHair); val vf = normalizeY(y, frontHair)
+			val ub = normalizeX(x, backHair); val vb = normalizeY(y, backHair)
+			val front = hairFollowPoint(frontInHead, uf, vf, values[0], values[1], FRONT_HAIR_YAW, FRONT_HAIR_PITCH, FRONT_HAIR_PERSPECTIVE)
+			val front0 = hairFollowPoint(frontInHead, uf, vf, 0f, 0f, FRONT_HAIR_YAW, FRONT_HAIR_PITCH, FRONT_HAIR_PERSPECTIVE)
+			val back = hairFollowPoint(backInHead, ub, vb, values[0], values[1], BACK_HAIR_YAW, BACK_HAIR_PITCH)
+			val back0 = hairFollowPoint(backInHead, ub, vb, 0f, 0f, BACK_HAIR_YAW, BACK_HAIR_PITCH)
+			// head-normalized difference -> canvas px -> the back-hair frame this warp is expressed in
+			val dx = ((front.first - front0.first) - (back.first - back0.first)) * head.width / backHair.width.coerceAtLeast(1f)
+			val dy = ((front.second - front0.second) - (back.second - back0.second)) * head.height / backHair.height.coerceAtLeast(1f)
+			val w = hairAnchorWeight((y - raw.top) / raw.height.coerceAtLeast(1f), anchor)
+			(inBack.left + u * inBack.width + w * dx) to (inBack.top + v * inBack.height + w * dy)
+		}
+		return Deformer.Warp(hairAnchorWarpId(layer), "Hair anchor: ${layer.source.name}", backHairPhysicsWarpId, part, rows, 3, true, grid)
+	}
+
 	private fun hairFollowWarp(
 		id: DeformerId,
 		name: String,

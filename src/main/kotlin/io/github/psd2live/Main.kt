@@ -63,6 +63,7 @@ fun main(arguments: Array<String>) {
 		exportCmo3 = !options.flags.contains("--no-cmo3"),
 		exportMoc3 = !options.flags.contains("--no-moc3"),
 		exportJson = !options.flags.contains("--no-json"),
+		hairAnchors = options.value("--hair-anchors")?.let(::readHairAnchors) ?: emptyMap(),
 	)
 	require(config.exportCmo3 || config.exportMoc3 || config.exportJson) { tr("cli.exportFormatRequired") }
 	val input = Path.of(options.required("--input"))
@@ -209,6 +210,16 @@ private fun printUsage() {
     """.trimIndent())
 }
 
+/** Layerloom patch: `{"front hair 2": {"from": 0.3, "to": 0.6}, ...}` from a JSON file. */
+private fun readHairAnchors(path: String): Map<String, io.github.psd2live.core.HairAnchor> {
+	val root = kotlinx.serialization.json.Json.parseToJsonElement(java.io.File(path).readText()) as kotlinx.serialization.json.JsonObject
+	return root.mapValues { (_, value) ->
+		val o = value as kotlinx.serialization.json.JsonObject
+		fun f(key: String) = (o[key] as kotlinx.serialization.json.JsonPrimitive).content.toFloat()
+		io.github.psd2live.core.HairAnchor(f("from").coerceIn(0f, 1f), f("to").coerceIn(0f, 1f))
+	}
+}
+
 private data class CliOptions(val values: Map<String, String>, val flags: Set<String>) {
 	fun value(name: String): String? = values[name]
 	fun required(name: String): String = value(name) ?: error(tr("cli.missingRequired", name))
@@ -217,7 +228,7 @@ private data class CliOptions(val values: Map<String, String>, val flags: Set<St
 
 	companion object {
 		private val flagNames = setOf("--no-upscale-neural-alpha", "--upscale-neural-alpha", "--no-physics", "--no-cmo3", "--no-moc3", "--mesh-only", "--no-deformers", "--no-motions", "--no-json")
-		private val valueNames = setOf("--upscale", "--upscale-noise", "--upscale-python", "--nunif-dir", "--upscale-model", "--upscale-tile", "--input", "--output", "--lang", "--atlas", "--mesh-spacing", "--head-strength", "--body-strength")
+		private val valueNames = setOf("--upscale", "--upscale-noise", "--upscale-python", "--nunif-dir", "--upscale-model", "--upscale-tile", "--input", "--output", "--lang", "--atlas", "--mesh-spacing", "--head-strength", "--body-strength", "--hair-anchors")
 		fun parse(arguments: Array<String>): CliOptions {
 			val values = linkedMapOf<String, String>()
 			val flags = linkedSetOf<String>()

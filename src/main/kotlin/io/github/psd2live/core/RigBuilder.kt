@@ -1731,10 +1731,13 @@ object RigBuilder {
 
 	internal fun hairAnchorWeight(v: Float, anchor: HairAnchor): Float {
 		val from = minOf(anchor.from, anchor.to); val to = maxOf(anchor.from, anchor.to)
-		if (v <= from) return 1f
-		if (v >= to || to - from < 1e-4f) return 0f
-		val t = (v - from) / (to - from)
-		return 1f - t * t * (3f - 2f * t) // smoothstep: free above, pinned below
+		val frontAbove = when {
+			v <= from -> 1f
+			v >= to || to - from < 1e-4f -> 0f
+			else -> { val t = (v - from) / (to - from); 1f - t * t * (3f - 2f * t) } // smoothstep across the band
+		}
+		// 1 = moves as front hair, 0 = stuck to the back hair. Default pins the bottom; pinTop pins the top.
+		return if (anchor.pinTop) 1f - frontAbove else frontAbove
 	}
 
 	private fun hairAnchorWarp(

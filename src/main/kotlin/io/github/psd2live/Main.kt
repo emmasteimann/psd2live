@@ -216,7 +216,8 @@ private fun readHairAnchors(path: String): Map<String, io.github.psd2live.core.H
 	return root.mapValues { (_, value) ->
 		val o = value as kotlinx.serialization.json.JsonObject
 		fun f(key: String) = (o[key] as kotlinx.serialization.json.JsonPrimitive).content.toFloat()
-		io.github.psd2live.core.HairAnchor(f("from").coerceIn(0f, 1f), f("to").coerceIn(0f, 1f))
+		val pinTop = (o["pinTop"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: false
+		io.github.psd2live.core.HairAnchor(f("from").coerceIn(0f, 1f), f("to").coerceIn(0f, 1f), pinTop)
 	}
 }
 

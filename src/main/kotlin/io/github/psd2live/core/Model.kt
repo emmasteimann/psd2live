@@ -148,9 +148,9 @@ data class MeshSettings(
 /**
  * Layerloom patch: a front-hair layer pinned to the back hair below a band. [from] and [to] are fractions of the
  * layer's own height (0 = top): above [from] it moves as front hair, below [to] it moves exactly with the back hair,
- * blending between.
+ * blending between. [pinTop] flips it: stuck to the back hair above [from], front hair below [to].
  */
-data class HairAnchor(val from: Float, val to: Float)
+data class HairAnchor(val from: Float, val to: Float, val pinTop: Boolean = false)
 
 data class PipelineConfig(
 	val atlasSize: Int = 4096,

@@ -304,9 +304,18 @@ class PSD2LivePipeline {
         val analysis = MouthLipLayers.prepare(inputAnalysis, requested)
 		progress.update(tr("progress.classify"), 0.18)
 		val atlas = AtlasPacker.pack(analysis.layers, requested.atlasSize, requested.texturePadding, requested.textureUpscale, progress)
-		val baseRig = RigBuilder.build(analysis, atlas, requested)
+		var skeletal = requested
+		var baseRig = RigBuilder.build(analysis, atlas, requested)
+		// Layerloom patch: the editor's auto skeleton, proposed from this rig and then built in, as its Skeleton tool does.
+		if (requested.autoSkeleton != null && requested.rigEdits.skeleton == null) {
+			val spec = LayerSkeleton.propose(analysis, baseRig, requested.autoSkeleton, requested.armJoints)
+			if (spec.bones.any { it.drawableIds.isNotEmpty() }) {
+				skeletal = requested.copy(rigEdits = requested.rigEdits.copy(skeleton = spec))
+				baseRig = RigBuilder.build(analysis, atlas, skeletal)
+			} else System.err.println("Warning: skeleton: no limb layers to bind (arms need left/right handwear)")
+		}
 		// Layerloom patch: per-layer swings become ordinary rig edits, so everything below (physics3, CMO3) sees them.
-		val config = LayerSwings.apply(baseRig, requested, analysis.layers)
+		val config = LayerSwings.apply(baseRig, skeletal, analysis.layers)
 		val rig = baseRig.withRigEdits(config.rigEdits)
 		val generatedLabel = tr("validation.generated")
 		val neutralRig = RigIntegrityValidator.validateNeutralPose(generatedLabel, rig.puppet, rig.sourceBoundsByDrawableId)

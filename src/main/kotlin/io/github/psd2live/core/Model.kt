@@ -234,6 +234,16 @@ data class PipelineConfig(
 	val layerGlues: Map<String, LayerGlue> = emptyMap(),
 	/** Layerloom patch: swings by PSD layer name, as `swing_put` arguments without id/targets (see [LayerSwings]). */
 	val layerSwings: Map<String, kotlinx.serialization.json.JsonObject> = emptyMap(),
+	/**
+	 * Layerloom patch: build the editor's auto skeleton when the project has none: "arms" keeps the arm bones (upper
+	 * arm, forearm, hand) and the body bones they hang from; "full" keeps every limb the tags propose.
+	 */
+	val autoSkeleton: String? = null,
+	/**
+	 * Layerloom patch: arm joints placed by hand, canvas pixels, by side ("L" = the character's left): shoulder,
+	 * elbow, wrist, tip. They replace the auto skeleton's guesses for the upper arm, forearm and hand.
+	 */
+	val armJoints: Map<String, Map<String, List<Float>>> = emptyMap(),
 	/** Manual draw order overrides (layerId or drawableId -> drawOrder within 0..1000). */
 	val drawOrderOverrides: Map<String, Float> = emptyMap(),
 	/** Durable Agent/editor changes replayed over every generated base rig and retained on export. */

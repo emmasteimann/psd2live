@@ -297,7 +297,8 @@ object RigBuilder {
 		val face = (faceCandidates.map { it.bounds } + faceRig.face)
 			.reduce(Bounds::union)
 			.expanded(0.025f)
-		val frontHairCandidates = layoutRigLayers.filter { it.semantic.tag == SemanticTag.FRONT_HAIR && it.opaquePixels > 0 }
+		val frontHairCandidates = layoutRigLayers.filter { it.semantic.tag == SemanticTag.FRONT_HAIR && it.opaquePixels > 0 &&
+			config.hairAnchors[it.source.name]?.pinTop != true } // glued pieces would widen the bangs' head-turn bulge
 		val backHairCandidates = layoutRigLayers.filter { it.semantic.tag == SemanticTag.BACK_HAIR && it.opaquePixels > 0 }
 		val frontHair = frontHairCandidates.map { it.bounds }.takeIf { it.isNotEmpty() }?.reduce(Bounds::union)?.expanded(0.04f)
 		val backHair = backHairCandidates.map { it.bounds }.takeIf { it.isNotEmpty() }?.reduce(Bounds::union)?.expanded(0.04f)
@@ -349,8 +350,9 @@ object RigBuilder {
 			frameByDeformer[backHairPhysicsWarpId.raw] = it
 		}
 		frameByDeformer.putAll(deformerResult.pairFrames)
-		if (deformersEnabled && frontHair != null && backHair != null) {
-			for (layer in analysis.layers) if (isAnchoredHair(layer, config) && layer.opaquePixels > 0) {
+		if (deformersEnabled && backHair != null) {
+			for (layer in analysis.layers) if (isAnchoredHair(layer, config) && layer.opaquePixels > 0 &&
+				(frontHair != null || config.hairAnchors.getValue(layer.source.name).pinTop)) {
 				frameByDeformer[hairAnchorWarpId(layer).raw] = hairAnchorFrame(rigLayerById.getValue(layer.source.id.raw).bounds)
 			}
 		}
@@ -1475,8 +1477,9 @@ object RigBuilder {
 			)
 		}
 		// Layerloom patch: one anchor warp per anchored front-hair layer (needs both hair frames).
-		if (frontHair != null && backHair != null) {
-			for (layer in analysis.layers) if (isAnchoredHair(layer, config) && layer.opaquePixels > 0) {
+		if (backHair != null) {
+			for (layer in analysis.layers) if (isAnchoredHair(layer, config) && layer.opaquePixels > 0 &&
+				(frontHair != null || config.hairAnchors.getValue(layer.source.name).pinTop)) {
 				deformers += hairAnchorWarp(layer, rigLayerById.getValue(layer.source.id.raw).bounds, config.hairAnchors.getValue(layer.source.name),
 					head, frontHair, backHair, frontHairPartId)
 			}
@@ -1745,15 +1748,58 @@ object RigBuilder {
 		raw: Bounds,
 		anchor: HairAnchor,
 		head: Bounds,
+		frontHair: Bounds?,
+		backHair: Bounds,
+		part: PartId,
+	): Deformer.Warp = if (anchor.pinTop) hairGlueWarp(layer, raw, anchor, backHair, part)
+		else hairPinBottomWarp(layer, raw, anchor, head, frontHair!!, backHair, part)
+
+	// Glue the top (Emma, 2026-10-07): "the front part glued to the back part as far as the top of the head goes, and
+	// below that they sway freely, not picking up each other's sway". The piece hangs under the BACK hair's follow warp,
+	// so on head turns all of it stays where the back hair is (the free part hangs from the glued part). Swing is keyed
+	// here: the glued rows take the back hair's swing (ParamHairBack) exactly, fading out across the band; below it the
+	// piece swings on its own (ParamHairFront), pivoting at the glue line, and never sees the back hair's swing.
+	private fun hairGlueWarp(layer: ClassifiedLayer, raw: Bounds, anchor: HairAnchor, backHair: Bounds, part: PartId): Deformer.Warp {
+		val frame = hairAnchorFrame(raw)
+		val inParent = mapBounds(frame, backHair)
+		val glueEnd = maxOf(anchor.from, anchor.to).coerceIn(0f, 0.95f)
+		// Same swing as the back hair's physics warp (hairPhysicsWarp: swayRatio 0.10, curlRatio 0.025).
+		val backScale = minOf(backHair.width, backHair.height).coerceAtLeast(1f)
+		val backSway = backScale / backHair.width.coerceAtLeast(1f) * 0.10f
+		val backCurl = backScale / backHair.height.coerceAtLeast(1f) * 0.025f
+		// The free part's own swing, sized like the front hair's (0.12 / 0.030) on the hanging length.
+		val freeScale = minOf(raw.width, raw.height * (1f - glueEnd)).coerceAtLeast(1f)
+		val rows = 8
+		val axes = listOf(axis(StandardParameters.HAIR_BACK, -1f, 0f, 1f), axis(StandardParameters.HAIR_FRONT, -1f, 0f, 1f))
+		val grid = warpGrid(axes, 3, rows) { u, v, values ->
+			val x = frame.left + u * frame.width
+			val y = frame.top + v * frame.height
+			val ub = normalizeX(x, backHair); val vb = normalizeY(y, backHair)
+			val own = (y - raw.top) / raw.height.coerceAtLeast(1f)
+			val glued = 1f - hairAnchorWeight(own, anchor) // 1 = glued to the back hair
+			val (bu, bv) = hairPhysicsPoint(ub, vb, values[0], backSway, backCurl)
+			val t = ((own - glueEnd) / (1f - glueEnd)).coerceIn(0f, 1f)
+			val tip = t * t * t
+			val freeX = values[1] * 0.12f * freeScale * tip / backHair.width.coerceAtLeast(1f)
+			val freeY = -values[1] * values[1] * 0.030f * freeScale * tip / backHair.height.coerceAtLeast(1f)
+			(inParent.left + u * inParent.width + glued * (bu - ub) + freeX) to
+				(inParent.top + v * inParent.height + glued * (bv - vb) + freeY)
+		}
+		return Deformer.Warp(hairAnchorWarpId(layer), "Hair glue: ${layer.source.name}", backHairFollowWarpId, part, rows, 3, true, grid)
+	}
+
+	// Glue the tips: hang under the BACK hair's swing (tips move with it); add the front-vs-back follow difference
+	// back where the piece is still front hair (the top).
+	private fun hairPinBottomWarp(
+		layer: ClassifiedLayer,
+		raw: Bounds,
+		anchor: HairAnchor,
+		head: Bounds,
 		frontHair: Bounds,
 		backHair: Bounds,
 		part: PartId,
 	): Deformer.Warp {
-		// Pin bottom: hang under the BACK hair's swing (tips move with it); add the front-vs-back follow difference
-		//   back where the piece is still front hair (the top).
-		// Pin top = a staple through the top of both layers: hang under the FRONT hair's own swing (the tips sway on
-		//   their own), and pull the stapled top onto where the back hair's follow puts it, fading out below the staple.
-		val parentFrame = if (anchor.pinTop) frontHair else backHair
+		val parentFrame = backHair
 		val frame = hairAnchorFrame(raw)
 		val inParent = mapBounds(frame, parentFrame)
 		val frontInHead = mapBounds(frontHair, head)
@@ -1772,11 +1818,9 @@ object RigBuilder {
 			val fbx = ((front.first - front0.first) - (back.first - back0.first)) * head.width / parentFrame.width.coerceAtLeast(1f)
 			val fby = ((front.second - front0.second) - (back.second - back0.second)) * head.height / parentFrame.height.coerceAtLeast(1f)
 			val frontness = hairAnchorWeight((y - raw.top) / raw.height.coerceAtLeast(1f), anchor)
-			val (dx, dy) = if (anchor.pinTop) (-(1f - frontness) * fbx) to (-(1f - frontness) * fby) else (frontness * fbx) to (frontness * fby)
-			(inParent.left + u * inParent.width + dx) to (inParent.top + v * inParent.height + dy)
+			(inParent.left + u * inParent.width + frontness * fbx) to (inParent.top + v * inParent.height + frontness * fby)
 		}
-		val parent = if (anchor.pinTop) frontHairPhysicsWarpId else backHairPhysicsWarpId
-		return Deformer.Warp(hairAnchorWarpId(layer), "Hair anchor: ${layer.source.name}", parent, part, rows, 3, true, grid)
+		return Deformer.Warp(hairAnchorWarpId(layer), "Hair anchor: ${layer.source.name}", backHairPhysicsWarpId, part, rows, 3, true, grid)
 	}
 
 	private fun hairFollowWarp(

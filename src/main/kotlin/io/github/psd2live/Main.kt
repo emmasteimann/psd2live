@@ -65,6 +65,9 @@ fun main(arguments: Array<String>) {
 		exportJson = !options.flags.contains("--no-json"),
 		hairAnchors = options.value("--hair-anchors")?.let(::readHairAnchors) ?: emptyMap(),
 		hairTurnDepth = options.float("--hair-turn-depth", 0f).coerceIn(0f, 3f),
+		layerTurnDepths = options.value("--turn-depths")?.let(::readJsonObject)?.mapValues { (_, v) ->
+			(v as kotlinx.serialization.json.JsonPrimitive).content.toFloat().coerceIn(0f, 3f)
+		} ?: emptyMap(),
 		autoSkeleton = options.value("--skeleton")?.also { require(it == "arms" || it == "full") { "--skeleton is arms or full" } },
 		armJoints = options.value("--arm-joints")?.let(::readJsonObject)?.mapValues { (_, side) ->
 			(side as kotlinx.serialization.json.JsonObject).mapValues { (_, point) ->
@@ -254,7 +257,7 @@ private data class CliOptions(val values: Map<String, String>, val flags: Set<St
 
 	companion object {
 		private val flagNames = setOf("--no-upscale-neural-alpha", "--upscale-neural-alpha", "--no-physics", "--no-cmo3", "--no-moc3", "--mesh-only", "--no-deformers", "--no-motions", "--no-json")
-		private val valueNames = setOf("--upscale", "--upscale-noise", "--upscale-python", "--nunif-dir", "--upscale-model", "--upscale-tile", "--input", "--output", "--lang", "--atlas", "--mesh-spacing", "--head-strength", "--body-strength", "--hair-anchors", "--glues", "--swings", "--skeleton", "--arm-joints", "--hair-turn-depth")
+		private val valueNames = setOf("--upscale", "--upscale-noise", "--upscale-python", "--nunif-dir", "--upscale-model", "--upscale-tile", "--input", "--output", "--lang", "--atlas", "--mesh-spacing", "--head-strength", "--body-strength", "--hair-anchors", "--glues", "--swings", "--skeleton", "--arm-joints", "--hair-turn-depth", "--turn-depths")
 		fun parse(arguments: Array<String>): CliOptions {
 			val values = linkedMapOf<String, String>()
 			val flags = linkedSetOf<String>()

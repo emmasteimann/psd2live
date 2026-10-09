@@ -211,6 +211,9 @@ object RigBuilder {
 		 * the automatically paired deformer, or the parent its semantic tag implies.
 		 */
 		fun parentAndFrame(layer: ClassifiedLayer, config: PipelineConfig): Pair<DeformerId?, Bounds> {
+			if (!config.parentOverrides.containsKey(layer.source.id.raw) && config.layerTurnDepths.containsKey(layer.source.name)) {
+				frameByDeformer[turnWarpId(layer).raw]?.let { return turnWarpId(layer) to it }
+			}
 			if (!config.parentOverrides.containsKey(layer.source.id.raw) && config.layerGlues.containsKey(layer.source.name)) {
 				frameByDeformer[glueWarpId(layer).raw]?.let { return glueWarpId(layer) to it }
 			}
@@ -378,11 +381,77 @@ object RigBuilder {
 			deformers,
 		)
 		val base = context(deformerResult.deformers)
-		if (!deformersEnabled || config.layerGlues.isEmpty()) return base
+		if (!deformersEnabled || (config.layerGlues.isEmpty() && config.layerTurnDepths.isEmpty())) return base
 		// Layerloom patch: glue warps copy their target's warp, so they are built once every other deformer exists.
-		val glues = glueWarps(base, rigLayerById, config)
+		val glues = if (config.layerGlues.isEmpty()) emptyList() else glueWarps(base, rigLayerById, config)
 		for ((warp, frame) in glues) frameByDeformer[warp.id.raw] = frame
-		return context(deformerResult.deformers + glues.map { it.first })
+		val withGlues = context(deformerResult.deformers + glues.map { it.first })
+		// ...and per-piece turn warps go between a piece and whatever it hangs from (a glue warp included).
+		val turns = if (config.layerTurnDepths.isEmpty()) emptyList() else turnWarps(withGlues, rigLayerById, config)
+		for ((warp, frame) in turns) frameByDeformer[warp.id.raw] = frame
+		return context(deformerResult.deformers + glues.map { it.first } + turns.map { it.first })
+	}
+
+	// ---- Layerloom patch: per-piece turn depth --------------------------------------------------------------------
+	private fun turnWarpId(layer: ClassifiedLayer): DeformerId =
+		DeformerId("DeformTurn" + layer.source.name.filter { it.isLetterOrDigit() }.replaceFirstChar { it.uppercase() })
+
+	/**
+	 * One warp per piece with its own turn depth, hung under the piece's usual parent (in canvas terms, converted to
+	 * the parent's frame). For a piece riding the hair (under a hair follow warp, glued to it included) it adds exactly
+	 * the difference between the hair warp's turn at the piece's depth and at the hair turn depth, on the same cylinder
+	 * and frame, so 0 really takes the hair's squeeze away and 2 doubles it. Any other piece turns round the head's
+	 * centre directly. The piece's own width changes, as it does inside the hair warp; RigIntegrityValidator only
+	 * audits PSD2Live's own turn warps (DeformHair*Follow etc.), not these.
+	 */
+	private fun turnWarps(context: RigContext, rigLayerById: Map<String, ClassifiedLayer>, config: PipelineConfig): List<Pair<Deformer.Warp, Bounds>> {
+		val byName = context.analysis.layers.filter { it.opaquePixels > 0 }.associateBy { it.source.name }
+		val warps = context.deformers.filterIsInstance<Deformer.Warp>().associateBy { it.id.raw }
+		val parentOf = context.deformers.associate { it.id.raw to it.parent?.raw }
+		fun hairFollowAbove(start: String?): String? {
+			var id = start; var hops = 0
+			while (id != null && hops++ < 64) {
+				if (id == frontHairFollowWarpId.raw || id == backHairFollowWarpId.raw) return id
+				id = parentOf[id]
+			}
+			return null
+		}
+		val head = context.head
+		val cx = head.centerX
+		return config.layerTurnDepths.mapNotNull { (name, depth) ->
+			val layer = byName[name] ?: return@mapNotNull null.also { System.err.println("Warning: turn depth: no layer named \"$name\"") }
+			val (parentId, parentFrame) = context.parentAndFrame(layer, config)
+			val parent = parentId?.let { warps[it.raw] }
+			if (parent == null) { System.err.println("Warning: turn depth: \"$name\" isn't under a warp; left as it was"); return@mapNotNull null }
+			val hairFrame = when (hairFollowAbove(parentId.raw)) {
+				frontHairFollowWarpId.raw -> context.frontHair
+				backHairFollowWarpId.raw -> context.backHair
+				else -> null
+			}
+			val base = if (hairFrame != null) config.hairTurnDepth else 0f
+			if (kotlin.math.abs(depth - base) < 1e-3f) return@mapNotNull null // already turns this much
+			val frame = hairAnchorFrame(rigLayerById.getValue(layer.source.id.raw).bounds)
+			val inParent = mapBounds(frame, parentFrame)
+			// canvas x -> how far it moves on a turn (canvas px), at this piece's depth minus what it already gets
+			val shift: (Float, Float) -> Float = if (hairFrame != null) {
+				val radius = maxOf(kotlin.math.abs(hairFrame.left - cx), kotlin.math.abs(hairFrame.right - cx), head.width * 0.5f) * 1.02f
+				{ x, angle -> cylinderTurn(x, angle, depth, cx, radius, hairFrame.left, hairFrame.right) -
+					cylinderTurn(x, angle, base, cx, radius, hairFrame.left, hairFrame.right) }
+			} else {
+				val radius = maxOf(kotlin.math.abs(frame.left - cx), kotlin.math.abs(frame.right - cx), head.width * 0.5f) * 1.02f
+				{ x, angle ->
+					val theta = Math.toRadians((depth * 0.5f * angle).toDouble())
+					val phi = asin(((x - cx) / radius).coerceIn(-1f, 1f).toDouble())
+					(radius * (sin((phi + theta).coerceIn(-PI / 2, PI / 2)) - sin(theta)) - (x - cx)).toFloat()
+				}
+			}
+			val columns = 10; val rows = 2
+			val grid = warpGrid(listOf(axis(StandardParameters.ANGLE_X, *NinePoseFaceRig.angleXKeys)), columns, rows) { u, v, values ->
+				val x = frame.left + u * frame.width
+				(inParent.left + u * inParent.width + shift(x, values[0]) / parentFrame.width.coerceAtLeast(1f)) to (inParent.top + v * inParent.height)
+			}
+			Deformer.Warp(turnWarpId(layer), "Turn depth: $name", parentId, parent.partId, rows, columns, true, grid) to frame
+		}
 	}
 
 	// ---- Layerloom patch: glue any layer to any layer -------------------------------------------------------------
@@ -1352,24 +1421,7 @@ object RigBuilder {
 		val pitchDepthWeight = 0.78f + sin(PI * v).toFloat().coerceAtLeast(0f) * 0.22f
 		val uPerspective = u + yaw * yawPerspective * 4f * u * (1f - u)
 		var x = inHead.left + uPerspective * inHead.width
-		if (turnDepth > 0f && angleX != 0f) {
-			// Layerloom patch: the hair on a cylinder round the head's centre (0.5 in head space), turned by theta: the
-			// side turning away squeezes, the near side widens (past the far silhouette points pile up: out of view).
-			// PSD2Live keeps a turn warp's overall width (RigIntegrityValidator), so the turned positions are rescaled
-			// to the frame's own width and the head's centre is held where it was; only the spacing inside changes.
-			val theta = Math.toRadians((turnDepth * 0.5f * angleX).toDouble())
-			fun cylinder(at: Float): Double {
-				val phi = asin(((at - 0.5f) / turnRadius).coerceIn(-1f, 1f).toDouble())
-				return sin((phi + theta).coerceIn(-PI / 2, PI / 2))
-			}
-			val left = inHead.left; val right = inHead.left + inHead.width
-			val cl = cylinder(left); val cr = cylinder(right)
-			if (cr - cl > 1e-6) {
-				val scale = (right - left) / (cr - cl)
-				val centre = left + (cylinder(0.5f) - cl) * scale
-				x = (left + (cylinder(x) - cl) * scale - (centre - 0.5f)).toFloat()
-			}
-		}
+		if (turnDepth > 0f) x = cylinderTurn(x, angleX, turnDepth, 0.5f, turnRadius, inHead.left, inHead.left + inHead.width)
 		return (x + yaw * yawParallax * yawDepthWeight) to
 			(inHead.top + v * inHead.height + pitch * pitchParallax * pitchDepthWeight)
 	}
@@ -1957,6 +2009,27 @@ object RigBuilder {
 			hairFollowPoint(inHead, u, v, values[0], values[1], yawParallax, pitchParallax, yawPerspective, turnDepth, radius)
 		}
 		return Deformer.Warp(id, name, headWarpId, part, 4, columns, true, grid)
+	}
+
+	/**
+	 * Layerloom patch: [x] on a cylinder round [centre] (radius [radius]) turned by depth × 0.5 × angleX degrees: the
+	 * side turning away squeezes, the near side widens; past the far silhouette points pile up (out of view). PSD2Live
+	 * keeps a turn warp's overall width (RigIntegrityValidator), so positions are rescaled to [left]..[right] and
+	 * [centre] is held where it was: only the spacing inside changes. A negative depth turns the other way (used to
+	 * take back some of a turn a piece already rides).
+	 */
+	internal fun cylinderTurn(x: Float, angleX: Float, depth: Float, centre: Float, radius: Float, left: Float, right: Float): Float {
+		if (depth == 0f || angleX == 0f || radius <= 0f) return x
+		val theta = Math.toRadians((depth * 0.5f * angleX).toDouble())
+		fun cylinder(at: Float): Double {
+			val phi = asin(((at - centre) / radius).coerceIn(-1f, 1f).toDouble())
+			return sin((phi + theta).coerceIn(-PI / 2, PI / 2))
+		}
+		val cl = cylinder(left); val cr = cylinder(right)
+		if (cr - cl <= 1e-6) return x
+		val scale = (right - left) / (cr - cl)
+		val held = left + (cylinder(centre) - cl) * scale
+		return (left + (cylinder(x) - cl) * scale - (held - centre)).toFloat()
 	}
 
 	/** Layerloom patch: the cylinder the hair turns on reaches just past this frame's farther side (head space). */

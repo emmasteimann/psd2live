@@ -253,6 +253,11 @@ data class PipelineConfig(
 	 */
 	val hairTurnDepth: Float = 0f,
 	/**
+	 * Layerloom patch: per-layer turn depth by PSD layer name, overriding [hairTurnDepth] for that piece (or giving
+	 * any piece one: a hat brim, an ear). The piece gets a small warp that adds the difference to what it already rides.
+	 */
+	val layerTurnDepths: Map<String, Float> = emptyMap(),
+	/**
 	 * Layerloom patch: arm joints placed by hand, canvas pixels, by side ("L" = the character's left): shoulder,
 	 * elbow, wrist, tip. They replace the auto skeleton's guesses for the upper arm, forearm and hand.
 	 */

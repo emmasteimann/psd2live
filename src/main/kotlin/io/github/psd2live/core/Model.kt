@@ -262,6 +262,11 @@ data class PipelineConfig(
 	 * bottom; height kept, spacing redistributed. 1 = at a full 30° look the hair rotates 15° on its cylinder.
 	 */
 	val hairTurnDepthY: Float = 0f,
+	/**
+	 * Layerloom patch: overlay layers that fade in by a parameter, by PSD layer name -> parameter id (a face shadow, a
+	 * blush): each becomes a toggle (opacity 0 at 0, 1 at 1), keeping the classification its name gives it.
+	 */
+	val layerToggles: Map<String, String> = emptyMap(),
 	val layerTurnDepthsY: Map<String, Float> = emptyMap(),
 	/**
 	 * Layerloom patch: arm joints placed by hand, canvas pixels, by side ("L" = the character's left): shoulder,

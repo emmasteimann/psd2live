@@ -264,16 +264,13 @@ class PSD2LivePipeline {
 		config: PipelineConfig = PipelineConfig(),
 		progress: ProgressListener = ProgressListener { _, _ -> },
 	): PipelineResult {
-		progress.update(tr("progress.readPsd"), 0.04)
-		val analysis = inspect(psd, config)
-		return exportAnalysis(
-			inputAnalysis = analysis,
-			baseName = safeBaseName(psd.fileName.toString().substringBeforeLast('.')),
-			outputDirectory = outputDirectory,
-			requested = config,
-			progress = progress,
-		)
+		// read the PSD, then the same path as an in-memory source (so Layerloom's named toggles apply here too)
+		require(Files.isRegularFile(psd)) { tr("error.psdMissing", psd) }
+		val bytes = Files.readAllBytes(psd)
+		require(PsdReader.matches(bytes)) { tr("error.invalidPsd", psd) }
+		return run(PsdReader.read(bytes), psd.fileName.toString(), outputDirectory, config, progress)
 	}
+
 
 	/** Export the current authoritative source, including Agent-created layers, without rereading the PSD. */
 	fun run(
@@ -284,12 +281,20 @@ class PSD2LivePipeline {
 		progress: ProgressListener = ProgressListener { _, _ -> },
 	): PipelineResult {
 		progress.update(tr("progress.readPsd"), 0.04)
-		val analysis = CharacterAnalyzer.analyze(source, config)
+		// Layerloom patch: toggles named by layer become the editor's own per-layer toggle overrides (by layer id),
+		// keeping the tag the name gives (e.g. "face detail" rides the face warp).
+		val toggled = if (config.layerToggles.isEmpty()) config else config.copy(layerOverrides = config.layerOverrides +
+			source.layers.mapNotNull { layer ->
+				val param = config.layerToggles[layer.name] ?: return@mapNotNull null
+				val semantic = LayerClassifier.classify(layer.name)
+				layer.id.raw to LayerClassificationOverride(LayerType.TOGGLE, semantic.tag, semantic.side, param, 0)
+			})
+		val analysis = CharacterAnalyzer.analyze(source, toggled)
 		return exportAnalysis(
 			inputAnalysis = analysis,
 			baseName = safeBaseName(sourceName.substringBeforeLast('.')),
 			outputDirectory = outputDirectory,
-			requested = config,
+			requested = toggled,
 			progress = progress,
 		)
 	}

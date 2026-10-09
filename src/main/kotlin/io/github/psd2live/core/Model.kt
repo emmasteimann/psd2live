@@ -247,6 +247,12 @@ data class PipelineConfig(
 	 */
 	val autoSkeleton: String? = null,
 	/**
+	 * Layerloom patch: hair wraps round the head on turns. 0 = PSD2Live as released; 1 = at a full 45° turn the hair
+	 * rotates 22.5° round a cylinder on the head's centre: the side turning away squeezes, the near side widens, the
+	 * centre stays with the face. Front and back hair follow warps (and what is glued to them).
+	 */
+	val hairTurnDepth: Float = 0f,
+	/**
 	 * Layerloom patch: arm joints placed by hand, canvas pixels, by side ("L" = the character's left): shoulder,
 	 * elbow, wrist, tip. They replace the auto skeleton's guesses for the upper arm, forearm and hand.
 	 */

@@ -159,7 +159,14 @@ data class HairAnchor(val from: Float, val to: Float, val pinTop: Boolean = fals
  * free. The free part hangs from the glued part: it follows the target's motion with the target's swing left out, so
  * it never picks up the target's sway (give it its own with a swing).
  */
-data class LayerGlue(val target: String, val from: Float, val to: Float, val glueTop: Boolean = true)
+data class LayerGlue(
+	val target: String,
+	val from: Float,
+	val to: Float,
+	val glueTop: Boolean = true,
+	/** [from]/[to] run left to right across the layer's width instead of down its height; [glueTop] = the left side is glued. */
+	val horizontal: Boolean = false,
+)
 
 data class PipelineConfig(
 	val atlasSize: Int = 4096,

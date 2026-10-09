@@ -241,6 +241,7 @@ private fun readLayerGlues(path: String): Map<String, io.github.psd2live.core.La
 		from = p("from")!!.content.toFloat().coerceIn(0f, 1f),
 		to = p("to")!!.content.toFloat().coerceIn(0f, 1f),
 		glueTop = p("glueTop")?.content?.toBooleanStrictOrNull() ?: true,
+		horizontal = p("axis")?.content == "x",
 	)
 }
 

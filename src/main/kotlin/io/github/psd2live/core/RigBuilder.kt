@@ -437,7 +437,7 @@ object RigBuilder {
 			val raw = rigLayerById.getValue(layer.source.id.raw).bounds
 			val frame = hairAnchorFrame(raw)
 			val rest = grid.axes.map { axis -> axis.keys.indices.minBy { kotlin.math.abs(axis.keys[it]) } }
-			val rows = 8; val columns = 3
+			val rows = if (glue.horizontal) 3 else 8; val columns = if (glue.horizontal) 8 else 3
 			val cells = grid.cells.map { cell ->
 				val freeAt = IntArray(cell.coordinate.size) { a -> if (isSwayParameter(grid.axes[a].parameterId)) rest[a] else cell.coordinate[a] }
 				val freeForm = grid.cellsByLinearIndex[grid.linearIndexOf(freeAt)]?.form ?: cell.form
@@ -446,7 +446,9 @@ object RigBuilder {
 				for (r in 0..rows) for (c in 0..columns) {
 					val y = frame.top + r.toFloat() / rows * frame.height
 					val u = normalizeX(frame.left + c.toFloat() / columns * frame.width, targetFrame); val v = normalizeY(y, targetFrame)
-					val g = glueWeight((y - raw.top) / raw.height.coerceAtLeast(1f), glue)
+					val x = frame.left + c.toFloat() / columns * frame.width
+					val along = if (glue.horizontal) (x - raw.left) / raw.width.coerceAtLeast(1f) else (y - raw.top) / raw.height.coerceAtLeast(1f)
+					val g = glueWeight(along, glue)
 					val (gx, gy) = latticePoint(cell.form.controlPoints, warp.rows, warp.columns, u, v)
 					val (fx, fy) = latticePoint(freeForm.controlPoints, warp.rows, warp.columns, u, v)
 					points[i++] = fx + g * (gx - fx); points[i++] = fy + g * (gy - fy)

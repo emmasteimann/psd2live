@@ -258,6 +258,12 @@ data class PipelineConfig(
 	 */
 	val layerTurnDepths: Map<String, Float> = emptyMap(),
 	/**
+	 * Layerloom patch: the same for looking up/down (AngleY): looking up squeezes the top of the hair, looking down the
+	 * bottom; height kept, spacing redistributed. 1 = at a full 30° look the hair rotates 15° on its cylinder.
+	 */
+	val hairTurnDepthY: Float = 0f,
+	val layerTurnDepthsY: Map<String, Float> = emptyMap(),
+	/**
 	 * Layerloom patch: arm joints placed by hand, canvas pixels, by side ("L" = the character's left): shoulder,
 	 * elbow, wrist, tip. They replace the auto skeleton's guesses for the upper arm, forearm and hand.
 	 */

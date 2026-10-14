@@ -1298,6 +1298,8 @@ internal class CanvasEditor(
     var warpSpecifyParentId by mutableStateOf<String?>(null)
     /** Keep the create tool armed after a successful commit (Cubism sequential create). */
     var sequentialCreate by mutableStateOf(false)
+    /** Layerloom patch (S4.7): Deform edits of a mesh or warp land on every key of its grid ([io.github.psd2live.core.MultiKeyEdit]). */
+    var editAllKeys by mutableStateOf(false)
     /**
      * Mode to restore when a create session ends. Set when arming a creation tool; cleared on cancel
      * or after a successful create that leaves the session.
@@ -3704,7 +3706,9 @@ internal class CanvasEditor(
         val expected = gestureState ?: viewModel.currentWorkspaceState()
         if (expected == null) { endTransformBox(); return false }
         try {
-            val result = RigAuthoringJournal.compile(state.previewModel!!.rig.puppet, JsonArray(commands))
+            val base = state.previewModel!!.rig.puppet
+            val expanded = if (editAllKeys && hierarchyMode == EditHierarchyMode.DEFORM) io.github.psd2live.core.MultiKeyEdit.expand(base, commands) else commands
+            val result = RigAuthoringJournal.compile(base, JsonArray(expanded))
             // A gesture that ends where it started compiles to nothing: dragging a vertex back onto
             // itself, or a numeric transform applied with its identity values. Dispatching that would ask
             // the workspace for an edit that cannot change anything, so drop it here and let the caller's

@@ -234,6 +234,9 @@ internal fun CanvasEditor.pickVariant(n: Int): Boolean {
     }
 }
 
+/** Layerloom patch (S4.7): Cubism's multiple-keys editing, in Deform mode. */
+private val EDIT_ALL_KEYS = ToggleOption("deform.allKeys", "editor.editAllKeys", { it.editAllKeys }, { e, on -> e.editAllKeys = on })
+
 private val SEQUENTIAL_CREATE = ToggleOption("create.sequential", "editor.sequentialCreate", { it.sequentialCreate }, { e, on -> e.sequentialCreate = on })
 
 private fun MutableList<ToolOption>.addPlacement(editor: CanvasEditor, kind: CreatePlacementKind) {
@@ -336,6 +339,7 @@ private fun MutableList<ToolOption>.addPointModes(editor: CanvasEditor) {
     val target = editor.target()
     val mesh = target?.kind == "mesh"
     if (mesh && (editor.tool in SELECTION_TOOLS || editor.tool == CanvasTool.TRANSFORM)) add(ELEMENT_MODE)
+    if (!editing && (target?.kind == "mesh" || target?.kind == "warp")) add(EDIT_ALL_KEYS)
     when (editor.tool) {
         CanvasTool.BRUSH_SELECT -> add(BRUSH_RADIUS)
         CanvasTool.BRUSH, CanvasTool.SMOOTH, CanvasTool.INFLATE -> {

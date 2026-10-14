@@ -248,6 +248,8 @@ data class RigEditOverlay(
     /** Layerloom patch: pose groups (pose3), lists of part ids of which one shows at a time, and their fade. */
     val poseGroups: List<List<String>> = emptyList(),
     val poseFadeIn: Float = PoseGroups.DEFAULT_FADE,
+    /** Layerloom patch: blend-shape weight limits by blend-shape parameter id ([BlendLimits]). */
+    val blendLimits: Map<String, List<org.umamo.runtime.model.BlendWeightLimit>> = emptyMap(),
 ) {
 	/**
 	 * Layerloom patch: revisions hash this text (WorkspaceRevisions). It is the data class's own text for the
@@ -258,6 +260,7 @@ data class RigEditOverlay(
 		append("RigEditOverlay(importedCmo3=$importedCmo3, importedLayerIds=$importedLayerIds, skeleton=$skeleton, parameterEdits=$parameterEdits, deletedParameterIds=$deletedParameterIds, keyformSetEdits=$keyformSetEdits, keyformDeleteEdits=$keyformDeleteEdits, keyformCopyEdits=$keyformCopyEdits, warpEdits=$warpEdits, physicsEdits=$physicsEdits, disabledPhysicsIds=$disabledPhysicsIds, physicsOrder=$physicsOrder, physicsFps=$physicsFps, swingEdits=$swingEdits, assetLayers=$assetLayers, calibrationLayerIds=$calibrationLayerIds, splitBaselineLayerIds=$splitBaselineLayerIds, splitDrawableIds=$splitDrawableIds, structureEdits=$structureEdits, authoringJournal=$authoringJournal, motionClips=$motionClips, motionPresets=$motionPresets, simEdits=$simEdits")
 		if (expressions.isNotEmpty()) append(", expressions=").append(expressions)
 		if (poseGroups.isNotEmpty() || poseFadeIn != PoseGroups.DEFAULT_FADE) append(", poseGroups=").append(poseGroups).append(", poseFadeIn=").append(poseFadeIn)
+		if (blendLimits.isNotEmpty()) append(", blendLimits=").append(blendLimits.toSortedMap())
 		append(")")
 	}
 
@@ -639,6 +642,8 @@ internal fun AuthoredRig.finished(overlay: RigEditOverlay, layerVisibility: Map<
 		model = model.copy(drawables = model.drawables.map { if (it.id.raw == id) it.copy(isVisible = visible) else it })
 	}
 	model = ArtPrimitiveJournal.pruneAtlas(model, overlay)
+	// Layerloom patch: blend-shape weight limits, by parameter, on every binding of it.
+	model = BlendLimits.apply(model, overlay.blendLimits)
 	return rig.copy(puppet = model, overrideIssues = outcome.issues, supersededEntryNotes = outcome.notes)
 		.withDrawOrderOverrides(drawOrderOverrides)
 }

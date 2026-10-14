@@ -1961,6 +1961,8 @@ class PSD2LiveViewModel : AutoCloseable {
 		parentGroupId: String? = null,
 		/** Layerloom patch: Cubism 5.3 parameter repeat (the value wraps at its ends); null leaves it as it is. */
 		repeat: Boolean? = null,
+		/** Layerloom patch: this blend-shape parameter's weight limits, saved with it; null leaves them as they are. */
+		blendLimits: List<org.umamo.runtime.model.BlendWeightLimit>? = null,
 		onComplete: (String?) -> Unit,
 	) {
         flushEditorFields()
@@ -1984,9 +1986,12 @@ class PSD2LiveViewModel : AutoCloseable {
             })
             addAll(keyEdits)
         }
-        val edits = listOf(definition) + if (trailing.isEmpty()) emptyList() else listOf(
+        val edits = listOf(definition) + (if (trailing.isEmpty()) emptyList() else listOf(
             io.github.psd2live.application.WorkspaceDocumentOperation("keyform_apply",
-                kotlinx.serialization.json.buildJsonObject { put("changes", kotlinx.serialization.json.JsonArray(trailing)) }))
+                kotlinx.serialization.json.buildJsonObject { put("changes", kotlinx.serialization.json.JsonArray(trailing)) }))) +
+            listOfNotNull(blendLimits?.takeIf { action != "delete" }?.let {
+                io.github.psd2live.application.WorkspaceDocumentOperation("blend_limits_put", io.github.psd2live.core.BlendLimits.request(id, it))
+            })
         saveDocumentEdits(expected, "${action.replaceFirstChar(Char::uppercase)} parameter $id", edits, onComplete)
     }
 

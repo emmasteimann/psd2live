@@ -26,13 +26,13 @@ internal object WorkspaceDocumentEdits {
         setOf("put", "delete", "seed_builtin", "set_key", "delete_key", "remove_curve", "pose", "move_keys", "delete_keys", "paste_keys", "replace_keys", "preset", "create", "duplicate", "rename", "properties").map { "motion_$it" } +
         setOf("warp", "rotation", "glue", "topology").map { "canvas_$it" } +
         setOf("put", "delete", "deform").map { "path_$it" } +
-        setOf("swing_put", "swing_delete") + setOf("expression_put", "expression_delete", "pose_put") + WorkspacePhysicsEdits.batchable + WorkspaceSimulationEdits.supported + WorkspaceCanvasWeightEdits.supported + WorkspaceCanvasDeformEdits.supported + WorkspaceTextureEdits.supported
+        setOf("swing_put", "swing_delete") + setOf("expression_put", "expression_delete", "pose_put", "blend_limits_put") + WorkspacePhysicsEdits.batchable + WorkspaceSimulationEdits.supported + WorkspaceCanvasWeightEdits.supported + WorkspaceCanvasDeformEdits.supported + WorkspaceTextureEdits.supported
 
     /**
      * Layerloom patch: document operations only the editor sends (its Expressions tab). They aren't agent operations,
      * so the agent registry and its batch schema leave them out ([agentBatchable]).
      */
-    val editorOnly: Set<String> = setOf("expression_put", "expression_delete", "pose_put")
+    val editorOnly: Set<String> = setOf("expression_put", "expression_delete", "pose_put", "blend_limits_put")
     val agentBatchable: Set<String> get() = supported - editorOnly
 
     fun apply(operation: WorkspaceDocumentOperation, document: WorkspaceDocument, model: RigPreviewModel,
@@ -112,6 +112,8 @@ internal object WorkspaceDocumentEdits {
                     JsonObject(request + ("mode" to JsonPrimitive(operation.operation.removePrefix("source_paint_")))), rasterWork)
                 operation.operation.startsWith("skeleton_") -> skeleton(document, model,
                     JsonObject(request + ("mode" to JsonPrimitive(operation.operation.removePrefix("skeleton_")))))
+                operation.operation == "blend_limits_put" -> document.copy(rigEdits = document.rigEdits.copy(
+                    blendLimits = io.github.psd2live.core.BlendLimits.put(document.rigEdits.blendLimits, request)))
                 operation.operation == "pose_put" -> io.github.psd2live.core.PoseGroups.put(request).let { (groups, fade) ->
                     document.copy(rigEdits = document.rigEdits.copy(poseGroups = groups, poseFadeIn = fade)) }
                 operation.operation.startsWith("expression_") -> document.copy(rigEdits = document.rigEdits.copy(expressions =

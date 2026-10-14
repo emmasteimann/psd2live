@@ -32,6 +32,12 @@ class ExpressionsPanelTool {
 					vm.setStateForTest(vm.state.value.copy(rigEdits = RigEditOverlay(expressions = starters, poseGroups = listOf(parts.drop(1).take(2), parts.take(1)))))
 					renderPng(File(out, "$tag-starters.png"), 380, 1100) { ExpressionsPanelView(vm, vm.state.value) }
 					renderPng(File(out, "$tag-parameters.png"), 380, 160) { io.github.psd2live.ui.views.ParametersListView(vm.state.value, vm) }
+					val angle = preview.rig.puppet.parameters.first { it.id.raw == "ParamAngleX" }
+					renderPng(File(out, "$tag-blendlimits.png"), 440, 300) {
+						io.github.psd2live.ui.views.BlendLimitsEditor(listOf(org.umamo.runtime.model.BlendWeightLimit(angle.id, listOf(
+							org.umamo.runtime.model.BlendWeightLimitPoint(0f, 1f), org.umamo.runtime.model.BlendWeightLimitPoint(30f, 0f)))),
+							preview.rig.puppet.parameters, enabled = true) {}
+					}
 					val head = preview.rig.puppet.parts.first()
 					val isolated = preview.copy(rig = preview.rig.copy(puppet = preview.rig.puppet.copy(parts = preview.rig.puppet.parts.map {
 						if (it.id == head.id) it.copy(groupMode = org.umamo.runtime.model.PartGroupMode.Isolated) else it })))

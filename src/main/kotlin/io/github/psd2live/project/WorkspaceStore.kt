@@ -546,6 +546,7 @@ internal class WorkspaceStore(
             if (document.rigEdits.simEdits.isNotEmpty()) putJsonArray("simulations") { document.rigEdits.simEdits.forEach { add(it.toJson()) } }
             // Layerloom patch: written only when there are any, so earlier documents keep their revision.
             if (document.rigEdits.expressions.isNotEmpty()) putJsonArray("expressions") { document.rigEdits.expressions.forEach { add(io.github.psd2live.core.Expressions.toJson(it)) } }
+            if (document.rigEdits.blendLimits.isNotEmpty()) put("blendLimits", io.github.psd2live.core.BlendLimits.toJson(document.rigEdits.blendLimits))
             if (document.rigEdits.poseGroups.isNotEmpty()) put("pose", io.github.psd2live.core.PoseGroups.request(document.rigEdits.poseGroups, document.rigEdits.poseFadeIn))
 			putJsonArray("parameters") {
 				document.rigEdits.parameterEdits.forEach { edit ->
@@ -688,6 +689,7 @@ internal class WorkspaceStore(
             motionPresets = io.github.psd2live.core.MotionPresets.fromJson(rigEditObject["motionPresets"]?.jsonObject),
             simEdits = rigEditObject.optionalArray("simulations").map { io.github.psd2live.core.sim.RigSimEdit.fromJson(it.jsonObject) },
             expressions = rigEditObject.optionalArray("expressions").map { io.github.psd2live.core.Expressions.fromJson(it.jsonObject) },
+            blendLimits = io.github.psd2live.core.BlendLimits.fromJson(rigEditObject["blendLimits"]?.jsonObject),
             poseGroups = rigEditObject["pose"]?.jsonObject?.let { io.github.psd2live.core.PoseGroups.put(it).first }.orEmpty(),
             poseFadeIn = rigEditObject["pose"]?.jsonObject?.let { io.github.psd2live.core.PoseGroups.put(it).second } ?: io.github.psd2live.core.PoseGroups.DEFAULT_FADE,
 			parameterEdits = rigEditObject.optionalArray("parameters").map { element ->

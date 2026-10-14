@@ -1,5 +1,8 @@
 package io.github.psd2live.ui.views
 
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.background
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -61,6 +64,16 @@ internal fun ParameterDefinitionDialog(
     var max by remember { mutableStateOf((parameter?.max ?: 1f).toString()) }
     var kind by remember { mutableStateOf(parameter?.kind ?: ParameterKind.NORMAL) }
     var repeat by remember { mutableStateOf(parameter?.repeat ?: false) }
+    // Layerloom patch: blend-shape weight limits, as the project keeps them, else as an imported rig has them.
+    val initialLimits = remember {
+        val pid = parameter?.id?.raw
+        pid?.let { state.rigEdits.blendLimits[it] } ?: pid?.let { id0 ->
+            baseModel?.let { m -> (m.drawables.flatMap { it.blendShapes } + m.deformers.flatMap { d ->
+                (d as? org.umamo.runtime.model.Deformer.Warp)?.blendShapes ?: (d as? org.umamo.runtime.model.Deformer.Rotation)?.blendShapes.orEmpty() })
+                .firstOrNull { it.parameterId.raw == id0 && it.limits.isNotEmpty() }?.limits }
+        }.orEmpty()
+    }
+    var limits by remember { mutableStateOf(initialLimits) }
     var deleting by remember { mutableStateOf(false) }
     var failure by remember { mutableStateOf<String?>(null) }
     var keyEdits by remember { mutableStateOf<List<JsonObject>>(emptyList()) }
@@ -114,6 +127,7 @@ internal fun ParameterDefinitionDialog(
             expectedState = expectedState,
             parentGroupId = if (creating) parentGroupId else null,
             repeat = if (kind == ParameterKind.NORMAL) repeat else null,
+            blendLimits = if (kind == ParameterKind.BLEND_SHAPE && limits != initialLimits) limits else null,
         ) { if (it == null) onDismiss() else failure = it }
     }
     val editorRegions = remember { InlineEditorRegions() }
@@ -257,6 +271,10 @@ internal fun ParameterDefinitionDialog(
                             }
                         }
                     }
+                    if (kind == ParameterKind.BLEND_SHAPE && baseModel != null) {
+                        BlendLimitsEditor(limits, baseModel.parameters.filter { it.id.raw != id.trim() && it.kind != ParameterKind.BLEND_SHAPE },
+                            enabled = !busy) { limits = it }
+                    }
                     if (valid && staged.isFailure) {
                         Text(staged.exceptionOrNull()?.message.orEmpty(), style = typography.caption, color = colors.error)
                     }
@@ -276,3 +294,94 @@ private fun RowScope.DefinitionField(label: String, value: String, enabled: Bool
         CompactTextField(value, onValue, modifier = Modifier.fillMaxWidth(), enabled = enabled, height = 22.dp)
     }
 }
+
+/**
+ * Layerloom patch (ONE-APP-PLAN S4.6): Cubism's blend-shape weight limits. Each limit is a curve over another
+ * parameter capping this blend shape's weight (0 = off, 1 = full); with several, the lowest wins.
+ */
+@Composable
+internal fun BlendLimitsEditor(
+    limits: List<org.umamo.runtime.model.BlendWeightLimit>,
+    parameters: List<Parameter>,
+    enabled: Boolean,
+    onChange: (List<org.umamo.runtime.model.BlendWeightLimit>) -> Unit,
+) {
+    val colors = LocalToolColors.current
+    val typography = LocalToolTypography.current
+    val byId = parameters.associateBy { it.id.raw }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(tr("blendLimits.title"), style = typography.caption.copy(fontSize = 11.sp), color = colors.textPrimary)
+        Text(tr("blendLimits.help"), style = typography.caption.copy(fontSize = 10.5.sp, lineHeight = 14.sp), color = colors.textMuted)
+        limits.forEachIndexed { index, limit ->
+            val p = byId[limit.parameterId.raw]
+            fun replace(next: org.umamo.runtime.model.BlendWeightLimit) = onChange(limits.toMutableList().also { it[index] = next })
+            Column(Modifier.fillMaxWidth().background(colors.panelElevated, androidx.compose.foundation.shape.RoundedCornerShape(4.dp)).padding(4.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    val used = limits.map { it.parameterId.raw }.toSet()
+                    val choices = (listOf(limit.parameterId.raw) + parameters.map { it.id.raw }.filter { it !in used }).distinct()
+                    io.github.psd2live.ui.components.CompactDropdown(choices, limit.parameterId.raw, { id ->
+                        val q = byId[id]
+                        replace(org.umamo.runtime.model.BlendWeightLimit(org.umamo.runtime.model.ParameterId(id),
+                            if (q == null) limit.points else defaultPoints(q)))
+                    }, Modifier.weight(1f), enabled = enabled, height = 22.dp, itemLabel = { byId[it]?.name?.let { n -> "$n ($it)" } ?: it })
+                    CompactButton(tr("blendLimits.remove"), { onChange(limits.filterIndexed { i, _ -> i != index }) }, enabled = enabled, height = 22.dp)
+                }
+                if (p != null) LimitCurve(limit, p)
+                limit.points.forEachIndexed { k, point ->
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(tr("blendLimits.at"), style = typography.caption, color = colors.textMuted, modifier = Modifier.width(40.dp))
+                        io.github.psd2live.ui.components.CompactNumberSpinner(point.value.toDouble(), { v ->
+                            replace(limit.copy(points = limit.points.toMutableList().also { it[k] = point.copy(value = v.toFloat()) }.sortedBy { it.value }))
+                        }, Modifier.width(96.dp), (p?.min ?: -1000f).toDouble(), (p?.max ?: 1000f).toDouble(), 0.1, 2, enabled = enabled)
+                        Text(tr("blendLimits.weight"), style = typography.caption, color = colors.textMuted, modifier = Modifier.width(48.dp))
+                        io.github.psd2live.ui.components.CompactNumberSpinner(point.weight.toDouble(), { w ->
+                            replace(limit.copy(points = limit.points.toMutableList().also { it[k] = point.copy(weight = w.toFloat().coerceIn(0f, 1f)) }))
+                        }, Modifier.width(80.dp), 0.0, 1.0, 0.05, 2, enabled = enabled)
+                        if (limit.points.size > 1) CompactButton("×", { replace(limit.copy(points = limit.points.filterIndexed { i, _ -> i != k })) },
+                            enabled = enabled, height = 20.dp)
+                    }
+                }
+                CompactButton(tr("blendLimits.addPoint"), {
+                    val last = limit.points.lastOrNull()
+                    val v = ((last?.value ?: p?.default ?: 0f) + ((p?.max ?: 1f) - (p?.min ?: 0f)) * 0.25f).coerceAtMost(p?.max ?: Float.MAX_VALUE)
+                    replace(limit.copy(points = (limit.points + org.umamo.runtime.model.BlendWeightLimitPoint(v, 1f)).sortedBy { it.value }.distinctBy { it.value }))
+                }, enabled = enabled, height = 20.dp)
+            }
+        }
+        val free = parameters.firstOrNull { q -> limits.none { it.parameterId == q.id } }
+        CompactButton(tr("blendLimits.add"), {
+            if (free != null) onChange(limits + org.umamo.runtime.model.BlendWeightLimit(free.id, defaultPoints(free)))
+        }, enabled = enabled && free != null, height = 22.dp)
+    }
+}
+
+/** A new limit's curve: full weight at the parameter's default, none at its far end. */
+private fun defaultPoints(p: Parameter): List<org.umamo.runtime.model.BlendWeightLimitPoint> {
+    val far = if (p.max - p.default >= p.default - p.min) p.max else p.min
+    return listOf(org.umamo.runtime.model.BlendWeightLimitPoint(p.default, 1f), org.umamo.runtime.model.BlendWeightLimitPoint(far, 0f)).sortedBy { it.value }
+}
+
+/** The limit's curve over its parameter's range: weight 1 at the top, 0 at the bottom. */
+@Composable
+private fun LimitCurve(limit: org.umamo.runtime.model.BlendWeightLimit, p: Parameter) {
+    val colors = LocalToolColors.current
+    val line = colors.accent; val grid = colors.divider
+    androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(48.dp).background(colors.inputBackground)) {
+        val span = (p.max - p.min).coerceAtLeast(1e-6f)
+        fun x(v: Float) = (v - p.min) / span * size.width
+        fun y(w: Float) = (1f - w) * (size.height - 4f) + 2f
+        drawLine(grid, androidx.compose.ui.geometry.Offset(x(p.default), 0f), androidx.compose.ui.geometry.Offset(x(p.default), size.height))
+        val steps = 64
+        var prev: androidx.compose.ui.geometry.Offset? = null
+        for (i in 0..steps) {
+            val v = p.min + span * i / steps
+            val w = io.github.psd2live.core.BlendLimits.cap(listOf(limit), mapOf(p.id.raw to v), emptyMap())
+            val pt = androidx.compose.ui.geometry.Offset(x(v), y(w))
+            prev?.let { drawLine(line, it, pt, strokeWidth = 2f) }
+            prev = pt
+        }
+        limit.points.forEach { drawCircle(line, 3f, androidx.compose.ui.geometry.Offset(x(it.value), y(it.weight))) }
+    }
+}
+

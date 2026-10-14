@@ -245,6 +245,9 @@ data class RigEditOverlay(
     val simEdits: List<io.github.psd2live.core.sim.RigSimEdit> = emptyList(),
     /** Layerloom patch: authored facial expressions (exp3); they do not touch the rig. */
     val expressions: List<ExpressionEdit> = emptyList(),
+    /** Layerloom patch: pose groups (pose3), lists of part ids of which one shows at a time, and their fade. */
+    val poseGroups: List<List<String>> = emptyList(),
+    val poseFadeIn: Float = PoseGroups.DEFAULT_FADE,
 ) {
 	init {
         require(expressions.map { it.id }.distinct().size == expressions.size) { "Duplicate expression IDs" }

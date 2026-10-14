@@ -3673,6 +3673,13 @@ class PSD2LiveViewModel : AutoCloseable {
 		setParameterValues(parameters.associate { it.id to (applied[it.id.raw] ?: it.default) })
 	}
 
+	/** Replaces the pose groups (one history step). */
+	fun putPoseGroups(groups: List<List<String>>, fadeIn: Float) {
+		val state = currentWorkspaceState() ?: return
+		saveDocumentEdits(state, "Edit pose groups", listOf(io.github.psd2live.application.WorkspaceDocumentOperation("pose_put",
+			io.github.psd2live.core.PoseGroups.request(groups, fadeIn)))) { failure -> if (failure != null) updateState { it.copy(statusText = failure) } }
+	}
+
 	private fun saveExpressionOperations(operations: List<Pair<String, kotlinx.serialization.json.JsonObject>>, completed: () -> Unit = {}) {
 		val state = currentWorkspaceState() ?: return
 		saveDocumentEdits(state, "Edit expression", operations.map { (mode, fields) ->

@@ -55,6 +55,7 @@ internal object RigIrCompiler {
 			advanced = advanced(rig, config, base, simulations).copy(
 				// Layerloom patch: the project's expressions, or the standard set when it has none.
 				expressions = Expressions.forExport(config.rigEdits.expressions, rig.puppet),
+				pose = PoseGroups.forExport(config.rigEdits.poseGroups, config.rigEdits.poseFadeIn, rig.puppet),
 				hitAreas = RuntimeExtras.hitAreas(rig.puppet, analysis, rig.layerIdByDrawableId),
 			),
 		)

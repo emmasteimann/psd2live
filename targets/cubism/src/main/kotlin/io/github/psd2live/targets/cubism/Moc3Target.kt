@@ -78,6 +78,10 @@ public object Moc3Target : ExportTarget {
 			}
 			for ((_, file, json) in motions) add(Moc3Sidecars.PassThroughSidecar(Moc3Sidecars.SidecarKind.Motion, file, json))
 			for ((_, file, json) in expressions) add(Moc3Sidecars.PassThroughSidecar(Moc3Sidecars.SidecarKind.Expression, file, json))
+			// Layerloom patch: pose groups as pose3.
+			ir.advanced.pose?.let { Cubism3Json.pose3(it, ir.parts.mapTo(HashSet()) { p -> p.id }) }?.let {
+				add(Moc3Sidecars.PassThroughSidecar(Moc3Sidecars.SidecarKind.Pose, "$baseName.pose3.json", it))
+			}
 			// Layerloom patch: the Inspector's per-mesh user data as userdata3.
 			val userData = ir.meshes.filter { it.userData.isNotEmpty() }.map { UserDataEntry("ArtMesh", it.id, it.userData) }
 			if (userData.isNotEmpty()) add(Moc3Sidecars.PassThroughSidecar(Moc3Sidecars.SidecarKind.UserData, "$baseName.userdata3.json",

@@ -151,3 +151,34 @@ object Expressions {
 	}
 
 }
+
+/**
+ * Layerloom patch (ONE-APP-PLAN S4.3): Cubism's pose groups, parts of which one shows at a time (arm A / arm B),
+ * exported as pose3.
+ */
+object PoseGroups {
+	const val DEFAULT_FADE = 0.5f
+
+	/** `pose_put`: `{"groups": [[part ids]], "fade_in": seconds}` replaces them; empty groups and repeats are dropped. */
+	fun put(request: JsonObject): Pair<List<List<String>>, Float> {
+		val seen = HashSet<String>()
+		val groups = (request["groups"] as? JsonArray).orEmpty().map { group ->
+			(group as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.takeIf { id -> id.isNotBlank() && seen.add(id) } }
+		}.filter { it.isNotEmpty() }
+		val fade = (request["fade_in"] as? JsonPrimitive)?.floatOrNull?.takeIf { it.isFinite() && it >= 0f } ?: DEFAULT_FADE
+		return groups to fade
+	}
+
+	fun request(groups: List<List<String>>, fadeIn: Float): JsonObject = buildJsonObject {
+		putJsonArray("groups") { groups.forEach { g -> add(JsonArray(g.map(::JsonPrimitive))) } }
+		put("fade_in", fadeIn)
+	}
+
+	/** What the model exports: groups over the parts it has, each with two or more; null when none. */
+	fun forExport(groups: List<List<String>>, fadeIn: Float, model: PuppetModel): io.github.psd2live.format.model.PoseIR? {
+		val present = model.parts.mapTo(HashSet()) { it.id.raw }
+		val kept = groups.map { g -> g.filter { it in present } }.filter { it.size >= 2 }
+		return if (kept.isEmpty()) null else io.github.psd2live.format.model.PoseIR(fadeIn, kept.map { g -> g.map { io.github.psd2live.format.model.PoseEntry(it) } })
+	}
+}
+

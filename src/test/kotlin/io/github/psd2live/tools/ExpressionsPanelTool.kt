@@ -28,8 +28,9 @@ class ExpressionsPanelTool {
 					vm.setStateForTest(vm.state.value.copy(previewModel = preview, rigEdits = RigEditOverlay.Empty))
 					renderPng(File(out, "$tag-empty.png"), 380, 300) { ExpressionsPanelView(vm, vm.state.value) }
 					val starters = Expressions.starters(preview.rig.puppet, emptyList())
-					vm.setStateForTest(vm.state.value.copy(rigEdits = RigEditOverlay(expressions = starters)))
-					renderPng(File(out, "$tag-starters.png"), 380, 760) { ExpressionsPanelView(vm, vm.state.value) }
+					val parts = preview.rig.puppet.parts.map { it.id.raw }
+					vm.setStateForTest(vm.state.value.copy(rigEdits = RigEditOverlay(expressions = starters, poseGroups = listOf(parts.drop(1).take(2), parts.take(1)))))
+					renderPng(File(out, "$tag-starters.png"), 380, 1100) { ExpressionsPanelView(vm, vm.state.value) }
 				}
 			}
 		}

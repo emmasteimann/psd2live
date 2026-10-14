@@ -206,4 +206,18 @@ public object Cubism3Json {
 			e.id to stem
 		}
 	}
+
+	/** Layerloom patch: the pose3 JSON of [pose], keeping parts in [availableParts] and groups of two or more; null when none remain. */
+	public fun pose3(pose: io.github.psd2live.format.model.PoseIR, availableParts: Set<String>): String? {
+		val groups = pose.groups.map { g -> g.filter { it.part in availableParts } }.filter { it.size >= 2 }
+		if (groups.isEmpty()) return null
+		fun q(text: String) = kotlinx.serialization.json.JsonPrimitive(text).toString()
+		return buildString {
+			append("{\n\t\"Type\": \"Live2D Pose\",\n\t\"FadeInTime\": ${pose.fadeIn},\n\t\"Groups\": [\n")
+			append(groups.joinToString(",\n") { g ->
+				"\t\t[\n" + g.joinToString(",\n") { e -> "\t\t\t{ \"Id\": ${q(e.part)}, \"Link\": [${e.links.filter { it in availableParts }.joinToString(", ") { q(it) }}] }" } + "\n\t\t]"
+			})
+			append("\n\t]\n}\n")
+		}
+	}
 }

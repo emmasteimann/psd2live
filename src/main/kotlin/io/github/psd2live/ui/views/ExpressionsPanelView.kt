@@ -53,6 +53,14 @@ import io.github.psd2live.ui.theme.LocalToolTypography
  */
 @Composable
 internal fun ExpressionsPanelView(viewModel: PSD2LiveViewModel, state: PSD2LiveState) {
+	Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+		ExpressionsSection(viewModel, state)
+		if (state.previewModel != null) PoseGroupsSection(viewModel, state)
+	}
+}
+
+@Composable
+private fun ExpressionsSection(viewModel: PSD2LiveViewModel, state: PSD2LiveState) {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
 	val expressions = state.rigEdits.expressions
@@ -66,7 +74,7 @@ internal fun ExpressionsPanelView(viewModel: PSD2LiveViewModel, state: PSD2LiveS
 	fun save(next: ExpressionEdit) { draft = next; viewModel.putExpression(next) }
 	LaunchedEffect(preview, draft) { if (preview) draft?.let { viewModel.previewExpression(it.entries) } }
 
-	Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+	Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
 		if (parameters.isEmpty()) {
 			Text(tr("expressions.noModel"), color = colors.textMuted, style = typography.caption)
 			return@Column
@@ -152,6 +160,58 @@ internal fun ExpressionsPanelView(viewModel: PSD2LiveViewModel, state: PSD2LiveS
 					Spacer(Modifier.width(4.dp))
 					Text(if (entry.blend == ExpressionBlend.MULTIPLY) "×%.2f".format(entry.value) else "%+.2f".format(entry.value),
 						color = colors.textPrimary, style = typography.monoSmall.copy(fontSize = 10.sp), modifier = Modifier.width(48.dp))
+				}
+			}
+		}
+	}
+}
+
+/**
+ * Layerloom patch (ONE-APP-PLAN S4.3): pose groups, Cubism's pose3. In each group one part shows at a time (arm A /
+ * arm B); a runtime fades between them. Each change is saved at once (one history step).
+ */
+@Composable
+private fun PoseGroupsSection(viewModel: PSD2LiveViewModel, state: PSD2LiveState) {
+	val colors = LocalToolColors.current
+	val typography = LocalToolTypography.current
+	val groups = state.rigEdits.poseGroups
+	val fade = state.rigEdits.poseFadeIn
+	val parts = state.previewModel?.rig?.puppet?.parts.orEmpty()
+	val names = parts.associate { it.id.raw to it.name }
+	val used = groups.flatten().toSet()
+	fun save(next: List<List<String>>, nextFade: Float = fade) = viewModel.putPoseGroups(next.filter { it.isNotEmpty() }, nextFade)
+	Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+		CompactSectionHeader(tr("pose.title"))
+		Text(tr("pose.help"), color = colors.textMuted, style = typography.caption.copy(fontSize = 11.sp, lineHeight = 15.sp))
+		Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+			val free = parts.filter { it.id.raw !in used }
+			CompactButton(tr("pose.newGroup"), { save(groups + listOf(free.take(2).map { it.id.raw })) }, enabled = free.size >= 2)
+			Spacer(Modifier.weight(1f))
+			Label(tr("expressions.fadeIn"))
+			CompactNumberSpinner(fade.toDouble(), { save(groups, it.toFloat()) }, Modifier.width(70.dp), 0.0, 10.0, 0.1, 2, "s")
+		}
+		groups.forEachIndexed { g, group ->
+			Column(Modifier.fillMaxWidth().background(colors.panelElevated, RoundedCornerShape(4.dp)).padding(4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+				Row(verticalAlignment = Alignment.CenterVertically) {
+					Text(tr("pose.group", g + 1), color = colors.textPrimary, style = typography.body.copy(fontSize = 12.sp), modifier = Modifier.weight(1f))
+					if (group.size < 2) Text(tr("pose.needsTwo"), color = colors.warning, style = typography.caption.copy(fontSize = 10.sp))
+					CompactIconButton({ save(groups.filterIndexed { i, _ -> i != g }) }, size = 20.dp, tooltip = tr("pose.deleteGroup")) { IconTrash(Modifier.size(11.dp)) }
+				}
+				group.forEachIndexed { k, part ->
+					Row(verticalAlignment = Alignment.CenterVertically) {
+						Text(names[part] ?: tr("expressions.missing", part), color = if (part in names) colors.textPrimary else colors.textMuted,
+							style = typography.caption.copy(fontSize = 11.sp), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(start = 6.dp))
+						CompactIconButton({ save(groups.mapIndexed { i, it -> if (i == g) it.filterIndexed { j, _ -> j != k } else it }) }, size = 18.dp, tooltip = tr("pose.removePart")) {
+							IconClose(tint = colors.textMuted, modifier = Modifier.size(8.dp))
+						}
+					}
+				}
+				val addable = parts.filter { it.id.raw !in used }
+				if (addable.isNotEmpty()) {
+					val none = ""
+					CompactDropdown(listOf(none) + addable.map { it.id.raw }, none, { id ->
+						if (id.isNotEmpty()) save(groups.mapIndexed { i, it -> if (i == g) it + id else it })
+					}, Modifier.fillMaxWidth(), height = 22.dp, itemLabel = { if (it.isEmpty()) tr("pose.addPart") else names[it] ?: it })
 				}
 			}
 		}

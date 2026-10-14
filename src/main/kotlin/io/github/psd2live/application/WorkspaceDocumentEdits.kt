@@ -26,7 +26,7 @@ internal object WorkspaceDocumentEdits {
         setOf("put", "delete", "seed_builtin", "set_key", "delete_key", "remove_curve", "pose", "move_keys", "delete_keys", "paste_keys", "replace_keys", "preset", "create", "duplicate", "rename", "properties").map { "motion_$it" } +
         setOf("warp", "rotation", "glue", "topology").map { "canvas_$it" } +
         setOf("put", "delete", "deform").map { "path_$it" } +
-        setOf("swing_put", "swing_delete") + setOf("expression_put", "expression_delete") + WorkspacePhysicsEdits.batchable + WorkspaceSimulationEdits.supported + WorkspaceCanvasWeightEdits.supported + WorkspaceCanvasDeformEdits.supported + WorkspaceTextureEdits.supported
+        setOf("swing_put", "swing_delete") + setOf("expression_put", "expression_delete", "pose_put") + WorkspacePhysicsEdits.batchable + WorkspaceSimulationEdits.supported + WorkspaceCanvasWeightEdits.supported + WorkspaceCanvasDeformEdits.supported + WorkspaceTextureEdits.supported
 
     fun apply(operation: WorkspaceDocumentOperation, document: WorkspaceDocument, model: RigPreviewModel,
               simulationWork: WorkspaceSimulationWork = WorkspaceSimulationWork.Direct,
@@ -105,6 +105,8 @@ internal object WorkspaceDocumentEdits {
                     JsonObject(request + ("mode" to JsonPrimitive(operation.operation.removePrefix("source_paint_")))), rasterWork)
                 operation.operation.startsWith("skeleton_") -> skeleton(document, model,
                     JsonObject(request + ("mode" to JsonPrimitive(operation.operation.removePrefix("skeleton_")))))
+                operation.operation == "pose_put" -> io.github.psd2live.core.PoseGroups.put(request).let { (groups, fade) ->
+                    document.copy(rigEdits = document.rigEdits.copy(poseGroups = groups, poseFadeIn = fade)) }
                 operation.operation.startsWith("expression_") -> document.copy(rigEdits = document.rigEdits.copy(expressions =
                     io.github.psd2live.core.Expressions.edit(document.rigEdits.expressions, operation.operation.removePrefix("expression_"), request)))
                 operation.operation == "motion_preset" -> WorkspaceSkeletonMotionEdits.preset(document, request)

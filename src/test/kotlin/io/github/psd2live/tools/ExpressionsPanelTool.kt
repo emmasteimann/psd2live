@@ -32,6 +32,12 @@ class ExpressionsPanelTool {
 					vm.setStateForTest(vm.state.value.copy(rigEdits = RigEditOverlay(expressions = starters, poseGroups = listOf(parts.drop(1).take(2), parts.take(1)))))
 					renderPng(File(out, "$tag-starters.png"), 380, 1100) { ExpressionsPanelView(vm, vm.state.value) }
 					renderPng(File(out, "$tag-parameters.png"), 380, 160) { io.github.psd2live.ui.views.ParametersListView(vm.state.value, vm) }
+					val head = preview.rig.puppet.parts.first()
+					val isolated = preview.copy(rig = preview.rig.copy(puppet = preview.rig.puppet.copy(parts = preview.rig.puppet.parts.map {
+						if (it.id == head.id) it.copy(groupMode = org.umamo.runtime.model.PartGroupMode.Isolated) else it })))
+					vm.setStateForTest(vm.state.value.copy(previewModel = isolated))
+					renderPng(File(out, "$tag-parts.png"), 380, 560) { io.github.psd2live.ui.views.PartsPanelView(vm, vm.state.value, head.id.raw) }
+					vm.setStateForTest(vm.state.value.copy(previewModel = preview))
 				}
 			}
 		}

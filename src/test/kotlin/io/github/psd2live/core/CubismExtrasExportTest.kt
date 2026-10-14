@@ -72,4 +72,27 @@ class CubismExtrasExportTest {
 		assertTrue(RigCommandDelta.isNoOp(edited, command), "the same edit again changes nothing")
 		assertTrue(!RigCommandDelta.isNoOp(puppet, command), "on the original it is a change")
 	}
+
+	/** The Parts tab's settings replay, and a model with an offscreen part still exports. */
+	@Test
+	fun offscreenPartReplaysAndExports() {
+		val dir = System.getenv("LAYERLOOM_PARITY_DIR") ?: return
+		val preview = PSD2LivePipeline().buildPreview(Path.of(dir, "quill.psd"))
+		val puppet = preview.rig.puppet
+		val part = puppet.parts.first { p -> p.children.any { it is org.umamo.runtime.model.OrgChild.Drawable } }
+		fun p(v: String) = kotlinx.serialization.json.JsonPrimitive(v)
+		val edit = kotlinx.serialization.json.JsonObject(mapOf("action" to p("static"), "kind" to p("part"), "id" to p(part.id.raw),
+			"group_mode" to p("isolated"), "composite_blend" to p("Screen"), "composite_opacity" to kotlinx.serialization.json.JsonPrimitive(0.5f)))
+		val edited = RigStructureEdits.apply(puppet, listOf(edit))
+		val after = edited.parts.first { it.id == part.id }
+		assertEquals(org.umamo.runtime.model.PartGroupMode.Isolated, after.groupMode)
+		assertEquals(org.umamo.runtime.model.BlendMode.Screen, after.composite.blendMode)
+		assertEquals(0.5f, after.composite.opacity)
+		val command = kotlinx.serialization.json.JsonObject(mapOf("op" to p("structure"), "edits" to kotlinx.serialization.json.JsonArray(listOf(edit))))
+		assertTrue(RigCommandDelta.isNoOp(edited, command))
+		assertTrue(!RigCommandDelta.isNoOp(puppet, command))
+		val ir = io.github.psd2live.targets.cubism.PuppetIr.toIr(edited).let { RigIrCompiler.compile(preview).copy(parts = it.parts) }
+		val files = Moc3Target.bundle(ir, ExportOptions("quill")).files
+		assertTrue(files.any { it.name == "quill.moc3" && it.bytes.size > 0 }, "the moc exports with an offscreen part")
+	}
 }

@@ -1081,6 +1081,7 @@ private fun DockModuleContent(
 		"animation" -> AnimationPanelView(vm, state)
 		"physics" -> PhysicsPanelView(vm, state)
 		"expressions" -> ExpressionsPanelView(vm, state)
+		"parts" -> PartsPanelView(vm, state)
 		"simulation" -> io.github.psd2live.ui.views.simulation.SimulationPanelView(vm, state)
 		"atlas" -> io.github.psd2live.ui.views.texture.AtlasPageView(state, vm)
 		"texture" -> io.github.psd2live.ui.views.texture.TextureInspectorPanel(state, vm)

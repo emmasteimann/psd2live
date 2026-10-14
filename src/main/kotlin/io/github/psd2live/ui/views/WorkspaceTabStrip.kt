@@ -491,6 +491,7 @@ internal fun moduleTitle(id: String): String = when {
 		"animation" -> "tab.animation"
 		"physics" -> "tab.physics"
 		"expressions" -> "tab.expressions"
+		"parts" -> "tab.parts"
 		"simulation" -> "tab.simulation"
 		"atlas" -> "dock.atlas"
 		"texture" -> "dock.texture"

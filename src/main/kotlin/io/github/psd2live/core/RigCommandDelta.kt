@@ -244,6 +244,7 @@ internal object RigCommandDelta {
     }
 
     private fun isStaticNoOp(model: PuppetModel, kind: String, id: String, edit: JsonObject): Boolean {
+        if (kind == "part") return PartStatics.isNoOp(model, id, edit)
         val drawable = if (kind == "mesh") model.findDrawable(id) ?: return false else null
         val deformer = if (kind == "warp" || kind == "rotation") model.deformers.firstOrNull { it.id.raw == id } ?: return false else null
         var any = false

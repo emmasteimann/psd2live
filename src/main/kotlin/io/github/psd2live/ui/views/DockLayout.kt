@@ -112,7 +112,7 @@ internal fun reconcileDockModules(
 
 /** Repair the exact root-level split produced by the old module-ID auto-placement bug. */
 internal fun repairLegacyCanvasDocking(saved: DockNode): DockNode {
-    val withMesh = ensureExpressionsDockTab(ensureSimulationDockTab(ensureAnimationEditorDockTab(ensureSkeletonDockTab(ensureMeshDockTab(saved)))))
+    val withMesh = ensurePartsDockTab(ensureExpressionsDockTab(ensureSimulationDockTab(ensureAnimationEditorDockTab(ensureSkeletonDockTab(ensureMeshDockTab(saved))))))
     val defaultShape = defaultDockLayout()
     fun sameDefaultShape(node: DockNode, expected: DockNode): Boolean =
         node.modules == expected.modules && node.horizontal == expected.horizontal && node.ratio == expected.ratio &&
@@ -190,6 +190,17 @@ internal fun ensureSimulationDockTab(root: DockNode): DockNode {
     }
 }
 
+/** Layerloom patch: insert the parts tab after layers if an older saved layout is missing it. */
+internal fun ensurePartsDockTab(root: DockNode): DockNode {
+    if (root.allModules().contains("parts")) return root
+    val host = root.containing("layers") ?: return root
+    return root.update(host.id) { node ->
+        val modules = node.modules.toMutableList()
+        modules.add((modules.indexOf("layers") + 1).coerceIn(0, modules.size), "parts")
+        node.copy(modules = modules)
+    }
+}
+
 /** Layerloom patch: insert the expressions tab after animation if an older saved layout is missing it. */
 internal fun ensureExpressionsDockTab(root: DockNode): DockNode {
     if (root.allModules().contains("expressions")) return root
@@ -209,7 +220,7 @@ internal fun defaultDockLayout(canvas: String = PRIMARY_CANVAS_ID): DockNode {
     return DockNode(ratio = .60f, first = workspace,
         second = DockNode(horizontal = false, ratio = .32f,
             first = DockNode(modules = listOf("settings")),
-            second = DockNode(modules = listOf("layers", "parameters", "tools", "mesh", "inspector", "animation", "expressions", "physics", "simulation"))))
+            second = DockNode(modules = listOf("layers", "parts", "parameters", "tools", "mesh", "inspector", "animation", "expressions", "physics", "simulation"))))
 }
 
 private fun leaf(vararg modules: String) = DockNode(modules = modules.toList())

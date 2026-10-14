@@ -79,7 +79,7 @@ internal object RigStructureEdits {
             "visibility" -> setOf("visible")
             "move" -> setOf("parent_id", "before_id", "before_kind", "space")
             "bind" -> setOf("parent_id", "space")
-            "static" -> setOf("opacity", "draw_order", "multiply_color", "screen_color", "blend_mode", "alpha_blend", "masked_by", "invert_mask", "culling", "selectable", "quad", "user_data")
+            "static" -> setOf("opacity", "draw_order", "multiply_color", "screen_color", "blend_mode", "alpha_blend", "masked_by", "invert_mask", "culling", "selectable", "quad", "user_data") + PartStatics.keys
             // A deformer's organizational part. Distinct from `move`, which walks the deformer parent
             // chain: this is only the Parts-panel membership, and meshes use `move` instead because they
             // are org children in a way a deformer is not.
@@ -175,6 +175,10 @@ internal object RigStructureEdits {
                 edit["quad"]?.jsonPrimitive?.booleanOrNull?.let { value ->
                     require(kind == "warp") { "Quad transform belongs to a warp" }
                     next = next.withDeformerQuadTransform(deformer!!.id, value)
+                }
+                if (edit.keys.any { it in PartStatics.keys }) {
+                    require(kind == "part") { "Group mode and offscreen settings belong to a part" }
+                    next = PartStatics.apply(next, part!!.id, edit)
                 }
                 next
             }

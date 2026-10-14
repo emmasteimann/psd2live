@@ -378,6 +378,13 @@ compose.desktop {
 			copyright = "© 2026 PSD2Live. Licensed under GPL-3.0."
 			vendor = "PSD2Live"
 
+			// Layerloom patch: a Mac app (packageMacApp below finishes it with the JetBrains Runtime the Prepare tab needs).
+			macOS {
+				bundleID = "com.goosible.psd2live"
+				iconFile.set(project.file("packaging/macos/psd2live.icns"))
+				dockName = "PSD2Live"
+			}
+
 			windows {
 				iconFile.set(project.file("src/main/resources/icons/psd2live.ico"))
 				menuGroup = "PSD2Live"
@@ -416,6 +423,32 @@ if (hostOs == "windows") afterEvaluate {
 		doFirst { dest.get().asFile.deleteRecursively() }
 	}
 	tasks.named("packageDistributionForCurrentOS") { dependsOn(packageExe) }
+}
+
+// Layerloom patch: the Mac app. createDistributable makes PSD2Live.app with a trimmed runtime; jlink leaves out the
+// Chromium framework and helper apps that JetBrains Runtime keeps beside its Home, which the Prepare tab's browser
+// needs. So the app's runtime is replaced by the whole JetBrains Runtime with JCEF (~/.psd2live/jbr), then the app is
+// signed ad hoc. Output: build/compose/binaries/main/app/PSD2Live.app.
+if (hostOs == "macos") afterEvaluate {
+	val distributions = compose.desktop.application.nativeDistributions
+	val createDistributable = tasks.named<org.jetbrains.compose.desktop.application.tasks.AbstractJPackageTask>("createDistributable")
+	tasks.register("packageMacApp") {
+		group = "compose desktop"
+		description = "Builds PSD2Live.app with the full JetBrains Runtime (JCEF) for the Prepare tab."
+		dependsOn(createDistributable)
+		doLast {
+			val app = createDistributable.get().destinationDir.dir("${distributions.packageName}.app").get().asFile
+			val home = File(compose.desktop.application.javaHome ?: error("No JetBrains Runtime with JCEF in ~/.psd2live/jbr"))
+			val jbr = home.parentFile.parentFile
+			check(File(jbr, "Contents/Frameworks/Chromium Embedded Framework.framework").isDirectory) { "$jbr has no JCEF framework" }
+			val runtime = File(app, "Contents/runtime")
+			runtime.deleteRecursively()
+			// ditto keeps the frameworks' symlinks and the helpers' signatures.
+			providers.exec { commandLine("ditto", jbr.absolutePath, runtime.absolutePath) }.result.get().assertNormalExitValue()
+			providers.exec { commandLine("codesign", "--force", "--sign", "-", app.absolutePath) }.result.get().assertNormalExitValue()
+			logger.lifecycle("PSD2Live.app: ${app.absolutePath}")
+		}
+	}
 }
 
 afterEvaluate {

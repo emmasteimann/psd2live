@@ -585,6 +585,7 @@ fun CanvasViewportComposable(
 	// the window composites the canvas's frame under its picture ([previewHole]): a frame then draws nothing here.
 	val previewTick = remember { androidx.compose.runtime.mutableIntStateOf(0) }
 	val previewHole = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+	val skiaPreviewFailed = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
 	DisposableEffect(renderKey, previewGpu) { onDispose { previewHole.set(false); previewGpu?.hideView(renderKey) } }
 	val runtimeSimulates = previewBackend == io.github.psd2live.core.PreviewBackend.P2LRT && previewAdvanced &&
 		canvasState.generatePhysics && !canvasState.meshOnly
@@ -1269,8 +1270,15 @@ fun CanvasViewportComposable(
 			} else if (canUseNativeSdk && snapshotGeometry == null && skiaPreview != null) {
 				previewHole.set(false)
 				drawIntoCanvas { target ->
-					io.github.psd2live.render.SkiaP2lrtPainter.draw(target.skiaCanvas, skiaPreview.frame,
-						skiaPreview.scale, skiaPreview.offsetX, skiaPreview.offsetY)
+					// A frame that fails to draw is skipped and reported once; it must not take the window down.
+					runCatching {
+						io.github.psd2live.render.SkiaP2lrtPainter.draw(target.skiaCanvas, skiaPreview.frame,
+							skiaPreview.scale, skiaPreview.offsetX, skiaPreview.offsetY)
+					}.onFailure { failure ->
+						if (skiaPreviewFailed.compareAndSet(false, true)) {
+							System.err.println("Skia preview frame failed: $failure"); failure.printStackTrace()
+						}
+					}
 				}
 			} else if (canUseNativeSdk && snapshotGeometry == null && previewDrawn != null) {
 				previewHole.set(false)

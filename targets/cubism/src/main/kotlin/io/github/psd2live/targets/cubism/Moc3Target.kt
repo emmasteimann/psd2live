@@ -11,6 +11,10 @@ import org.umamo.format.moc3.json.Model3Group
 import org.umamo.format.moc3.json.Model3Json
 import org.umamo.format.moc3.json.Model3Motion
 import org.umamo.format.moc3.json.Model3Expression
+import org.umamo.format.moc3.json.Model3HitArea
+import org.umamo.format.moc3.json.UserData3Json
+import org.umamo.format.moc3.json.UserDataEntry
+import org.umamo.format.moc3.json.UserDataMeta
 import org.umamo.interop.ExportNotice
 import org.umamo.interop.moc3.Moc3ExportOptions
 import org.umamo.interop.moc3.Moc3Sidecars
@@ -74,6 +78,10 @@ public object Moc3Target : ExportTarget {
 			}
 			for ((_, file, json) in motions) add(Moc3Sidecars.PassThroughSidecar(Moc3Sidecars.SidecarKind.Motion, file, json))
 			for ((_, file, json) in expressions) add(Moc3Sidecars.PassThroughSidecar(Moc3Sidecars.SidecarKind.Expression, file, json))
+			// Layerloom patch: the Inspector's per-mesh user data as userdata3.
+			val userData = ir.meshes.filter { it.userData.isNotEmpty() }.map { UserDataEntry("ArtMesh", it.id, it.userData) }
+			if (userData.isNotEmpty()) add(Moc3Sidecars.PassThroughSidecar(Moc3Sidecars.SidecarKind.UserData, "$baseName.userdata3.json",
+				Moc3.writeUserData3(UserData3Json(3, UserDataMeta(userData.size, userData.sumOf { it.value.encodeToByteArray().size }), userData))))
 		}
 		val manifest = Model3Json(
 			version = 3,
@@ -81,6 +89,10 @@ public object Moc3Target : ExportTarget {
 				motions = motions.takeIf { it.isNotEmpty() }?.groupBy({ it.first }, { Model3Motion(file = it.second) }),
 				expressions = expressions.takeIf { it.isNotEmpty() }?.map { (e, file, _) -> Model3Expression(name = e.name, file = file) }),
 			// Cubism knows these two groups; the other roles are for runtimes that drive them themselves.
+			// Layerloom patch: hit areas (Head, Body) as Cubism has them, each on one art mesh: the first the area lists.
+			hitAreas = ir.advanced.hitAreas.mapNotNull { h ->
+				h.meshes.firstOrNull { id -> ir.meshes.any { it.id == id } }?.let { Model3HitArea(name = h.name, id = it) }
+			}.takeIf { it.isNotEmpty() },
 			groups = ir.parameterRoles.filter { it.role == "EyeBlink" || it.role == "LipSync" }.mapNotNull { role ->
 				role.parameters.filter(parameterIds::contains).takeIf { it.isNotEmpty() }?.let { Model3Group("Parameter", role.role, it) }
 			},

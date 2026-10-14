@@ -351,6 +351,18 @@ fun CanvasViewportComposable(
 			RigCanvasSupport.evaluate(previewModel, snapshotPreview.previewValues(previewModel.rig.puppet.parameters))
 		else null
 	}
+	// Layerloom patch: onion skin - the motion open in the editor, a few frames before and after the playhead, while
+	// it isn't playing. Before is drawn stronger than after.
+	val onionEditor = viewModel.motionEditor
+	val onionClip = viewModel.editingMotionClip(canvasState).takeIf { onionEditor.onionSkin && !onionEditor.playing }
+	val onionGeometries = remember(previewModel, onionClip, onionEditor.playhead, canvasState.parameterValues) {
+		val clip = onionClip ?: return@remember emptyList()
+		val model = previewModel ?: return@remember emptyList()
+		val step = io.github.psd2live.ui.state.MotionEditorState.ONION_FRAMES / clip.fps
+		listOf(onionEditor.playhead - step to 0.32f, onionEditor.playhead + step to 0.18f)
+			.filter { (t, _) -> t >= 0f && t <= clip.duration }
+			.map { (t, alpha) -> RigCanvasSupport.evaluate(model, canvasState.parameterValues + io.github.psd2live.core.MotionClips.sampleAll(clip, t.toDouble(), loop = false)) to alpha }
+	}
 	val guideState = if (allowSelectionChrome) canvasState else canvasState.copy(
 		selectedLayerId = null,
 		selectedLayerIds = emptySet(),
@@ -395,7 +407,8 @@ fun CanvasViewportComposable(
 	val simulationGhost = remember { SimulationGhostMemo() }
 	// The paint session this view's GPU texture holds in full; another session, or a new view, uploads all of it.
 	val paintUploaded = remember(gpuKey) { arrayOfNulls<Any>(1) }
-	DisposableEffect(gpuKey) { onDispose { CanvasGpu.release(gpuKey); CanvasGpu.release(ghostKey); CanvasGpu.release(simulationKey) } }
+	val onionKeys = listOf("$gpuKey#onion0", "$gpuKey#onion1")
+	DisposableEffect(gpuKey) { onDispose { CanvasGpu.release(gpuKey); CanvasGpu.release(ghostKey); CanvasGpu.release(simulationKey); onionKeys.forEach(CanvasGpu::release) } }
 	val drawnGeometry = remember { DrawnGeometryMemo() }
 	// A session shown by the GPU hands it changed areas instead of painting preview tiles.
 	LaunchedEffect(paintSession, gpuReady) { paintSession?.gpuPreview = gpuReady }
@@ -1664,6 +1677,25 @@ fun CanvasViewportComposable(
 				} else if (editingPainter != null) drawIntoCanvas { target ->
 					org.jetbrains.skia.Paint().use { fade ->
 						fade.setAlphaf(SIMULATION_GHOST_ALPHA)
+						val canvas = target.skiaCanvas
+						val saved = canvas.saveLayer(org.jetbrains.skia.Rect.makeWH(w.toFloat(), h.toFloat()), fade)
+						try {
+							editingPainter.paint(canvas, model, ghost, viewport, visibleLayerIds = options.visibleLayerIds,
+								drawOrderOverrides = canvasState.drawOrderOverrides)
+						} finally { canvas.restoreToCount(saved) }
+					}
+				}
+			}
+			// Layerloom patch: onion skin ghosts, each one faded layer like the saved-pose ghost below.
+			if (snapshotGeometry == null) onionGeometries.forEachIndexed { index, (ghost, alpha) ->
+				val options = ArtworkOptions(visibleLayerIds = targetVisibleLayerIds, drawOrderOverrides = canvasState.drawOrderOverrides)
+				if (gpuReady) {
+					CanvasGpu.draw(awtWindow, onionKeys[index], listOf(model.rig.puppet, model.atlas, ghost, viewport, w, h, options)) {
+						CanvasScene(w, h, viewport, model, ghost, ArtworkDrawList.build(model, ghost, options))
+					}?.let { drawGpuFrame(it, alpha = alpha) }
+				} else if (editingPainter != null) drawIntoCanvas { target ->
+					org.jetbrains.skia.Paint().use { fade ->
+						fade.setAlphaf(alpha)
 						val canvas = target.skiaCanvas
 						val saved = canvas.saveLayer(org.jetbrains.skia.Rect.makeWH(w.toFloat(), h.toFloat()), fade)
 						try {

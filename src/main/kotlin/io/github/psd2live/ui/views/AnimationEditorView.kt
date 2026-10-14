@@ -310,6 +310,12 @@ private fun EditorToolbar(state: PSD2LiveState, viewModel: PSD2LiveViewModel, cl
 				height = 22.dp,
 			)
 			CompactToggleChip(
+				text = tr("animation.editor.onionSkin"),
+				selected = editor.onionSkin,
+				onToggle = { editor.onionSkin = !editor.onionSkin },
+				height = 22.dp,
+			)
+			CompactToggleChip(
 				text = tr("animation.editor.autoKey"),
 				selected = editor.autoKey,
 				onToggle = { viewModel.toggleMotionAutoKey() },

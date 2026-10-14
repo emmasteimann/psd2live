@@ -30,6 +30,8 @@ internal class MotionEditorState {
 	var view: MotionEditorView by mutableStateOf(MotionEditorView.DOPESHEET)
 	var snapToFrames: Boolean by mutableStateOf(true)
 	var autoKey: Boolean by mutableStateOf(false)
+	/** Layerloom patch: onion skin - faint ghosts of the motion [ONION_FRAMES] frames before and after the playhead. */
+	var onionSkin: Boolean by mutableStateOf(false)
 	/** Copied keys, times relative to the earliest. */
 	var clipboard: List<Pair<String, MotionKey>> = emptyList()
 
@@ -42,6 +44,8 @@ internal class MotionEditorState {
 	var dragRequest: kotlinx.serialization.json.JsonObject? = null
 
 	companion object {
+		/** How far, in frames, the onion skin's ghosts sit from the playhead. */
+		const val ONION_FRAMES = 4
 		private const val PRESET_PREFIX = "preset:"
 
 		/** The editor's id for a generated motion: its override once edited, its generated tracks until then. */

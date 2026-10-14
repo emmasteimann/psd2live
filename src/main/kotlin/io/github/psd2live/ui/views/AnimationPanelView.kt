@@ -547,8 +547,29 @@ private fun ClipSettings(viewModel: PSD2LiveViewModel, clip: MotionClip) {
 			viewModel.updateMotionClipProperties(clip.id) { it.copy(fadeOut = value) }
 		}
 	}
+	if (clip.builtin == null) MotionSoundRow(viewModel, clip)
 	if (clip.builtin == null) MotionEventsEditor(viewModel, clip)
 	if (clip.builtin == null && clip.markers.isNotEmpty()) MotionMarkersEditor(viewModel, clip)
+}
+
+/** Layerloom patch (S4.9): lip sync from an audio file into this motion's mouth, and the sound it plays with. */
+@Composable
+private fun MotionSoundRow(viewModel: PSD2LiveViewModel, clip: MotionClip) {
+	val colors = LocalToolColors.current
+	val typography = LocalToolTypography.current
+	Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+		io.github.psd2live.ui.components.CompactButton(tr("animation.lipSync"), {
+			io.github.psd2live.ui.utils.NativeFilePicker.chooseAudioFile()?.let { viewModel.lipSyncFromAudio(clip.id, it) }
+		}, height = 20.dp)
+		val sound = clip.sound
+		Text(sound?.let { java.io.File(it).name } ?: tr("animation.noSound"), style = typography.caption.copy(fontSize = 10.5.sp),
+			color = if (sound != null && !java.io.File(sound).isFile) colors.warning else colors.textMuted, maxLines = 1,
+			overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+		if (sound != null) io.github.psd2live.ui.components.CompactIconButton({ viewModel.removeMotionSound(clip.id) }, size = 20.dp,
+			tooltip = tr("animation.removeSound")) {
+			io.github.psd2live.ui.components.IconClose(tint = colors.textMuted, modifier = Modifier.size(9.dp))
+		}
+	}
 }
 
 /** Layerloom patch: a motion's timeline markers (editor-only bookmarks): rename, retime, remove, jump to. */

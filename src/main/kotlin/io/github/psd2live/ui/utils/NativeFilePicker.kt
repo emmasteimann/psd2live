@@ -126,6 +126,24 @@ object NativeFilePicker {
 	}
 
 	/** Opens the native OS file picker for a Cubism physics3.json to import. */
+	/** Layerloom patch: an audio file for lip sync (anything macOS reads: WAV, AIFF, MP3, M4A, …). */
+	fun chooseAudioFile(window: Window? = null): String? {
+		if (!isPicking.compareAndSet(false, true)) { focusOpenPicker(); return null }
+		try {
+			val extensions = setOf("wav", "aif", "aiff", "mp3", "m4a", "aac", "caf", "flac")
+			val dialog = createFileDialog(window, tr("dialog.chooseAudio"), FileDialog.LOAD).apply {
+				setFilenameFilter { _, name -> name.substringAfterLast('.', "").lowercase() in extensions }
+				openPicker = this
+				isVisible = true
+			}
+			val dir = dialog.directory; val selected = dialog.file
+			return if (!dir.isNullOrBlank() && !selected.isNullOrBlank()) File(dir, selected).toPath().toAbsolutePath().normalize().toString() else null
+		} catch (_: Throwable) { return null } finally {
+			openPicker = null
+			isPicking.set(false)
+		}
+	}
+
 	fun choosePhysicsFile(window: Window? = null): String? {
 		if (!isPicking.compareAndSet(false, true)) { focusOpenPicker(); return null }
 		try {

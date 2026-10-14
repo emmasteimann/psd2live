@@ -73,11 +73,13 @@ data class MotionClip(
 	val events: List<MotionEvent> = emptyList(),
 	/** Layerloom patch: timeline markers, editor-only bookmarks (not exported), in time order. */
 	val markers: List<MotionMarker> = emptyList(),
+	/** Layerloom patch: an audio file played with the motion (model3 `Sound`), as an absolute path. */
+	val sound: String? = null,
 ) {
 	/** Revisions hash this text: the data class's own for the upstream fields, events named only when there are any. */
 	override fun toString(): String = "MotionClip(id=$id, name=$name, builtin=$builtin, loop=$loop, duration=$duration, fps=$fps, " +
 		"fadeIn=$fadeIn, fadeOut=$fadeOut, enabled=$enabled, curves=$curves" + (if (events.isEmpty()) "" else ", events=$events") +
-		(if (markers.isEmpty()) "" else ", markers=$markers") + ")"
+		(if (markers.isEmpty()) "" else ", markers=$markers") + (if (sound == null) "" else ", sound=$sound") + ")"
 
 	init {
 		require(id.isNotBlank() && name.isNotBlank() && name.none(Char::isISOControl)) { "Motion needs an id and a name" }
@@ -287,6 +289,7 @@ object MotionClips {
 		put("fade_in", clip.fadeIn)
 		put("fade_out", clip.fadeOut)
 		put("enabled", clip.enabled)
+		clip.sound?.let { put("sound", it) }
 		if (clip.markers.isNotEmpty()) putJsonArray("markers") {
 			for (m in clip.markers) add(buildJsonObject { put("time", m.time); put("label", m.label) })
 		}
@@ -324,6 +327,7 @@ object MotionClips {
 			val time = e["time"]?.jsonPrimitive?.floatOrNull ?: return@mapNotNull null
 			if (!time.isFinite() || time < 0f) null else MotionEvent(time, e["value"]?.jsonPrimitive?.contentOrNull.orEmpty())
 		}.sortedBy { it.time },
+		sound = o["sound"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() },
 		markers = o["markers"]?.jsonArray.orEmpty().mapNotNull { element ->
 			val m = element.jsonObject
 			val time = m["time"]?.jsonPrimitive?.floatOrNull ?: return@mapNotNull null

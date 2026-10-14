@@ -4111,9 +4111,43 @@ class PSD2LiveViewModel : AutoCloseable {
 		if (playing && clip != null) {
 			val time = motionEditor.playhead.takeIf { it < clip.duration - 1e-4f } ?: 0f
 			configurePlayback("start", kotlinx.serialization.json.buildJsonObject { put("clip_id", motionEditor.clipId ?: clip.id); put("time", time) })
-		} else configurePlayback("pause")
+			// Layerloom patch: the motion's sound plays along from the same time.
+			MotionAudio.play(clip.sound, time)
+		} else { configurePlayback("pause"); MotionAudio.stop() }
 	}
-	fun stopMotionEditorPlayback() = configurePlayback("stop")
+	fun stopMotionEditorPlayback() { MotionAudio.stop(); configurePlayback("stop") }
+
+	/**
+	 * Layerloom patch (ONE-APP-PLAN S4.9): lip sync from [audioPath] baked into custom motion [clipId]'s mouth open and
+	 * form (one history step); the motion keeps the audio as its sound. Analysis runs off the UI thread.
+	 */
+	fun lipSyncFromAudio(clipId: String, audioPath: String) {
+		val puppet = _state.value.previewModel?.rig?.puppet ?: return
+		val open = puppet.parameters.firstOrNull { it.id == io.github.psd2live.core.StandardParameters.MOUTH_OPEN }
+			?: run { updateState { it.copy(statusText = tr("animation.lipSync.noMouth")) }; return }
+		val form = puppet.parameters.firstOrNull { it.id == io.github.psd2live.core.StandardParameters.MOUTH_FORM }
+		updateState { it.copy(statusText = tr("animation.lipSync.working")) }
+		scope.launch(Dispatchers.IO) {
+			val baked = runCatching {
+				val clip = motionClips.firstOrNull { it.id == clipId } ?: error("The motion is gone")
+				val result = io.github.psd2live.core.LipSync.analyze(io.github.psd2live.core.LipSync.read(java.nio.file.Path.of(audioPath)), clip.fps)
+				io.github.psd2live.core.LipSync.bake(clip, result, open, form, audioPath)
+			}
+			kotlinx.coroutines.withContext(Dispatchers.Main) {
+				baked.onSuccess { clip ->
+					saveMotionOperation("put", kotlinx.serialization.json.buildJsonObject { put("clip", MotionClips.toJson(clip)) }) {
+						updateState { it.copy(statusText = tr("animation.lipSync.done", clip.name)) }
+					}
+				}.onFailure { e -> updateState { it.copy(statusText = tr("animation.lipSync.failed", e.message ?: "")) } }
+			}
+		}
+	}
+
+	/** Layerloom patch: forgets a motion's sound (its baked mouth keys stay). */
+	fun removeMotionSound(clipId: String) {
+		val clip = motionClips.firstOrNull { it.id == clipId }?.takeIf { it.sound != null } ?: return
+		saveMotionOperation("put", kotlinx.serialization.json.buildJsonObject { put("clip", MotionClips.toJson(clip.copy(sound = null))) })
+	}
 	// endregion
 
 	/** Commit an edited armature as one undoable project change and rebuild its derived rig. */

@@ -85,6 +85,8 @@ public data class Clip(
 	val events: List<ClipEvent> = emptyList(),
 	/** Curves on what is not a parameter: part and rig opacity, and the blink and lip sync effects. */
 	val targetCurves: List<TargetCurve> = emptyList(),
+	/** Layerloom patch: an audio file (absolute path) a runtime plays with the clip; Cubism's model3 motion `Sound`. */
+	val sound: String? = null,
 )
 
 public data class ClipEvent(val time: Float, val value: String)

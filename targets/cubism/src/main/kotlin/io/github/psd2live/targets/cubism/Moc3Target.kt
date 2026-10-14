@@ -67,6 +67,11 @@ public object Moc3Target : ExportTarget {
 		}
 		val texts = sidecarTexts(SidecarKey(ir.physics, ir.clips, parameterIds, baseName))
 		val motions = texts.motions
+		// Layerloom patch: each motion's sound, copied beside the model as sounds/<motion file>.<ext> (model3 `Sound`).
+		val sounds = ir.clips.mapNotNull { clip ->
+			val path = clip.sound?.let { java.io.File(it) }?.takeIf { it.isFile } ?: return@mapNotNull null
+			"$baseName.${clip.file}.motion3.json" to ("sounds/$baseName.${clip.file}.${path.extension.lowercase().ifEmpty { "wav" }}" to path)
+		}.toMap()
 		// Layerloom patch: one exp3 per expression, listed in model3's Expressions.
 		val stems = Cubism3Json.expressionStems(ir.advanced.expressions)
 		val expressions = ir.advanced.expressions.mapNotNull { e ->
@@ -90,7 +95,7 @@ public object Moc3Target : ExportTarget {
 		val manifest = Model3Json(
 			version = 3,
 			fileReferences = FileReferences(moc = "", textures = emptyList(),
-				motions = motions.takeIf { it.isNotEmpty() }?.groupBy({ it.first }, { Model3Motion(file = it.second) }),
+				motions = motions.takeIf { it.isNotEmpty() }?.groupBy({ it.first }, { Model3Motion(file = it.second, sound = sounds[it.second]?.first) }),
 				expressions = expressions.takeIf { it.isNotEmpty() }?.map { (e, file, _) -> Model3Expression(name = e.name, file = file) }),
 			// Cubism knows these two groups; the other roles are for runtimes that drive them themselves.
 			// Layerloom patch: hit areas (Head, Body) as Cubism has them, each on one art mesh: the first the area lists.
@@ -101,8 +106,11 @@ public object Moc3Target : ExportTarget {
 				role.parameters.filter(parameterIds::contains).takeIf { it.isNotEmpty() }?.let { Model3Group("Parameter", role.role, it) }
 			},
 		)
-		return Moc3Sidecars.bundle(exportPuppet, baseName, pages = pages, sidecars = sidecars, source = manifest,
+		val bundle = Moc3Sidecars.bundle(exportPuppet, baseName, pages = pages, sidecars = sidecars, source = manifest,
 			canvasToParentSpace = canvasToParentSpaceFor(exportPuppet), options = moc3Options)
+		if (sounds.isEmpty()) return bundle
+		return Moc3Sidecars.Bundle(bundle.files + sounds.values.map { (name, file) -> Moc3Sidecars.BundleFile(name, file.readBytes()) },
+			bundle.mocFileName, bundle.report)
 	}
 
 	/** What the physics3 and motion3 texts of a bundle depend on. */

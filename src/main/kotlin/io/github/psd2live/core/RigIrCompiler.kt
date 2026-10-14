@@ -125,6 +125,7 @@ internal object RigIrCompiler {
 				io.github.psd2live.format.model.TargetCurve(io.github.psd2live.format.model.CurveTarget.PartOpacity(PartTracks.partOf(curve.parameterId)),
 					c.startTime, c.startValue, c.segments)
 			},
+			sound = clip.sound,
 			// Layerloom patch: the motion's user-data events within its length.
 			events = clip.events.filter { it.time <= clip.duration }.map { io.github.psd2live.format.model.ClipEvent(it.time, it.value) })
 		fun builtin(group: String, name: String, exclude: Set<String> = emptySet()) {

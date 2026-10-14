@@ -400,6 +400,12 @@ fun CanvasViewportComposable(
 	val gpuPrimary by SkiaGpu.primaryFlow.collectAsState()
 	val gpuAvailable = remember(gpuPrimary, awtWindow) { CanvasGpu.available(awtWindow) }
 	val gpuReady = !softwareCanvas && !sourcePixels && gpuAvailable
+	// A window drawn on the GPU without OpenGL (a Mac's Metal): the artwork and the guides go through Skia on its
+	// canvas, which runs on that GPU, instead of the Java2D pass. Only the software canvas setting keeps Java2D.
+	val skiaGuides = !softwareCanvas && !gpuReady && SkiaGpu.drawsOnGpu(awtWindow)
+	val vectorGuides = gpuReady || skiaGuides
+	val overlayPainter = remember { io.github.psd2live.render.SkiaOverlayPainter() }
+	DisposableEffect(overlayPainter) { onDispose { overlayPainter.close() } }
 	// One GPU view per canvas whatever its mode: a switch keeps its meshes and page textures on the GPU.
 	val gpuKey = viewModel.canvasRenderKey(canvasId, CanvasMode.EDIT)
 	val ghostKey = "$gpuKey#snapshot"
@@ -1313,11 +1319,11 @@ fun CanvasViewportComposable(
 						hoveredLayerId != null && model.rig.layerIdByDrawableId[path.drawableId.raw] == hoveredLayerId
 					}.mapTo(HashSet()) { it.id }
 					val pathIds = selectedPathIds + hoveredPathIds
-					val gpuWarpGuides = gpuReady
-					val gpuRotationGuides = gpuReady
-					val gpuBoxGuides = gpuReady
+					val gpuWarpGuides = vectorGuides
+					val gpuRotationGuides = vectorGuides
+					val gpuBoxGuides = vectorGuides
 					fun gpuRigGuides(): List<OverlayItem> {
-						if (!gpuReady) return emptyList()
+						if (!vectorGuides) return emptyList()
 						val guides = RigGuides(viewport)
 						val guidePose = if (mode == CanvasMode.PREVIEW) informationPose else canvasState.parameterValues
 						if (gpuRotationGuides && globalRotationIds.isNotEmpty()) {
@@ -1433,7 +1439,7 @@ fun CanvasViewportComposable(
 							effectiveVisible, canvasState.drawOrderOverrides, dimUnselected,
 							highlightedLayerIds, hoverTintLayerIds, hoverTintColor, sourceImages,
 						)
-						artworkCache.draw(target.skiaCanvas, key, w, h, panShift(key)) { recording ->
+						artworkCache.draw(target.skiaCanvas, key, w, h, panShift(key), rasterize = !skiaGuides) { recording ->
 							editingPainter.paint(
 								recording, model, geometry, viewport, 1.0f,
 								visibleLayerIds = effectiveVisible,
@@ -1449,7 +1455,7 @@ fun CanvasViewportComposable(
 					}
 
 				// The Java2D guide pass is the software path's: with the GPU every guide is in its frame.
-				val guideImage = if (gpuReady) null else guideCache.imageFor(guideKey, w, h, panShift(guideKey)) { g ->
+				val guideImage = if (vectorGuides) null else guideCache.imageFor(guideKey, w, h, panShift(guideKey)) { g ->
 					g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
 					// Whether any section drew: an empty pass is neither converted nor composited.
 					var painted = false
@@ -1575,7 +1581,11 @@ fun CanvasViewportComposable(
 					painted
 				}
 				if (guideImage != null) drawImage(guideImage, topLeft = guideCache.offset)
-				if (gpuReady && (informationNames || informationIndices)) {
+				if (skiaGuides) drawIntoCanvas { target ->
+					overlayPainter.paint(target.skiaCanvas,
+						OverlayScene(MeshWireframe.overlay(geometry, wireItems, showTexture).items + gpuRigGuides()), viewport)
+				}
+				if (vectorGuides && (informationNames || informationIndices)) {
 					// guideKey misses the simulated geometry the paths follow, so the label key adds it.
 					val guidePose = if (mode == CanvasMode.PREVIEW) informationPose else canvasState.parameterValues
 					val labels = guideLabels.labels(guideKey + listOf(geometry, pathIds)) {

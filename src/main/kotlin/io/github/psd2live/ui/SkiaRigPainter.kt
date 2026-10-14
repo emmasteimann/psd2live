@@ -202,7 +202,10 @@ internal class CachedSkiaPicture : AutoCloseable {
     private var shift: PanShift? = null
 
     fun draw(
-        canvas: Canvas, key: List<Any?>, width: Int, height: Int, pan: PanShift? = null, record: (Canvas) -> Unit,
+        canvas: Canvas, key: List<Any?>, width: Int, height: Int, pan: PanShift? = null,
+        /** False on a GPU canvas, where replaying the recording is cheap and a CPU raster of it is the slow part. */
+        rasterize: Boolean = true,
+        record: (Canvas) -> Unit,
     ) {
         val cached = shift
         if (pan != null && pan.panning && cached != null && (picture != null || raster != null) && cached.stableKey == pan.stableKey &&
@@ -225,7 +228,7 @@ internal class CachedSkiaPicture : AutoCloseable {
             picture = next
             this.key = key
             shift = pan
-        } else if (raster == null && width > 0 && height > 0) {
+        } else if (rasterize && raster == null && width > 0 && height > 0) {
             raster = Surface.makeRasterN32Premul(width, height).use { surface ->
                 picture?.let { surface.canvas.drawPicture(it) }
                 surface.makeImageSnapshot()

@@ -568,6 +568,7 @@ private fun SettingsCanvasSection() {
 			text = if (softwareCanvas) tr("dialog.settings.canvas.rendererSoftware") else when (val status = gpuStatus) {
 				is io.github.psd2live.render.SkiaGpu.Status.Ready -> tr("dialog.settings.canvas.rendererGpu", status.description)
 				is io.github.psd2live.render.SkiaGpu.Status.Unavailable -> tr("dialog.settings.canvas.rendererUnavailable", status.reason)
+				is io.github.psd2live.render.SkiaGpu.Status.SkiaOnly -> tr("dialog.settings.canvas.rendererSkia", status.api)
 				io.github.psd2live.render.SkiaGpu.Status.Starting -> tr("dialog.settings.canvas.rendererStarting")
 			},
 			style = typography.caption.copy(fontSize = 10.5.sp),

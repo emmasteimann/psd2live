@@ -31,6 +31,8 @@ object SkiaGpu {
 		data object Starting : Status
 		data class Ready(val description: String) : Status
 		data class Unavailable(val reason: String) : Status
+		/** No OpenGL, but the window draws on the GPU ([api], a Mac's Metal): canvases draw through Skia there. */
+		data class SkiaOnly(val api: String) : Status
 	}
 
 	private val _status = MutableStateFlow<Status>(Status.Starting)
@@ -80,7 +82,8 @@ object SkiaGpu {
 				return
 			}
 			if (remaining == 0) {
-				_status.value = Status.Unavailable(failure(window))
+				_status.value = if (drawsOnGpu(window)) Status.SkiaOnly(failure(window).substringAfterLast(' ').removeSuffix("Redrawer"))
+					else Status.Unavailable(failure(window))
 				return
 			}
 			javax.swing.Timer(50) { attempt(remaining - 1) }.apply { isRepeats = false }.start()
@@ -97,6 +100,25 @@ object SkiaGpu {
 			if (made != null) windows[window] = made
 			return made
 		}
+	}
+
+	private val gpuWindows = WeakHashMap<Window, Boolean>()
+
+	/**
+	 * Whether [window] draws with a GPU backend of any kind (Metal, Direct3D, OpenGL), so Skia drawing on its
+	 * canvas runs on the GPU. A window without an OpenGL [WindowGpu] (a Mac's Metal) still draws its canvases with
+	 * Skia there instead of in software.
+	 */
+	fun drawsOnGpu(window: Window?): Boolean {
+		window ?: return false
+		synchronized(gpuWindows) { if (gpuWindows[window] == true) return true }
+		val gpu = runCatching {
+			val layer = findLayer(window) ?: return false
+			val redrawer = redrawerGetter?.invoke(layer) ?: return false
+			!redrawer.javaClass.simpleName.contains("Software")
+		}.getOrDefault(false)
+		if (gpu) synchronized(gpuWindows) { gpuWindows[window] = true }
+		return gpu
 	}
 
 	private fun failure(window: Window): String = runCatching {

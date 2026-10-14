@@ -222,6 +222,8 @@ fun FrameWindowScope.PSD2LiveApp(
 				viewModel.addLog(tr("log.renderer.canvasGpu", status.description), tag = "Render")
 			is io.github.psd2live.render.SkiaGpu.Status.Unavailable ->
 				viewModel.addLog(tr("log.renderer.canvasSoftware", status.reason), level = LogLevel.WARNING, tag = "Render")
+			is io.github.psd2live.render.SkiaGpu.Status.SkiaOnly ->
+				viewModel.addLog(tr("log.renderer.canvasSkia", status.api), tag = "Render")
 			io.github.psd2live.render.SkiaGpu.Status.Starting -> Unit
 		}
 	}

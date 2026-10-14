@@ -198,6 +198,24 @@ private class StudioPanel : javax.swing.JPanel() {
 		if (resized) browser?.wasResized(width, height)
 	}
 
+	private var wheelRest = 0.0
+
+	/**
+	 * Scrolls the page as far as Chrome would. JCEF passes only the whole-number rotation on, as that many pixels
+	 * (and the other way round), so a trackpad's small steps vanish and a wheel notch is 1 px against Chrome's 40.
+	 * Measured 2026-10-14: rotation r arrives as deltaY -r. On macOS, Java's precise rotation is a trackpad's
+	 * scrolling delta x 0.1, or a wheel's line count (whole numbers), and Chrome scrolls those as 1 px and 40 px.
+	 */
+	private fun wheel(browser: org.cef.browser.CefBrowser, e: java.awt.event.MouseWheelEvent) {
+		val precise = e.preciseWheelRotation
+		val pixels = precise * (if (precise != 0.0 && precise == Math.rint(precise)) 40.0 else 10.0) + wheelRest
+		val whole = pixels.toInt()
+		wheelRest = pixels - whole
+		if (whole == 0) return
+		browser.sendMouseWheelEvent(java.awt.event.MouseWheelEvent(this, e.id, e.`when`, e.modifiersEx, e.x, e.y,
+			e.xOnScreen, e.yOnScreen, 0, false, java.awt.event.MouseWheelEvent.WHEEL_UNIT_SCROLL, 1, -whole, -whole.toDouble()))
+	}
+
 	fun attach(browser: org.cef.browser.CefBrowser) {
 		this.browser = browser
 		isFocusable = true
@@ -209,7 +227,7 @@ private class StudioPanel : javax.swing.JPanel() {
 			override fun mouseDragged(e: java.awt.event.MouseEvent) = browser.sendMouseEvent(e)
 			override fun mouseEntered(e: java.awt.event.MouseEvent) = browser.sendMouseEvent(e)
 			override fun mouseExited(e: java.awt.event.MouseEvent) = browser.sendMouseEvent(e)
-			override fun mouseWheelMoved(e: java.awt.event.MouseWheelEvent) = browser.sendMouseWheelEvent(e)
+			override fun mouseWheelMoved(e: java.awt.event.MouseWheelEvent) = wheel(browser, e)
 		}
 		addMouseListener(mouse); addMouseMotionListener(mouse); addMouseWheelListener(mouse)
 		addKeyListener(object : java.awt.event.KeyListener {

@@ -45,6 +45,85 @@ internal class WorkspaceSourceImporter(
             }, project = project, sourceAuxiliary = sourceAuxiliary, rigEdits = RigEditOverlay(expressions = job?.expressions.orEmpty()))
     }
 
+    /**
+     * Layerloom patch (ONE-APP-PLAN S3b): the open project's artwork replaced by the PSD at [path], keeping its edits in
+     * the same project as one history step. Layers are matched by id (a Layerloom PSD's ids follow its parts through
+     * renames and reorders); per-layer settings for layers that are gone are dropped, and new layers get the generated
+     * rig. A rig job beside [jobFrom] re-applies its build options (glue, anchors, turn depth, toggles); its one-time
+     * setup (skeleton, swings) runs only if the project has none yet.
+     */
+    suspend fun updateArt(path: Path, state: String, author: MutationAuthor, jobFrom: Path = path,
+                          sourceAuxiliary: JsonObject = JsonObject(emptyMap()),
+                          project: (WorkspaceDocument, RigPreviewModel, String) -> Unit = { _, _, _ -> }): WorkspaceCommit<RigPreviewModel> {
+        val before = runtime.state.value
+        val current = requireNotNull(before.capture) { "Update art needs an open project" }
+        WorkspaceExecution(current.projectId, state, author).check(before.capture?.projectId, before.state)
+        require(path.isAbsolute && Files.isRegularFile(path) && path.fileName.toString().endsWith(".psd", true)) { "Provide an absolute local PSD path" }
+        suspend fun progress(value: Float, message: String) {
+            currentCoroutineContext().ensureActive()
+            currentCoroutineContext()[WorkspaceJobContext]?.progress(value, message)
+        }
+        progress(0.1f, "Reading the new artwork")
+        val source = readPsd(path)
+        val job = runCatching { LayerloomJob.besidePsd(jobFrom)?.let(LayerloomJob::read) }.getOrNull()?.takeUnless { it.isEmpty }
+        val (document, config) = artUpdated(current.document, source, job)
+        progress(0.4f, "Rebuilding the rig with your edits")
+        // Built against the current model: the generated rig changed under the journal, so the builder merges the
+        // user's rig onto the new generation and checkpoints it (RigRegenerationCheckpoint) rather than replaying
+        // old entries - some of which address meshes the new art no longer has - on it.
+        val builder = WorkspacePreviewBuilder()
+        var built = builder.build(document, current.model)
+        var rigEdits = withGoneLayersDeleted(built, source, built.config.rigEdits)
+        if (rigEdits !== built.config.rigEdits) { built = builder.build(document.copy(rigEdits = rigEdits), built); rigEdits = built.config.rigEdits }
+        if ((config.autoSkeleton != null && rigEdits.skeleton == null) || (config.layerSwings.isNotEmpty() && rigEdits.swingEdits.isEmpty())) {
+            built = LayerloomJob.setUp(built, config.copy(rigEdits = rigEdits)) { next -> build(document.copy(rigEdits = next.rigEdits)) }
+            rigEdits = built.config.rigEdits
+        }
+        val arrangement = AtlasLayout.frozen(built.atlas)
+        val preview = built.copy(config = built.config.copy(atlasArrangement = arrangement), atlas = built.atlas.copy(arranged = true))
+        val prepared = document.copy(rigEdits = rigEdits,
+            settings = AtlasArrangementCodec.with(WorkspaceSettingsCodec.encode(WorkspaceSettingsPolicy.restoreRaw(preview.config, config)), arrangement))
+        progress(0.9f, "Committing the new artwork")
+        val summary = "Updated art from ${path.fileName}"
+        val result = runtime.commitPrepared(current.projectId, state, summary, author, prepared, preview,
+            auxiliary = JsonObject(current.auxiliary + sourceAuxiliary)) { _, next, model -> project(next, model, current.projectId) }
+        currentCoroutineContext()[WorkspaceJobCompletion]?.committed(WorkspaceOperationOutput(result.mutation(summary).sourceResult()))
+        return result
+    }
+
+    companion object {
+        /**
+         * Layerloom patch (S3b): [rigEdits] with a `layer_delete` record for each layer of [source]'s predecessor that
+         * [model] still draws although [source] no longer has it. The regeneration merge keeps a mesh the user had
+         * edited even when its layer is gone (RETIRED_KEPT); a layer deleted in Layerloom takes its meshes with it.
+         */
+        internal fun withGoneLayersDeleted(model: RigPreviewModel, source: SourceArt, rigEdits: RigEditOverlay): RigEditOverlay {
+            val ids = source.layers.mapTo(HashSet()) { it.id.raw }
+            val gone = model.rig.layerIdByDrawableId.entries.filter { it.value.substringBefore("::") !in ids }
+                .groupBy({ it.value.substringBefore("::") }, { it.key })
+            if (gone.isEmpty()) return rigEdits
+            return rigEdits.copy(authoringJournal = rigEdits.authoringJournal + gone.toSortedMap().map { (layer, meshes) -> LayerDeletionJournal.encode(layer, meshes) })
+        }
+
+        /**
+         * Layerloom patch (S3b): [old] with its artwork replaced by [source], keeping its edits: per-layer settings follow
+         * layers by id and are dropped for layers that are gone; [job]'s build options are re-applied. The document and
+         * the raw settings it was given.
+         */
+        internal fun artUpdated(old: WorkspaceDocument, source: SourceArt, job: LayerloomJob?): Pair<WorkspaceDocument, PipelineConfig> {
+            val ids = source.layers.mapTo(HashSet()) { it.id.raw }
+            val keep = { id: String -> id in ids }
+            val raw = old.rawConfig()
+            val config = job?.configure(raw)?.copy(rigEdits = raw.rigEdits) ?: raw
+            val toggles = job?.let { LayerloomJob.toggleOverrides(source, it.toggles) }.orEmpty()
+            return old.copy(source = source,
+                layerVisibility = old.layerVisibility.filterKeys(keep), deletedLayerIds = old.deletedLayerIds.filterTo(HashSet(), keep),
+                layerOverrides = old.layerOverrides.filterKeys(keep) + toggles, parentOverrides = old.parentOverrides.filterKeys(keep),
+                meshOverrides = old.meshOverrides.filterKeys(keep), textureOverrides = old.textureOverrides.filterKeys(keep),
+                generationSource = null, meshSource = null, settings = WorkspaceSettingsCodec.encode(config)) to config
+        }
+    }
+
     suspend fun createArtwork(arguments: JsonObject, projectId: String?, state: String, discardUnsaved: Boolean = false,
                               initialConfig: PipelineConfig = PipelineConfig(),
                               project: (WorkspaceDocument, RigPreviewModel, String) -> Unit = { _, _, _ -> }): WorkspaceCommit<RigPreviewModel> =

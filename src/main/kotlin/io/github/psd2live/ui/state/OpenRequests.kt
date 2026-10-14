@@ -23,25 +23,32 @@ internal object OpenRequests {
 		val dir = directory()
 		Thread({
 			while (true) {
-				runCatching { next(dir)?.let { psd -> javax.swing.SwingUtilities.invokeLater { open(viewModel, psd) } } }
+				runCatching { next(dir)?.let { (psd, update) -> javax.swing.SwingUtilities.invokeLater { open(viewModel, psd, update) } } }
 					.onFailure { System.err.println("Open request: ${it.message}") }
 				Thread.sleep(1000)
 			}
 		}, "psd2live-open-requests").apply { isDaemon = true }.start()
 	}
 
-	/** The oldest waiting request's PSD (the request file is removed), or null. */
-	private fun next(dir: Path): Path? {
+	/**
+	 * The oldest waiting request (the request file is removed): its PSD and whether it updates the open project's art
+	 * (`"mode": "update"`, Layerloom patch S3b) rather than opening as a new project; null when there is none.
+	 */
+	private fun next(dir: Path): Pair<Path, Boolean>? {
 		if (!Files.isDirectory(dir)) return null
 		val file = dir.listDirectoryEntries().filter { it.extension == "json" }.minByOrNull { Files.getLastModifiedTime(it) } ?: return null
-		val psd = runCatching { (Json.parseToJsonElement(Files.readString(file)) as JsonObject)["psd"]?.jsonPrimitive?.contentOrNull }.getOrNull()
+		val request = runCatching { Json.parseToJsonElement(Files.readString(file)) as JsonObject }.getOrNull()
 		Files.deleteIfExists(file)
-		return psd?.let(Path::of)?.takeIf { it.isAbsolute && Files.isRegularFile(it) && it.toString().endsWith(".psd", true) }
+		val psd = request?.get("psd")?.jsonPrimitive?.contentOrNull?.let(Path::of)
+			?.takeIf { it.isAbsolute && Files.isRegularFile(it) && it.toString().endsWith(".psd", true) } ?: return null
+		return psd to (request["mode"]?.jsonPrimitive?.contentOrNull == "update")
 	}
 
-	private fun open(viewModel: PSD2LiveViewModel, psd: Path) {
-		viewModel.setInputPath(psd.toString())
-		viewModel.analyze()
+	private fun open(viewModel: PSD2LiveViewModel, psd: Path, update: Boolean) {
+		if (update) viewModel.updateArt(psd) else {
+			viewModel.setInputPath(psd.toString())
+			viewModel.analyze()
+		}
 		// From the Prepare workspace (Layerloom inside the app), go where the rig is.
 		val state = viewModel.state.value
 		if (state.activeWorkspace.preset == WorkspacePreset.PREPARE) {

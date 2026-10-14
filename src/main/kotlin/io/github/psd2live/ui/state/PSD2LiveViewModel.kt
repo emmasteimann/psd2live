@@ -2219,6 +2219,12 @@ class PSD2LiveViewModel : AutoCloseable {
         }
     }
 
+    /** Layerloom patch (S3b): projects an art update into the open project (same project, edits kept). */
+    internal fun applyArtUpdate(expected: PSD2LiveState, document: io.github.psd2live.project.WorkspaceDocument,
+                                preview: RigPreviewModel, path: Path, projectId: String) =
+        applyImportedSource(expected, document, preview, path, path.fileName.toString(), projectId, true,
+            tr("status.artUpdated", path.fileName.toString()))
+
     internal fun applyCmo3Import(expected: PSD2LiveState, document: io.github.psd2live.project.WorkspaceDocument,
                                preview: RigPreviewModel, path: Path, projectId: String, replacing: Boolean) =
         applyImportedSource(expected, document, preview, path, path.fileName.toString(), projectId, replacing,
@@ -6487,6 +6493,16 @@ class PSD2LiveViewModel : AutoCloseable {
             if (AppSettings.autoDetectMeshSplitsOnImport) requestStartScreen(fresh = true)
             else applyStartScreenDefaults()
         }) { it.importPsd(input.toAbsolutePath().normalize().toString(), discardUnsaved) }
+    }
+
+    /**
+     * Layerloom patch (S3b): replaces the open project's art with [path], keeping its edits (one undoable step); with no
+     * project open it imports the PSD as a new one.
+     */
+    fun updateArt(path: Path) {
+        if (_state.value.isBusy || _state.value.projectSaving) return
+        if (_state.value.previewModel == null) { setInputPath(path.toString()); analyze(); return }
+        startWorkspaceImport(false, tr("status.updatingArt")) { it.updatePsdArt(path.toAbsolutePath().normalize().toString()) }
     }
 
     /** Both adapters invoke the same application source capability; only this entry owns GUI confirmation. */

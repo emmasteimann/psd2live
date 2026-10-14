@@ -320,6 +320,24 @@ class DesktopWorkspace(
         result.mutation("Imported PSD ${input.fileName}")
     }
 
+    /** Layerloom patch (S3b): see [io.github.psd2live.application.WorkspaceSourceImporter.updateArt]. */
+    override suspend fun updatePsdArt(path: String): WorkspaceMutationResult = editMutex.withLock {
+        draftQueue.awaitSettled()
+        val state = runtime.state.value
+        currentCoroutineContext()[WorkspaceExecution]?.check(state.capture?.projectId, state.state)
+        val current = viewModel.state.value
+        if (current.isGenerating || current.projectSaving) throw WorkspaceBusy()
+        val input = Path.of(path)
+        val owned = runInterruptible(Dispatchers.IO) { io.github.psd2live.project.OwnedProjectSource.capture(workspaceStore.root, input) }
+        val result = sourceImporter.updateArt(owned.path, state.state, mutationAuthor(MutationAuthor.USER),
+            jobFrom = input.toAbsolutePath().normalize(), sourceAuxiliary = owned.auxiliary) { document, preview, id ->
+            viewModel.applyArtUpdate(current, document, preview, input, id)
+        }
+        synchronized(historyLock) { if (result.applied) scheduleHistoryPersistence(result.capture.projectId) }
+        viewModel.refreshWorkspaceRenderer(result.capture.model)
+        result.mutation("Updated art from ${input.fileName}")
+    }
+
     private suspend fun captureSourceImport(discardUnsaved: Boolean): Pair<WorkspaceRuntimeState<io.github.psd2live.core.RigPreviewModel>, PSD2LiveState> {
         draftQueue.awaitSettled()
         val state = runtime.state.value

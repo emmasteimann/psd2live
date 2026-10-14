@@ -98,6 +98,8 @@ interface WorkspaceSourcePort {
     /** Import a complete file batch as editable artwork in one history node. */
     suspend fun importImages(state: String, paths: List<java.nio.file.Path>, parentDeformerId: String?): WorkspaceMutationResult
     suspend fun importPsd(path: String, discardUnsaved: Boolean = false): WorkspaceMutationResult
+    /** Layerloom patch (S3b): the open project's art replaced by [path], keeping its edits, as one history step. */
+    suspend fun updatePsdArt(path: String): WorkspaceMutationResult = throw UnsupportedOperationException("Update art isn't available here")
     suspend fun importCmo3(path: java.nio.file.Path, mode: Cmo3ImportMode,
                            discardUnsaved: Boolean = false): WorkspaceMutationResult
     suspend fun createArtwork(arguments: JsonObject): WorkspaceMutationResult

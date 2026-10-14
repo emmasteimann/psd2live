@@ -548,6 +548,36 @@ private fun ClipSettings(viewModel: PSD2LiveViewModel, clip: MotionClip) {
 		}
 	}
 	if (clip.builtin == null) MotionEventsEditor(viewModel, clip)
+	if (clip.builtin == null && clip.markers.isNotEmpty()) MotionMarkersEditor(viewModel, clip)
+}
+
+/** Layerloom patch: a motion's timeline markers (editor-only bookmarks): rename, retime, remove, jump to. */
+@Composable
+private fun MotionMarkersEditor(viewModel: PSD2LiveViewModel, clip: MotionClip) {
+	val colors = LocalToolColors.current
+	val typography = LocalToolTypography.current
+	fun save(markers: List<io.github.psd2live.core.MotionMarker>) = viewModel.setMotionClipMarkers(clip.id, markers)
+	Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+		Text(tr("animation.markers"), style = typography.caption.copy(fontSize = 11.sp), color = colors.textMuted)
+		clip.markers.forEachIndexed { index, marker ->
+			Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+				io.github.psd2live.ui.components.CompactNumberSpinner(marker.time.toDouble(), { t ->
+					save(clip.markers.toMutableList().also { it[index] = marker.copy(time = t.toFloat().coerceIn(0f, clip.duration)) })
+				}, Modifier.width(76.dp), 0.0, clip.duration.toDouble(), 0.1, 2, "s")
+				var text by androidx.compose.runtime.remember(clip.id, index, marker.label) { androidx.compose.runtime.mutableStateOf(marker.label) }
+				io.github.psd2live.ui.components.CompactTextField(text, { text = it }, Modifier.weight(1f), onCommit = {
+					if (text != marker.label) save(clip.markers.toMutableList().also { it[index] = marker.copy(label = text) })
+				})
+				io.github.psd2live.ui.components.CompactIconButton({ viewModel.setMotionPlayhead(marker.time) }, size = 20.dp, tooltip = tr("animation.goToMarker")) {
+					Text("▶", color = colors.textPrimary, fontSize = 9.sp)
+				}
+				io.github.psd2live.ui.components.CompactIconButton({ save(clip.markers.filterIndexed { i, _ -> i != index }) }, size = 20.dp,
+					tooltip = tr("animation.removeMarker")) {
+					io.github.psd2live.ui.components.IconClose(tint = colors.textMuted, modifier = Modifier.size(9.dp))
+				}
+			}
+		}
+	}
 }
 
 /** Layerloom patch: a motion's user-data events (Cubism's motion user data), which apps receive as it plays past them. */

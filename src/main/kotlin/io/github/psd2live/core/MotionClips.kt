@@ -53,6 +53,11 @@ data class MotionEvent(val time: Float, val value: String) {
 	init { require(time.isFinite() && time >= 0f) { "An event needs a time" } }
 }
 
+/** Layerloom patch: a timeline marker: a named time in the motion, for finding your way (not exported). */
+data class MotionMarker(val time: Float, val label: String) {
+	init { require(time.isFinite() && time >= 0f) { "A marker needs a time" } }
+}
+
 data class MotionClip(
 	val id: String,
 	val name: String,
@@ -66,10 +71,13 @@ data class MotionClip(
 	val curves: List<MotionCurve> = emptyList(),
 	/** Layerloom patch: user-data events (Cubism's motion user data), each a time and a text, in time order. */
 	val events: List<MotionEvent> = emptyList(),
+	/** Layerloom patch: timeline markers, editor-only bookmarks (not exported), in time order. */
+	val markers: List<MotionMarker> = emptyList(),
 ) {
 	/** Revisions hash this text: the data class's own for the upstream fields, events named only when there are any. */
 	override fun toString(): String = "MotionClip(id=$id, name=$name, builtin=$builtin, loop=$loop, duration=$duration, fps=$fps, " +
-		"fadeIn=$fadeIn, fadeOut=$fadeOut, enabled=$enabled, curves=$curves" + (if (events.isEmpty()) "" else ", events=$events") + ")"
+		"fadeIn=$fadeIn, fadeOut=$fadeOut, enabled=$enabled, curves=$curves" + (if (events.isEmpty()) "" else ", events=$events") +
+		(if (markers.isEmpty()) "" else ", markers=$markers") + ")"
 
 	init {
 		require(id.isNotBlank() && name.isNotBlank() && name.none(Char::isISOControl)) { "Motion needs an id and a name" }
@@ -279,6 +287,9 @@ object MotionClips {
 		put("fade_in", clip.fadeIn)
 		put("fade_out", clip.fadeOut)
 		put("enabled", clip.enabled)
+		if (clip.markers.isNotEmpty()) putJsonArray("markers") {
+			for (m in clip.markers) add(buildJsonObject { put("time", m.time); put("label", m.label) })
+		}
 		if (clip.events.isNotEmpty()) putJsonArray("events") {
 			for (e in clip.events) add(buildJsonObject { put("time", e.time); put("value", e.value) })
 		}
@@ -312,6 +323,11 @@ object MotionClips {
 			val e = element.jsonObject
 			val time = e["time"]?.jsonPrimitive?.floatOrNull ?: return@mapNotNull null
 			if (!time.isFinite() || time < 0f) null else MotionEvent(time, e["value"]?.jsonPrimitive?.contentOrNull.orEmpty())
+		}.sortedBy { it.time },
+		markers = o["markers"]?.jsonArray.orEmpty().mapNotNull { element ->
+			val m = element.jsonObject
+			val time = m["time"]?.jsonPrimitive?.floatOrNull ?: return@mapNotNull null
+			if (!time.isFinite() || time < 0f) null else MotionMarker(time, m["label"]?.jsonPrimitive?.contentOrNull.orEmpty())
 		}.sortedBy { it.time },
 		curves = o["curves"]?.jsonArray.orEmpty().map { element ->
 			val curve = element.jsonObject

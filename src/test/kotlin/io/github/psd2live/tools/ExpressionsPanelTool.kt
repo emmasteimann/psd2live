@@ -39,6 +39,15 @@ class ExpressionsPanelTool {
 							org.umamo.runtime.model.BlendWeightLimitPoint(0f, 1f), org.umamo.runtime.model.BlendWeightLimitPoint(30f, 0f)))),
 							preview.rig.puppet.parameters, enabled = true) {}
 					}
+					val motion = io.github.psd2live.core.MotionClip("motion_9", "Wave", duration = 2f, curves = listOf(
+						io.github.psd2live.core.MotionCurve("ParamAngleX", listOf(io.github.psd2live.core.MotionKey(0f, 0f), io.github.psd2live.core.MotionKey(1f, 30f), io.github.psd2live.core.MotionKey(2f, 0f))),
+						io.github.psd2live.core.MotionCurve(io.github.psd2live.core.PartTracks.trackOf(preview.rig.puppet.parts.first().id.raw),
+							listOf(io.github.psd2live.core.MotionKey(0f, 1f), io.github.psd2live.core.MotionKey(1.5f, 0f)))),
+						events = listOf(io.github.psd2live.core.MotionEvent(0.5f, "wave")),
+						markers = listOf(io.github.psd2live.core.MotionMarker(0.25f, "Raise"), io.github.psd2live.core.MotionMarker(1.2f, "Hold")))
+					vm.setStateForTest(vm.state.value.copy(rigEdits = vm.state.value.rigEdits.copy(motionClips = listOf(motion))))
+					vm.openMotionInEditor("motion_9", focus = false)
+					renderPng(File(out, "$tag-timeline.png"), 900, 240) { io.github.psd2live.ui.views.AnimationEditorView(vm.state.value, vm) }
 					val head = preview.rig.puppet.parts.first()
 					val isolated = preview.copy(rig = preview.rig.copy(puppet = preview.rig.puppet.copy(parts = preview.rig.puppet.parts.map {
 						if (it.id == head.id) it.copy(groupMode = org.umamo.runtime.model.PartGroupMode.Isolated) else it })))

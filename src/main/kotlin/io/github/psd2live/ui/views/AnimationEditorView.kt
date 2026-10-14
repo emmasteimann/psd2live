@@ -237,6 +237,28 @@ private fun EditorToolbar(state: PSD2LiveState, viewModel: PSD2LiveViewModel, cl
 				else IconPlay(modifier = Modifier.size(11.dp), tint = colors.accent)
 			}
 			if (clip == null) return@Row
+			// Layerloom patch: timeline markers - add one at the playhead, jump to the one before or after.
+			if (clip.builtin == null) {
+				CompactIconButton(onClick = {
+					val t = editor.playhead.coerceIn(0f, clip.duration)
+					if (clip.markers.none { kotlin.math.abs(it.time - t) < 1e-3f })
+						viewModel.setMotionClipMarkers(clip.id, clip.markers + io.github.psd2live.core.MotionMarker(t, "M${clip.markers.size + 1}"))
+				}, enabled = enabled, tooltip = tr("animation.editor.addMarker"), size = 22.dp) {
+					Text("◆+", color = colors.warning, style = typography.caption.copy(fontSize = 9.sp))
+				}
+			}
+			if (clip.markers.isNotEmpty()) {
+				CompactIconButton(onClick = {
+					clip.markers.lastOrNull { it.time < editor.playhead - 1e-3f }?.let { viewModel.setMotionPlayhead(it.time) }
+				}, enabled = enabled, tooltip = tr("animation.editor.prevMarker"), size = 22.dp) {
+					Text("◀◆", color = colors.textPrimary, style = typography.caption.copy(fontSize = 9.sp))
+				}
+				CompactIconButton(onClick = {
+					clip.markers.firstOrNull { it.time > editor.playhead + 1e-3f }?.let { viewModel.setMotionPlayhead(it.time) }
+				}, enabled = enabled, tooltip = tr("animation.editor.nextMarker"), size = 22.dp) {
+					Text("◆▶", color = colors.textPrimary, style = typography.caption.copy(fontSize = 9.sp))
+				}
+			}
 			CompactNumberSpinner(
 				value = editor.playhead.toDouble(),
 				onValueChange = { viewModel.setMotionPlayhead(it.toFloat()) },
@@ -949,6 +971,21 @@ private fun Timeline(
 				drawText(layout, topLeft = Offset(x + 3.dp.toPx(), 1.dp.toPx()))
 			}
 			if (endX in 0f..size.width) drawLine(colors.warning, Offset(endX, 0f), Offset(endX, size.height), 1.5f)
+
+			// Layerloom patch: markers (bookmarks) and user-data events on the ruler.
+			val markStyle = typography.monoSmall.copy(fontSize = 9.sp, color = colors.warning)
+			for (m in clip.markers) {
+				val x = vp.x(m.time)
+				if (x !in -40f..size.width + 2f) continue
+				drawLine(colors.warning.copy(alpha = 0.55f), Offset(x, rulerPx), Offset(x, size.height), 1f)
+				drawPath(Path().apply { moveTo(x, rulerPx - 9.dp.toPx()); lineTo(x + 4.dp.toPx(), rulerPx - 5.dp.toPx()); lineTo(x, rulerPx - 1.dp.toPx())
+					lineTo(x - 4.dp.toPx(), rulerPx - 5.dp.toPx()); close() }, colors.warning)
+				if (m.label.isNotBlank()) drawText(textMeasurer.measure(m.label, markStyle), topLeft = Offset(x + 5.dp.toPx(), rulerPx - 11.dp.toPx()))
+			}
+			for (e in clip.events) {
+				val x = vp.x(e.time)
+				if (x in 0f..size.width) drawCircle(colors.highlight, 3.dp.toPx(), Offset(x, rulerPx - 3.dp.toPx()))
+			}
 
 			// Playhead.
 			val px = vp.x(editor.playhead)

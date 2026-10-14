@@ -3737,6 +3737,14 @@ class PSD2LiveViewModel : AutoCloseable {
 		saveMotionOperation("put", kotlinx.serialization.json.buildJsonObject { put("clip", MotionClips.toJson(next)) })
 	}
 
+	/** Layerloom patch: replaces a custom motion's timeline markers (one history step). */
+	fun setMotionClipMarkers(id: String, markers: List<io.github.psd2live.core.MotionMarker>) {
+		val clip = motionClips.firstOrNull { it.id == id } ?: return
+		val next = clip.copy(markers = markers.sortedBy { it.time })
+		if (next == clip) return
+		saveMotionOperation("put", kotlinx.serialization.json.buildJsonObject { put("clip", MotionClips.toJson(next)) })
+	}
+
 	fun renameMotionClip(id: String, name: String) {
 		val trimmed = name.trim()
 		if (trimmed.isEmpty() || trimmed.any(Char::isISOControl)) return

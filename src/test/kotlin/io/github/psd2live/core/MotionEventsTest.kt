@@ -24,6 +24,9 @@ class MotionEventsTest {
 		assertTrue("events" !in MotionClips.toJson(clip).keys, "no events key until there are events")
 		val withEvents = clip.copy(events = listOf(MotionEvent(0.5f, "wave_start"), MotionEvent(1.5f, "wave_end")))
 		assertEquals(withEvents, MotionClips.fromJson(MotionClips.toJson(withEvents)))
+		val withMarkers = withEvents.copy(markers = listOf(MotionMarker(0.25f, "Raise"), MotionMarker(1f, "Hold")))
+		assertEquals(withMarkers, MotionClips.fromJson(MotionClips.toJson(withMarkers)))
+		assertTrue("markers=" in withMarkers.toString() && "markers" !in clip.toString())
 	}
 
 	/** A real rig (LAYERLOOM_PARITY_DIR; skipped without it): the events reach motion3 UserData. */

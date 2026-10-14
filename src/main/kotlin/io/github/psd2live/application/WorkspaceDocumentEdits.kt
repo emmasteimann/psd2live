@@ -247,7 +247,7 @@ internal object WorkspaceDocumentEdits {
     }
 
     fun motion(document: WorkspaceDocument, model: RigPreviewModel, request: JsonObject): WorkspaceDocument {
-        val ranges = model.rig.puppet.parameters.associate { it.id.raw to (it.min..it.max) }
+        val ranges = model.rig.puppet.parameters.associate { it.id.raw to (it.min..it.max) } + io.github.psd2live.core.PartTracks.ranges(model.rig.puppet)
         return document.copy(rigEdits = document.rigEdits.copy(motionClips = WorkspaceSkeletonMotionEdits.motion(
             document.rigEdits.motionClips, request, ranges, document.rigEdits.skeleton, document.rigEdits.motionPresets)))
     }

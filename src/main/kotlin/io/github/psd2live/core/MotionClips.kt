@@ -84,9 +84,14 @@ data class MotionClip(
 
 object MotionClips {
 	/** Parameter deletion removes tracks; range changes constrain keys and Bezier control values. */
-	fun reconcileParameters(clips: List<MotionClip>, parameters: List<org.umamo.runtime.model.Parameter>): List<MotionClip> {
+	fun reconcileParameters(clips: List<MotionClip>, parameters: List<org.umamo.runtime.model.Parameter>,
+	                        /** Layerloom patch: the model's part ids, for part tracks ([PartTracks]); null keeps them all. */
+	                        parts: Set<String>? = null): List<MotionClip> {
 		val definitions = parameters.associateBy { it.id.raw }
 		return clips.map { clip -> clip.copy(curves = clip.curves.mapNotNull { curve ->
+			if (PartTracks.isPart(curve.parameterId)) {
+				return@mapNotNull if (parts == null || PartTracks.partOf(curve.parameterId) in parts) clamped(curve, 0f, 1f) else null
+			}
 			val parameter = definitions[curve.parameterId] ?: return@mapNotNull null
 			clamped(curve, parameter.min, parameter.max)
 		}) }

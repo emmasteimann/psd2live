@@ -1016,7 +1016,8 @@ class PSD2LiveViewModel : AutoCloseable {
                 val parameters = next.previewModel?.rig?.puppet?.parameters
                 if (parameters != null && (parameters != current.previewModel?.rig?.puppet?.parameters ||
                     next.rigEdits.motionClips != current.rigEdits.motionClips)) {
-                    val clips = MotionClips.reconcileParameters(next.rigEdits.motionClips, parameters)
+                    val clips = MotionClips.reconcileParameters(next.rigEdits.motionClips, parameters,
+                        next.previewModel?.rig?.puppet?.parts?.mapTo(HashSet()) { it.id.raw })
                     if (clips != next.rigEdits.motionClips) next = next.copy(rigEdits = next.rigEdits.copy(motionClips = clips))
                 }
                 if (next.projectOpenGeneration != current.projectOpenGeneration) {
@@ -3861,6 +3862,8 @@ class PSD2LiveViewModel : AutoCloseable {
 	private fun currentMotionParameterValue(parameterId: String): Float {
 		val state = _state.value.previewPanelState()
 		val id = ParameterId(parameterId)
+		// Layerloom patch: a part track keys the part as shown unless a motion has faded it.
+		if (io.github.psd2live.core.PartTracks.isPart(parameterId)) return state.parameterValues[id] ?: 1f
 		return state.parameterValues[id]
 			?: state.previewModel?.rig?.puppet?.parameters?.firstOrNull { it.id == id }?.default ?: 0f
 	}

@@ -1886,7 +1886,12 @@ private class DrawnGeometryMemo {
         val cached = geometry
         if (cached != null && puppet === model.rig.puppet && edit === editGeometry && simulation === simulated &&
             (editGeometry != null || this.pose == pose)) return cached
-        val evaluated = editGeometry ?: RigCanvasSupport.evaluate(model, pose)
+        // Layerloom patch: a playing motion's part tracks fade their parts' meshes ([io.github.psd2live.core.PartTracks]).
+        val evaluated = editGeometry ?: RigCanvasSupport.evaluate(model, pose).let { g ->
+            val opacity = io.github.psd2live.core.PartTracks.applied(model.rig.puppet, pose, g.opacity, { org.umamo.runtime.model.DrawableId(it) },
+                { id -> model.rig.puppet.drawables.firstOrNull { it.id.raw == id }?.opacity ?: 1f })
+            if (opacity === g.opacity) g else org.umamo.render.eval.DeformedGeometry(g.worldPositions, g.drawOrder, opacity)
+        }
         val next = if (simulated == null) evaluated else org.umamo.render.eval.DeformedGeometry(
             evaluated.worldPositions + simulated.positions.filterKeys { it in evaluated.worldPositions },
             evaluated.drawOrder, evaluated.opacity,

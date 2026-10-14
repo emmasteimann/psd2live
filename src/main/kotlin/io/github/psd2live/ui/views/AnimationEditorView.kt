@@ -151,7 +151,8 @@ internal fun AnimationEditorView(state: PSD2LiveState, viewModel: PSD2LiveViewMo
 		var trackWidth by remember { mutableStateOf(200f) }
 		val density = LocalDensity.current
 		Row(Modifier.weight(1f).fillMaxWidth()) {
-			TrackList(viewModel, clip, parameters, trackScroll, Modifier.width(trackWidth.dp).fillMaxHeight())
+			TrackList(viewModel, clip, parameters, trackScroll, Modifier.width(trackWidth.dp).fillMaxHeight(),
+				state.previewModel?.rig?.puppet?.parts.orEmpty().associate { it.id.raw to it.name })
 			Box(
 				Modifier.width(4.dp).fillMaxHeight().background(colors.divider)
 					.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.E_RESIZE_CURSOR)))
@@ -383,6 +384,24 @@ private fun AddTrackButton(viewModel: PSD2LiveViewModel, clip: MotionClip, state
 						},
 					)
 				}
+				// Layerloom patch: part tracks fade a part in and out (Cubism's part opacity curves).
+				val parts = state.previewModel?.rig?.puppet?.parts.orEmpty().filter { part ->
+					io.github.psd2live.core.PartTracks.trackOf(part.id.raw) !in used &&
+						(query.isBlank() || part.name.contains(query, ignoreCase = true) || part.id.raw.contains(query, ignoreCase = true))
+				}
+				if (parts.isNotEmpty()) {
+					Text(tr("animation.editor.partTracks"), color = colors.textMuted, fontSize = 10.sp, modifier = Modifier.padding(start = 8.dp, top = 6.dp, bottom = 2.dp))
+					for (part in parts) {
+						CompactMenuItem(
+							text = tr("animation.editor.partTrack", part.name),
+							trailingText = part.id.raw.takeIf { it != part.name },
+							onClick = {
+								open = false
+								viewModel.addMotionCurve(io.github.psd2live.core.PartTracks.trackOf(part.id.raw))
+							},
+						)
+					}
+				}
 			}
 		}
 	}
@@ -414,6 +433,8 @@ private fun TrackList(
 	parameters: List<org.umamo.runtime.model.Parameter>,
 	scroll: androidx.compose.foundation.ScrollState,
 	modifier: Modifier,
+	/** Layerloom patch: part names by id, for part tracks' labels. */
+	partNames: Map<String, String> = emptyMap(),
 ) {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
@@ -441,7 +462,8 @@ private fun TrackList(
 		}
 		Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll)) {
 			clip.curves.forEachIndexed { index, curve ->
-				TrackRow(viewModel, clip, curve, index, byId[curve.parameterId])
+				TrackRow(viewModel, clip, curve, index, byId[curve.parameterId],
+					partNames[io.github.psd2live.core.PartTracks.partOf(curve.parameterId)].takeIf { io.github.psd2live.core.PartTracks.isPart(curve.parameterId) })
 			}
 			if (clip.curves.isEmpty()) {
 				Text(
@@ -462,6 +484,7 @@ private fun TrackRow(
 	curve: MotionCurve,
 	index: Int,
 	parameter: org.umamo.runtime.model.Parameter?,
+	partName: String? = null,
 ) {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
@@ -503,9 +526,10 @@ private fun TrackRow(
             }
         }
 		Text(
-			parameter?.name?.ifBlank { null } ?: curve.parameterId,
+			partName?.let { tr("animation.editor.partTrack", it) } ?: parameter?.name?.ifBlank { null } ?: curve.parameterId,
 			color = when {
-				parameter == null -> colors.warning
+				partName != null && !focused -> colors.textPrimary
+				parameter == null && partName == null -> colors.warning
 				focused -> colors.selectionText
 				else -> colors.textPrimary
 			},

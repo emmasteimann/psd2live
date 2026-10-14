@@ -110,14 +110,21 @@ internal object RigIrCompiler {
 	}
 
 	private fun compileClips(rig: BuiltRig, config: PipelineConfig, physicsDriven: Set<String>, parameterIds: Set<String>): List<Clip> {
-		val clips = MotionClips.reconcileParameters(config.rigEdits.motionClips, rig.puppet.parameters)
+		val clips = MotionClips.reconcileParameters(config.rigEdits.motionClips, rig.puppet.parameters, rig.puppet.parts.mapTo(HashSet()) { it.id.raw })
 		val skeleton = config.rigEdits.skeleton
 		val result = ArrayList<Clip>()
 		fun add(clip: Clip?) {
-			if (clip != null && clip.curves.any { it.parameter in parameterIds }) result += clip.copy(curves = clip.curves.filter { it.parameter in parameterIds })
+			if (clip != null && (clip.curves.any { it.parameter in parameterIds } || clip.targetCurves.isNotEmpty()))
+				result += clip.copy(curves = clip.curves.filter { it.parameter in parameterIds })
 		}
+		// Layerloom patch: part tracks ([PartTracks]) become PartOpacity curves.
 		fun authored(group: String, file: String, clip: MotionClip) = Clip(clip.id, clip.name, group, file, clip.duration, clip.fps, clip.loop,
-			clip.fadeIn, clip.fadeOut, clip.curves.map(MotionGenerator::curve),
+			clip.fadeIn, clip.fadeOut, clip.curves.filterNot { PartTracks.isPart(it.parameterId) }.map(MotionGenerator::curve),
+			targetCurves = clip.curves.filter { PartTracks.isPart(it.parameterId) }.map { curve ->
+				val c = MotionGenerator.curve(curve)
+				io.github.psd2live.format.model.TargetCurve(io.github.psd2live.format.model.CurveTarget.PartOpacity(PartTracks.partOf(curve.parameterId)),
+					c.startTime, c.startValue, c.segments)
+			},
 			// Layerloom patch: the motion's user-data events within its length.
 			events = clip.events.filter { it.time <= clip.duration }.map { io.github.psd2live.format.model.ClipEvent(it.time, it.value) })
 		fun builtin(group: String, name: String, exclude: Set<String> = emptySet()) {

@@ -213,7 +213,7 @@ object NativeFilePicker {
 				UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName())
 				val chooser = chooser().apply {
 					dialogTitle = title
-					fileFilter = javax.swing.filechooser.FileNameExtensionFilter("PSD2Live (*.psd2live)", "psd2live")
+					fileFilter = javax.swing.filechooser.FileNameExtensionFilter("Layerloom project (*.psd2live)", "psd2live")
 					if (!initialPath.isNullOrBlank()) {
 						val f = File(initialPath)
 						if (f.exists()) currentDirectory = if (f.isDirectory) f else f.parentFile
@@ -267,7 +267,7 @@ object NativeFilePicker {
 				UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName())
 				val chooser = chooser().apply {
 					dialogTitle = title
-					fileFilter = javax.swing.filechooser.FileNameExtensionFilter("PSD2Live (*.psd2live)", "psd2live")
+					fileFilter = javax.swing.filechooser.FileNameExtensionFilter("Layerloom project (*.psd2live)", "psd2live")
 					selectedFile = File(defaultFileName)
 					if (!initialDir.isNullOrBlank()) {
 						val f = File(initialDir)

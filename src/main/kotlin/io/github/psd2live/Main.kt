@@ -44,7 +44,7 @@ import io.github.psd2live.ui.state.AppSettings
 fun main(arguments: Array<String>) {
 	System.setProperty("sun.java2d.uiScale.enabled", "true")
 	// The name macOS shows in the menu bar and Dock instead of the main class; read when AWT starts.
-	System.setProperty("apple.awt.application.name", "PSD2Live")
+	System.setProperty("apple.awt.application.name", "Layerloom")
 	// Canvases draw on the GPU in Skia's own OpenGL context, so Skia must draw the window with OpenGL.
 	io.github.psd2live.render.SkiaGpu.requestOpenGl()
 	configureLanguage(arguments)

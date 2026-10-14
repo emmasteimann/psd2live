@@ -858,7 +858,7 @@ fun AppTitleBar(
 			contentAlignment = Alignment.Center,
 		) {
 			Text(
-				text = "PSD2Live — $projectTitle",
+				text = "Layerloom — $projectTitle",
 				style = typography.caption.copy(fontSize = 11.5.sp),
 				color = colors.textMuted,
 				maxLines = 1,

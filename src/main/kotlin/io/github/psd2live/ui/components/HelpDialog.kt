@@ -93,7 +93,7 @@ fun HelpDialog(
 		},
 		footerStart = {
 			Text(
-				text = copyNotification ?: "PSD2Live / GPL-3.0 / tsunehimatoi",
+				text = copyNotification ?: "Layerloom · based on PSD2Live by tsunehimatoi · GPL-3.0",
 				style = typography.caption.copy(fontSize = 11.sp, fontWeight = if (copyNotification != null) FontWeight.Medium else FontWeight.Normal),
 				color = if (copyNotification != null) colors.accent else colors.textMuted,
 			)
@@ -499,12 +499,12 @@ private fun DccAboutContent() {
 			horizontalArrangement = Arrangement.spacedBy(8.dp),
 		) {
 			Text(
-				text = "PSD2Live",
+				text = "Layerloom",
 				style = typography.title.copy(fontSize = 16.sp, fontWeight = FontWeight.Bold),
 				color = colors.textPrimary,
 			)
 			Text(
-				text = "v3.4.5",
+				text = "based on PSD2Live 3.4.5",
 				style = typography.monoSmall.copy(fontSize = 11.sp),
 				color = colors.accent,
 			)

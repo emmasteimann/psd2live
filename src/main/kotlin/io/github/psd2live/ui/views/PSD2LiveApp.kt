@@ -198,7 +198,7 @@ fun FrameWindowScope.PSD2LiveApp(
             else -> viewModel.recoveryOffer.value = null
         }
     }
-    LaunchedEffect(state.projectFile, state.projectDirty) { window?.title = "PSD2Live — " + (state.projectFile ?: tr("project.untitled")) + if (state.projectDirty) " *" else "" }
+    LaunchedEffect(state.projectFile, state.projectDirty) { window?.title = "Layerloom — " + (state.projectFile ?: tr("project.untitled")) + if (state.projectDirty) " *" else "" }
     // Language key tracking for recomposition
 	val currentLanguage = state.currentLanguage
 

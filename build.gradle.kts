@@ -372,17 +372,18 @@ compose.desktop {
 			// Compose only packages formats supported on the build host; Deb is for Linux. The Windows
 			// installer is built below from the app image instead, with Inno Setup.
 			targetFormats(org.jetbrains.compose.desktop.application.dsl.TargetFormat.Deb)
-			packageName = "PSD2Live"
+			// Layerloom patch: the app is Layerloom (PSD2Live 3.4.5 with Layerloom built in; GPL-3, credit kept in About).
+			packageName = "Layerloom"
 			packageVersion = "3.4.5"
-			description = "PSD2Live - Automated Live2D Rigging Pipeline"
+			description = "Layerloom - Live2D art preparation and rigging, based on PSD2Live"
 			copyright = "© 2026 PSD2Live. Licensed under GPL-3.0."
 			vendor = "PSD2Live"
 
 			// Layerloom patch: a Mac app (packageMacApp below finishes it with the JetBrains Runtime the Prepare tab needs).
 			macOS {
-				bundleID = "com.goosible.psd2live"
+				bundleID = "com.goosible.layerloom"
 				iconFile.set(project.file("packaging/macos/psd2live.icns"))
-				dockName = "PSD2Live"
+				dockName = "Layerloom"
 			}
 
 			windows {
@@ -425,16 +426,16 @@ if (hostOs == "windows") afterEvaluate {
 	tasks.named("packageDistributionForCurrentOS") { dependsOn(packageExe) }
 }
 
-// Layerloom patch: the Mac app. createDistributable makes PSD2Live.app with a trimmed runtime; jlink leaves out the
+// Layerloom patch: the Mac app. createDistributable makes Layerloom.app with a trimmed runtime; jlink leaves out the
 // Chromium framework and helper apps that JetBrains Runtime keeps beside its Home, which the Prepare tab's browser
 // needs. So the app's runtime is replaced by the whole JetBrains Runtime with JCEF (~/.psd2live/jbr), then the app is
-// signed ad hoc. Output: build/compose/binaries/main/app/PSD2Live.app.
+// signed ad hoc. Output: build/compose/binaries/main/app/Layerloom.app.
 if (hostOs == "macos") afterEvaluate {
 	val distributions = compose.desktop.application.nativeDistributions
 	val createDistributable = tasks.named<org.jetbrains.compose.desktop.application.tasks.AbstractJPackageTask>("createDistributable")
 	tasks.register("packageMacApp") {
 		group = "compose desktop"
-		description = "Builds PSD2Live.app with the full JetBrains Runtime (JCEF) for the Prepare tab."
+		description = "Builds Layerloom.app with the full JetBrains Runtime (JCEF) for the Prepare tab."
 		dependsOn(createDistributable)
 		doLast {
 			val app = createDistributable.get().destinationDir.dir("${distributions.packageName}.app").get().asFile
@@ -446,7 +447,7 @@ if (hostOs == "macos") afterEvaluate {
 			// ditto keeps the frameworks' symlinks and the helpers' signatures.
 			providers.exec { commandLine("ditto", jbr.absolutePath, runtime.absolutePath) }.result.get().assertNormalExitValue()
 			providers.exec { commandLine("codesign", "--force", "--sign", "-", app.absolutePath) }.result.get().assertNormalExitValue()
-			logger.lifecycle("PSD2Live.app: ${app.absolutePath}")
+			logger.lifecycle("${distributions.packageName}.app: ${app.absolutePath}")
 		}
 	}
 }

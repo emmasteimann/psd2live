@@ -90,8 +90,9 @@ dependencies {
 	implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
 	implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
 	implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.11.0")
-	// Layerloom patch: the Prepare workspace shows Layerloom's studio in an embedded Chromium (KCEF).
-	implementation("dev.datlag:kcef:2025.03.23")
+	// Layerloom patch: the Prepare workspace shows Layerloom's studio in JetBrains Runtime's built-in Chromium (its
+	// jcef module). KCEF supplies the same org.cef API to compile against only; at run time the runtime's own is used.
+	compileOnly("dev.datlag:kcef:2025.03.23")
 	implementation(compose.desktop.currentOs)
 	implementation("org.jetbrains.compose.runtime:runtime:1.11.1")
 	implementation("org.jetbrains.compose.foundation:foundation:1.11.1")
@@ -351,6 +352,11 @@ tasks.withType<Sync>().matching { it.name == "prepareAppResources" }.configureEa
 compose.desktop {
 	application {
 		mainClass = "io.github.psd2live.MainKt"
+		// Layerloom patch: run on JetBrains Runtime with JCEF when it's installed (~/.psd2live/jbr), for the Prepare
+		// workspace's browser; otherwise the build's JDK as before.
+		file(System.getProperty("user.home") + "/.psd2live/jbr").listFiles()
+			?.firstOrNull { it.name.startsWith("jbrsdk_jcef-21") && File(it, "Contents/Home/bin/java").canExecute() }
+			?.let { javaHome = File(it, "Contents/Home").absolutePath }
 		// Half the machine's memory rather than a fixed 8 GB: a fixed cap left no room for the canvas's native
 		// (GPU, Skia) memory on 8 and 16 GB machines, where the system killed the app instead of it running out of heap.
 		jvmArgs += listOf("-XX:MaxRAMPercentage=50", "-Dfile.encoding=UTF-8", "-Dsun.java2d.uiScale.enabled=true")

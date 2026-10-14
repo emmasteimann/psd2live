@@ -41,6 +41,7 @@ import java.text.Normalizer
 import java.util.Locale
 import java.util.UUID
 import kotlin.math.PI
+import kotlin.math.asin
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.cos
@@ -324,6 +325,19 @@ object RigBuilder {
 		 * the automatically paired deformer, or the parent its semantic tag implies.
 		 */
 		fun parentAndFrame(layer: ClassifiedLayer, config: PipelineConfig): Pair<DeformerId?, Bounds> {
+			// Layerloom patch: a piece with its own turn depth, a glued piece and an anchored front-hair piece hang
+			// under their own warps (built in rigContext / buildDeformers), unless the user re-parented them.
+			if (!config.parentOverrides.containsKey(layer.source.id.raw) &&
+				(config.layerTurnDepths.containsKey(layer.source.name) || config.layerTurnDepthsY.containsKey(layer.source.name))) {
+				frameByDeformer[turnPhysicsId(layer).raw]?.let { return turnPhysicsId(layer) to it }
+				frameByDeformer[turnWarpId(layer).raw]?.let { return turnWarpId(layer) to it }
+			}
+			if (!config.parentOverrides.containsKey(layer.source.id.raw) && config.layerGlues.containsKey(layer.source.name)) {
+				frameByDeformer[glueWarpId(layer).raw]?.let { return glueWarpId(layer) to it }
+			}
+			if (!config.parentOverrides.containsKey(layer.source.id.raw) && isAnchoredHair(layer, config)) {
+				frameByDeformer[hairAnchorWarpId(layer).raw]?.let { return hairAnchorWarpId(layer) to it }
+			}
 			val paired = pairedParentByLayerId[layer.source.id.raw] ?: inferredParentAndFrame(layer, config)
 			if (!config.parentOverrides.containsKey(layer.source.id.raw)) return paired
 			val parentId = config.parentOverrides[layer.source.id.raw]
@@ -405,7 +419,7 @@ object RigBuilder {
 		// The eye whites carry their layers, which a reused scaffold must not hand out from an older analysis.
 		val eyeWhiteLayers = layout.layers.map { it.riggedIn(layout.anchors, scaffold.faceRig.coordinateSpace) }
 			.filter { it.semantic.tag == SemanticTag.EYEWHITE && it.opaquePixels > 0 }
-		return RigContext(
+		fun context(deformers: List<Deformer>, frames: Map<String, Bounds>) = RigContext(
 			analysis,
 			scaffold.character,
 			scaffold.head,
@@ -415,15 +429,223 @@ object RigBuilder {
 			scaffold.faceRig.coordinateSpace,
 			scaffold.faceRig,
 			eyeWhiteLayers,
-			scaffold.frameByDeformer,
+			frames,
 			scaffold.deformers.pairedParentByLayerId,
 			config.rigEdits.skeleton?.enabled == true,
 			scaffold.deformersEnabled,
-			scaffold.deformers.deformers,
+			deformers,
 			scaffold.stance,
 			scaffold.bodyFrame,
 		)
+		val base = context(scaffold.deformers.deformers, scaffold.frameByDeformer)
+		if (!scaffold.deformersEnabled || (config.layerGlues.isEmpty() && config.layerTurnDepths.isEmpty() && config.layerTurnDepthsY.isEmpty())) return base
+		// Layerloom patch: glue warps copy their target's warp, so they are built once every other deformer exists;
+		// per-piece turn warps then go between a piece and whatever it hangs from (a glue warp included).
+		val rigLayerById = analysis.layers.associate { it.source.id.raw to it.riggedIn(analysis.anchors, scaffold.faceRig.coordinateSpace) }
+		val frames = scaffold.frameByDeformer.toMutableMap()
+		val glues = if (config.layerGlues.isEmpty()) emptyList() else glueWarps(base, rigLayerById, config)
+		for ((warp, frame) in glues) frames[warp.id.raw] = frame
+		val withGlues = context(scaffold.deformers.deformers + glues.map { it.first }, frames.toMap())
+		val turns = if (config.layerTurnDepths.isEmpty() && config.layerTurnDepthsY.isEmpty()) TurnRig(emptyList(), emptyMap())
+			else turnWarps(withGlues, rigLayerById, config)
+		for ((warp, frame) in turns.added) frames[warp.id.raw] = frame
+		val all = (scaffold.deformers.deformers + glues.map { it.first }).map { d ->
+			turns.reparent[d.id.raw]?.let { (d as Deformer.Warp).copy(parent = it) } ?: d
+		}
+		return context(all + turns.added.map { it.first }, frames)
 	}
+
+	/** Layerloom patch: what per-piece turn depths add (warps + frames) and which existing warps move under them. */
+	private class TurnRig(val added: List<Pair<Deformer.Warp, Bounds>>, val reparent: Map<String, DeformerId>)
+
+	// ---- Layerloom patch: per-piece turn depth --------------------------------------------------------------------
+	private fun turnWarpId(layer: ClassifiedLayer): DeformerId =
+		DeformerId("DeformTurn" + layer.source.name.filter { it.isLetterOrDigit() }.replaceFirstChar { it.uppercase() })
+
+	/**
+	 * One warp per piece with its own turn depth, hung under the piece's usual parent (in canvas terms, converted to
+	 * the parent's frame). For a piece riding the hair (under a hair follow warp, glued to it included) it adds exactly
+	 * the difference between the hair warp's turn at the piece's depth and at the hair turn depth, on the same cylinder
+	 * and frame, so 0 really takes the hair's squeeze away and 2 doubles it. Any other piece turns round the head's
+	 * centre directly. The piece's own width changes, as it does inside the hair warp; RigIntegrityValidator only
+	 * audits PSD2Live's own turn warps (DeformHair*Follow etc.), not these.
+	 */
+	private fun turnFollowId(layer: ClassifiedLayer): DeformerId =
+		DeformerId("DeformTurnFollow" + layer.source.name.filter { it.isLetterOrDigit() }.replaceFirstChar { it.uppercase() })
+	private fun turnPhysicsId(layer: ClassifiedLayer): DeformerId =
+		DeformerId("DeformTurnPhysics" + layer.source.name.filter { it.isLetterOrDigit() }.replaceFirstChar { it.uppercase() })
+
+	/**
+	 * Per-piece turn depth. A piece riding the hair (under a hair follow warp, glued to it included) gets its OWN copy
+	 * of that hair follow warp at its depths, built by the same code on the same frame, so it turns exactly as the
+	 * hair would at that depth. A correction under the shared warp can't do this: where the shared warp squeezes a
+	 * region nearly flat, nothing below it can open it up again (measured 2026-10-08: looking up, back hair at 0 still
+	 * kept half the squeeze). A plain hair piece also gets a copy of the hair physics warp (same parameter) and hangs
+	 * under that; a glued piece's glue warp moves under the follow copy (it already carries the physics). Any other
+	 * piece gets one small warp under its usual parent that turns it round the head's centre.
+	 */
+	private fun turnWarps(context: RigContext, rigLayerById: Map<String, ClassifiedLayer>, config: PipelineConfig): TurnRig {
+		val byName = context.analysis.layers.filter { it.opaquePixels > 0 }.associateBy { it.source.name }
+		val warps = context.deformers.filterIsInstance<Deformer.Warp>().associateBy { it.id.raw }
+		val parentOf = context.deformers.associate { it.id.raw to it.parent?.raw }
+		val added = mutableListOf<Pair<Deformer.Warp, Bounds>>()
+		val reparent = mutableMapOf<String, DeformerId>()
+		val head = context.head
+		val cx = head.centerX; val cy = head.centerY
+		for (name in config.layerTurnDepths.keys + config.layerTurnDepthsY.keys) {
+			val layer = byName[name] ?: run { System.err.println("Warning: turn depth: no layer named \"$name\""); null } ?: continue
+			val (parentId, parentFrame) = context.parentAndFrame(layer, config)
+			val parent = parentId?.let { warps[it.raw] }
+			if (parent == null) { System.err.println("Warning: turn depth: \"$name\" isn't under a warp; left as it was"); continue }
+			// the chain up to a hair follow warp, if any: [parent, ..., child of the follow]
+			val chain = mutableListOf<String>(); var at: String? = parentId.raw; var follow: String? = null
+			while (at != null && chain.size < 64) {
+				if (at == frontHairFollowWarpId.raw || at == backHairFollowWarpId.raw) { follow = at; break }
+				chain += at; at = parentOf[at]
+			}
+			val front = follow == frontHairFollowWarpId.raw
+			val hairFrame = when (follow) { frontHairFollowWarpId.raw -> context.frontHair; backHairFollowWarpId.raw -> context.backHair; else -> null }
+			val depthX = config.layerTurnDepths[name] ?: (if (hairFrame != null) config.hairTurnDepth else 0f)
+			val depthY = config.layerTurnDepthsY[name] ?: (if (hairFrame != null) config.hairTurnDepthY else 0f)
+			if (hairFrame != null && follow != null) {
+				if (kotlin.math.abs(depthX - config.hairTurnDepth) < 1e-3f && kotlin.math.abs(depthY - config.hairTurnDepthY) < 1e-3f) continue
+				val physicsShared = chain.last() == frontHairPhysicsWarpId.raw || chain.last() == backHairPhysicsWarpId.raw
+				if (physicsShared && chain.size > 1) {
+					// something between the piece and the shared physics (an old pin-bottom hair anchor): not handled
+					System.err.println("Warning: turn depth: \"$name\" hangs from the hair through ${chain.first()}; left as it was"); continue
+				}
+				val sharedFollow = warps.getValue(follow)
+				val followCopy = hairFollowWarp(turnFollowId(layer), "Turn depth: $name", hairFrame, head, sharedFollow.partId ?: PartId(if (front) "PartHairFront" else "PartHairBack"),
+					if (front) frontHairYaw(config.rigTuning) else backHairYaw(config.rigTuning),
+					if (front) frontHairPitch(config.rigTuning) else backHairPitch(config.rigTuning),
+					yawPerspective = if (front) frontHairPerspective(config.rigTuning) else 0f, turnDepth = depthX, turnDepthY = depthY)
+				added += followCopy to hairFrame
+				val underFollow = chain.last() // the warp hanging straight under the shared follow
+				if (underFollow == frontHairPhysicsWarpId.raw || underFollow == backHairPhysicsWarpId.raw) {
+					// shared physics: this piece gets its own copy of it (same swing parameter) under its follow copy
+					val physicsCopy = hairPhysicsWarp(turnPhysicsId(layer), "Turn depth swing: $name",
+						if (front) StandardParameters.HAIR_FRONT else StandardParameters.HAIR_BACK, followCopy.id, hairFrame,
+						sharedFollow.partId ?: PartId(if (front) "PartHairFront" else "PartHairBack"),
+						rows = if (front) 4 else 6,
+						swayRatio = (if (front) config.rigTuning.frontHairSway else config.rigTuning.backHairSway) / 100f,
+						curlRatio = (if (front) config.rigTuning.frontHairCurl else config.rigTuning.backHairCurl) / 100f)
+					added += physicsCopy to hairFrame // the piece itself hangs under it (parentAndFrame)
+				} else {
+					reparent[underFollow] = followCopy.id // the piece's own glue warp: it carries the physics already
+				}
+				continue
+			}
+			// not riding the hair: one small warp under its usual parent, turning it round the head's centre
+			val ox = config.layerTurnDepths[name]?.takeIf { it > 1e-3f }; val oy = config.layerTurnDepthsY[name]?.takeIf { it > 1e-3f }
+			if (ox == null && oy == null) continue
+			val frame = hairAnchorFrame(rigLayerById.getValue(layer.source.id.raw).bounds)
+			val inParent = mapBounds(frame, parentFrame)
+			fun around(lo: Float, hi: Float, centre: Float, halfHead: Float, depth: Float): (Float, Float) -> Float {
+				val radius = maxOf(kotlin.math.abs(lo - centre), kotlin.math.abs(hi - centre), halfHead) * 1.02f
+				return { p, angle ->
+					val theta = Math.toRadians((depth * 0.5f * angle).toDouble())
+					val phi = asin(((p - centre) / radius).coerceIn(-1f, 1f).toDouble())
+					(radius * (sin((phi + theta).coerceIn(-PI / 2, PI / 2)) - sin(theta)) - (p - centre)).toFloat()
+				}
+			}
+			val shiftX = ox?.let { around(frame.left, frame.right, cx, head.width * 0.5f, it) }
+			val shiftY = oy?.let { around(frame.top, frame.bottom, cy, head.height * 0.5f, it) }
+			val axes = listOfNotNull(
+				shiftX?.let { axis(StandardParameters.ANGLE_X, *NinePoseFaceRig.angleXKeys) },
+				shiftY?.let { axis(StandardParameters.ANGLE_Y, *NinePoseFaceRig.angleYKeys) },
+			)
+			val columns = if (shiftX != null) 10 else 2; val rows = if (shiftY != null) 10 else 2
+			val grid = warpGrid(axes, columns, rows) { u, v, values ->
+				val ax = if (shiftX != null) values[0] else 0f
+				val ay = if (shiftY != null) values[if (shiftX != null) 1 else 0] else 0f
+				val x = frame.left + u * frame.width; val y = frame.top + v * frame.height
+				// looking up (+AngleY) turns the surface up: canvas y (down) takes -angle, as in hairFollowPoint
+				val dx = shiftX?.invoke(x, ax) ?: 0f
+				val dy = shiftY?.invoke(y, -ay) ?: 0f
+				(inParent.left + u * inParent.width + dx / parentFrame.width.coerceAtLeast(1f)) to
+					(inParent.top + v * inParent.height + dy / parentFrame.height.coerceAtLeast(1f))
+			}
+			added += Deformer.Warp(turnWarpId(layer), "Turn depth: $name", parentId, parent.partId, rows, columns, true, grid) to frame
+		}
+		return TurnRig(added, reparent)
+	}
+
+	// ---- Layerloom patch: glue any layer to any layer -------------------------------------------------------------
+	private fun glueWarpId(layer: ClassifiedLayer): DeformerId =
+		DeformerId("DeformGlue" + layer.source.name.filter { it.isLetterOrDigit() }.replaceFirstChar { it.uppercase() })
+
+	/** Pendulum-driven parameters: a target's sway on these is left out of a glued layer's free part. */
+	private fun isSwayParameter(id: ParameterId) =
+		id == StandardParameters.HAIR_FRONT || id == StandardParameters.HAIR_BACK || id.raw.startsWith("ParamSwing")
+
+	/** 1 = glued (moves exactly with the target), 0 = free; smoothstep across the band. [v] = 0 at the layer's top. */
+	internal fun glueWeight(v: Float, glue: LayerGlue): Float {
+		val from = minOf(glue.from, glue.to); val to = maxOf(glue.from, glue.to)
+		val above = when {
+			v <= from -> 1f
+			v >= to || to - from < 1e-4f -> 0f
+			else -> { val t = (v - from) / (to - from); 1f - t * t * (3f - 2f * t) }
+		}
+		return if (glue.glueTop) above else 1f - above
+	}
+
+	/** Bilinear point of a warp lattice at normalized (u, v); outside the lattice the edge cells extrapolate. */
+	private fun latticePoint(points: FloatArray, rows: Int, columns: Int, u: Float, v: Float): Pair<Float, Float> {
+		val cx = u * columns; val cy = v * rows
+		val col = kotlin.math.floor(cx).toInt().coerceIn(0, columns - 1); val row = kotlin.math.floor(cy).toInt().coerceIn(0, rows - 1)
+		val s = cx - col; val t = cy - row
+		fun p(r: Int, c: Int, k: Int) = points[(r * (columns + 1) + c) * 2 + k]
+		fun mix(k: Int) = (1 - s) * (1 - t) * p(row, col, k) + s * (1 - t) * p(row, col + 1, k) +
+			(1 - s) * t * p(row + 1, col, k) + s * t * p(row + 1, col + 1, k)
+		return mix(0) to mix(1)
+	}
+
+	/**
+	 * One warp per glued layer, hung beside its target's warp (same parent, same keyform axes). Each lattice point is
+	 * where the target's warp puts that spot: glued rows take every keyform as is; free rows take the keyform with the
+	 * target's sway parameters at rest, so they follow the target's head/body motion but not its swing.
+	 */
+	private fun glueWarps(context: RigContext, rigLayerById: Map<String, ClassifiedLayer>, config: PipelineConfig): List<Pair<Deformer.Warp, Bounds>> {
+		val byName = context.analysis.layers.filter { it.opaquePixels > 0 }.associateBy { it.source.name }
+		val warps = context.deformers.filterIsInstance<Deformer.Warp>().associateBy { it.id.raw }
+		return config.layerGlues.mapNotNull { (name, glue) ->
+			val layer = byName[name] ?: return@mapNotNull null.also { System.err.println("Warning: glue: no layer named \"$name\"") }
+			val target = byName[glue.target] ?: return@mapNotNull null.also { System.err.println("Warning: glue: \"$name\" -> no layer named \"${glue.target}\"") }
+			if (target.source.name in config.layerGlues || target === layer) {
+				System.err.println("Warning: glue: \"$name\" can't glue to \"${glue.target}\" (itself glued)"); return@mapNotNull null
+			}
+			val (targetParent, targetFrame) = context.parentAndFrame(target, config)
+			val warp = targetParent?.let { warps[it.raw] }
+			val grid = warp?.geometryGrid
+			if (warp == null || grid == null) {
+				System.err.println("Warning: glue: \"${glue.target}\" isn't under a warp; \"$name\" left as it was"); return@mapNotNull null
+			}
+			val raw = rigLayerById.getValue(layer.source.id.raw).bounds
+			val frame = hairAnchorFrame(raw)
+			val rest = grid.axes.map { axis -> axis.keys.indices.minBy { kotlin.math.abs(axis.keys[it]) } }
+			val rows = if (glue.horizontal) 3 else 8; val columns = if (glue.horizontal) 8 else 3
+			val cells = grid.cells.map { cell ->
+				val freeAt = IntArray(cell.coordinate.size) { a -> if (isSwayParameter(grid.axes[a].parameterId)) rest[a] else cell.coordinate[a] }
+				val freeForm = grid.cellsByLinearIndex[grid.linearIndexOf(freeAt)]?.form ?: cell.form
+				val points = FloatArray((rows + 1) * (columns + 1) * 2)
+				var i = 0
+				for (r in 0..rows) for (c in 0..columns) {
+					val y = frame.top + r.toFloat() / rows * frame.height
+					val u = normalizeX(frame.left + c.toFloat() / columns * frame.width, targetFrame); val v = normalizeY(y, targetFrame)
+					val x = frame.left + c.toFloat() / columns * frame.width
+					val along = if (glue.horizontal) (x - raw.left) / raw.width.coerceAtLeast(1f) else (y - raw.top) / raw.height.coerceAtLeast(1f)
+					val g = glueWeight(along, glue)
+					val (gx, gy) = latticePoint(cell.form.controlPoints, warp.rows, warp.columns, u, v)
+					val (fx, fy) = latticePoint(freeForm.controlPoints, warp.rows, warp.columns, u, v)
+					points[i++] = fx + g * (gx - fx); points[i++] = fy + g * (gy - fy)
+				}
+				KeyformCell(cell.coordinate.copyOf(), WarpLatticeForm(points))
+			}
+			Deformer.Warp(glueWarpId(layer), "Glue: $name to ${glue.target}", warp.parent, warp.partId, rows, columns, true,
+				KeyformGrid(grid.axes, cells)) to frame
+		}
+	}
+
 
 	/**
 	 * What a rig derives from its mesh-framed analysis before any mesh: the frames, the face rig, the body's
@@ -463,7 +685,9 @@ object RigBuilder {
 		val face = (faceCandidates.map { it.bounds } + faceRig.face)
 			.reduce(Bounds::union)
 			.expanded(0.025f)
-		val frontHairCandidates = layoutRigLayers.filter { it.semantic.tag == SemanticTag.FRONT_HAIR && it.opaquePixels > 0 }
+		val frontHairCandidates = layoutRigLayers.filter { it.semantic.tag == SemanticTag.FRONT_HAIR && it.opaquePixels > 0 &&
+			// Layerloom patch: pinned-top and glued pieces would widen the bangs' head-turn bulge
+			config.hairAnchors[it.source.name]?.pinTop != true && it.source.name !in config.layerGlues }
 		val backHairCandidates = layoutRigLayers.filter { it.semantic.tag == SemanticTag.BACK_HAIR && it.opaquePixels > 0 }
 		val frontHair = frontHairCandidates.map { it.bounds }.takeIf { it.isNotEmpty() }?.reduce(Bounds::union)?.expanded(0.04f)
 		val backHair = backHairCandidates.map { it.bounds }.takeIf { it.isNotEmpty() }?.reduce(Bounds::union)?.expanded(0.04f)
@@ -506,6 +730,13 @@ object RigBuilder {
 			frameByDeformer[backHairPhysicsWarpId.raw] = it
 		}
 		frameByDeformer.putAll(deformerResult.pairFrames)
+		// Layerloom patch: the anchor warps' frames (the warps themselves come from buildDeformers).
+		if (deformersEnabled && backHair != null) {
+			for (layer in analysis.layers) if (isAnchoredHair(layer, config) && layer.opaquePixels > 0 &&
+				(frontHair != null || config.hairAnchors.getValue(layer.source.name).pinTop)) {
+				frameByDeformer[hairAnchorWarpId(layer).raw] = hairAnchorFrame(rigLayerById.getValue(layer.source.id.raw).bounds)
+			}
+		}
 		return Scaffold(character, head, face, frontHair, backHair, faceRig, deformersEnabled, stance, bodyFrame, deformerResult, frameByDeformer)
 	}
 
@@ -531,7 +762,9 @@ object RigBuilder {
 		meshFillAlgorithm = config.meshFillAlgorithm, meshSuppressBoundaryDiagonals = config.meshSuppressBoundaryDiagonals,
 		meshFillParameters = config.meshFillParameters, meshUnits = config.meshUnits, meshTrace = config.meshTrace, meshWrap = config.meshWrap,
 		alphaThreshold = config.alphaThreshold, headTurnStrength = config.headTurnStrength, bodyStrength = config.bodyStrength, rigTuning = config.rigTuning,
-		meshOnly = config.meshOnly, generateDeformers = config.generateDeformers, featureDisplacementEnabled = config.featureDisplacementEnabled,
+		meshOnly = config.meshOnly, generateDeformers = config.generateDeformers,
+		// Layerloom patch: the hair anchors and hair turn depths shape the deformers built in buildDeformers
+		hairAnchors = config.hairAnchors, hairTurnDepth = config.hairTurnDepth, hairTurnDepthY = config.hairTurnDepthY, featureDisplacementEnabled = config.featureDisplacementEnabled,
 		mouthOutlineEnabled = config.mouthOutlineEnabled, mouthShape = config.mouthShape, mouthCurve = config.mouthCurve,
 		mouthColor = config.mouthColor, mouthThickness = config.mouthThickness,
 		hairSimulationFront = config.hairSimulationFront, hairSimulationBack = config.hairSimulationBack, runtimeTarget = config.runtimeTarget,
@@ -2052,6 +2285,10 @@ object RigBuilder {
 		yawParallax: Float,
 		pitchParallax: Float,
 		yawPerspective: Float = 0f,
+		turnDepth: Float = 0f,
+		turnRadius: Float = 0.5f,
+		turnDepthY: Float = 0f,
+		turnRadiusY: Float = 0.5f,
 	): Pair<Float, Float> {
 		val yaw = angleX / 45f
 		val pitch = angleY / 30f
@@ -2060,8 +2297,13 @@ object RigBuilder {
 		// turning signed pitch into a global height scale.
 		val pitchDepthWeight = 0.78f + sin(PI * v).toFloat().coerceAtLeast(0f) * 0.22f
 		val uPerspective = u + yaw * yawPerspective * 4f * u * (1f - u)
-		return (inHead.left + uPerspective * inHead.width + yaw * yawParallax * yawDepthWeight) to
-			(inHead.top + v * inHead.height + pitch * pitchParallax * pitchDepthWeight)
+		var x = inHead.left + uPerspective * inHead.width
+		if (turnDepth > 0f) x = cylinderTurn(x, angleX, turnDepth, 0.5f, turnRadius, inHead.left, inHead.left + inHead.width)
+		var y = inHead.top + v * inHead.height
+		// up/down on a cylinder lying on its side: looking up (+AngleY) turns the surface up, so canvas y (down) gets -angle
+		if (turnDepthY > 0f) y = cylinderTurn(y, -angleY, turnDepthY, 0.5f, turnRadiusY, inHead.top, inHead.top + inHead.height)
+		return (x + yaw * yawParallax * yawDepthWeight) to
+			(y + pitch * pitchParallax * pitchDepthWeight)
 	}
 
 	internal fun hairPhysicsPoint(
@@ -2246,6 +2488,8 @@ object RigBuilder {
 				-config.rigTuning.frontHairTurn / 100f,
 				-config.rigTuning.frontHairTilt / 100f,
 				yawPerspective = config.rigTuning.frontHairPerspective / 100f,
+				turnDepth = config.hairTurnDepth,
+				turnDepthY = config.hairTurnDepthY,
 			)
 			deformers += hairPhysicsWarp(
 				frontHairPhysicsWarpId,
@@ -2261,7 +2505,8 @@ object RigBuilder {
 		}
 		backHair?.let { frame ->
 			deformers += hairFollowWarp(backHairFollowWarpId, tr("model.deformer.backHairFollow"), frame, head, backHairPartId,
-				-config.rigTuning.backHairTurn / 100f, -config.rigTuning.backHairTilt / 100f)
+				-config.rigTuning.backHairTurn / 100f, -config.rigTuning.backHairTilt / 100f,
+				turnDepth = config.hairTurnDepth, turnDepthY = config.hairTurnDepthY)
 			deformers += hairPhysicsWarp(
 				backHairPhysicsWarpId,
 				tr("model.deformer.backHairPhysics"),
@@ -2273,6 +2518,14 @@ object RigBuilder {
 				swayRatio = config.rigTuning.backHairSway / 100f,
 				curlRatio = config.rigTuning.backHairCurl / 100f,
 			)
+		}
+		// Layerloom patch: one anchor warp per anchored front-hair layer (needs both hair frames).
+		if (backHair != null) {
+			for (layer in analysis.layers) if (isAnchoredHair(layer, config) && layer.opaquePixels > 0 &&
+				(frontHair != null || config.hairAnchors.getValue(layer.source.name).pinTop)) {
+				deformers += hairAnchorWarp(layer, rigLayerById.getValue(layer.source.id.raw).bounds, config.hairAnchors.getValue(layer.source.name),
+					head, frontHair, backHair, frontHairPartId, config.hairTurnDepth, config.hairTurnDepthY, config.rigTuning)
+			}
 		}
 
 		val usedDeformerIds = deformers.map { it.id.raw }.toMutableSet()
@@ -2584,6 +2837,123 @@ object RigBuilder {
 	}
 
 	/** Head-angle following for one hair depth plane; deliberately independent of the face warp. */
+	// ---- Layerloom patch: hair anchors ----------------------------------------------------------------------------
+	// A long front-hair piece (a side lock) hangs beside the back hair but rides the front-hair warp, so on head turns
+	// it drifts away from the back hair. An anchored piece instead hangs UNDER the back hair's physics warp (so its
+	// bottom moves exactly with the back hair, swing included) and its upper rows get back the difference between the
+	// front-hair and back-hair follow, fading to nothing across the anchor band.
+	// The hair follow numbers as buildDeformers uses them (upstream made them rig tuning; 1.6.0 had them as constants).
+	private fun frontHairYaw(t: RigTuning) = -t.frontHairTurn / 100f
+	private fun frontHairPitch(t: RigTuning) = -t.frontHairTilt / 100f
+	private fun frontHairPerspective(t: RigTuning) = t.frontHairPerspective / 100f
+	private fun backHairYaw(t: RigTuning) = -t.backHairTurn / 100f
+	private fun backHairPitch(t: RigTuning) = -t.backHairTilt / 100f
+
+	private fun isAnchoredHair(layer: ClassifiedLayer, config: PipelineConfig): Boolean =
+		layer.semantic.tag == SemanticTag.FRONT_HAIR && config.hairAnchors.containsKey(layer.source.name)
+
+	private fun hairAnchorWarpId(layer: ClassifiedLayer): DeformerId =
+		DeformerId("DeformHairAnchor" + layer.source.name.filter { it.isLetterOrDigit() }.replaceFirstChar { it.uppercase() })
+
+	private fun hairAnchorFrame(bounds: Bounds): Bounds = bounds.expanded(0.04f)
+
+	internal fun hairAnchorWeight(v: Float, anchor: HairAnchor): Float {
+		val from = minOf(anchor.from, anchor.to); val to = maxOf(anchor.from, anchor.to)
+		val frontAbove = when {
+			v <= from -> 1f
+			v >= to || to - from < 1e-4f -> 0f
+			else -> { val t = (v - from) / (to - from); 1f - t * t * (3f - 2f * t) } // smoothstep across the band
+		}
+		// 1 = moves as front hair, 0 = stuck to the back hair. Default pins the bottom; pinTop pins the top.
+		return if (anchor.pinTop) 1f - frontAbove else frontAbove
+	}
+
+	private fun hairAnchorWarp(
+		layer: ClassifiedLayer,
+		raw: Bounds,
+		anchor: HairAnchor,
+		head: Bounds,
+		frontHair: Bounds?,
+		backHair: Bounds,
+		part: PartId,
+		turnDepth: Float = 0f,
+		turnDepthY: Float = 0f,
+		tuning: RigTuning = RigTuning(),
+	): Deformer.Warp = if (anchor.pinTop) hairGlueWarp(layer, raw, anchor, backHair, part, tuning)
+		else hairPinBottomWarp(layer, raw, anchor, head, frontHair!!, backHair, part, turnDepth, turnDepthY, tuning)
+
+	// Glue the top (Emma, 2026-10-07): "the front part glued to the back part as far as the top of the head goes, and
+	// below that they sway freely, not picking up each other's sway". The piece hangs under the BACK hair's follow warp,
+	// so on head turns all of it stays where the back hair is (the free part hangs from the glued part). Swing is keyed
+	// here: the glued rows take the back hair's swing (ParamHairBack) exactly, fading out across the band; below it the
+	// piece swings on its own (ParamHairFront), pivoting at the glue line, and never sees the back hair's swing.
+	private fun hairGlueWarp(layer: ClassifiedLayer, raw: Bounds, anchor: HairAnchor, backHair: Bounds, part: PartId, tuning: RigTuning): Deformer.Warp {
+		val frame = hairAnchorFrame(raw)
+		val inParent = mapBounds(frame, backHair)
+		val glueEnd = maxOf(anchor.from, anchor.to).coerceIn(0f, 0.95f)
+		// Same swing as the back hair's physics warp (the rig tuning's back hair sway and curl).
+		val backScale = minOf(backHair.width, backHair.height).coerceAtLeast(1f)
+		val backSway = backScale / backHair.width.coerceAtLeast(1f) * (tuning.backHairSway / 100f)
+		val backCurl = backScale / backHair.height.coerceAtLeast(1f) * (tuning.backHairCurl / 100f)
+		// The free part's own swing, sized like the front hair's (front hair sway and curl) on the hanging length.
+		val freeScale = minOf(raw.width, raw.height * (1f - glueEnd)).coerceAtLeast(1f)
+		val rows = 8
+		val axes = listOf(axis(StandardParameters.HAIR_BACK, -1f, 0f, 1f), axis(StandardParameters.HAIR_FRONT, -1f, 0f, 1f))
+		val grid = warpGrid(axes, 3, rows) { u, v, values ->
+			val x = frame.left + u * frame.width
+			val y = frame.top + v * frame.height
+			val ub = normalizeX(x, backHair); val vb = normalizeY(y, backHair)
+			val own = (y - raw.top) / raw.height.coerceAtLeast(1f)
+			val glued = 1f - hairAnchorWeight(own, anchor) // 1 = glued to the back hair
+			val (bu, bv) = hairPhysicsPoint(ub, vb, values[0], backSway, backCurl)
+			val t = ((own - glueEnd) / (1f - glueEnd)).coerceIn(0f, 1f)
+			val tip = t * t * t
+			val freeX = values[1] * (tuning.frontHairSway / 100f) * freeScale * tip / backHair.width.coerceAtLeast(1f)
+			val freeY = -values[1] * values[1] * (tuning.frontHairCurl / 100f) * freeScale * tip / backHair.height.coerceAtLeast(1f)
+			(inParent.left + u * inParent.width + glued * (bu - ub) + freeX) to
+				(inParent.top + v * inParent.height + glued * (bv - vb) + freeY)
+		}
+		return Deformer.Warp(hairAnchorWarpId(layer), "Hair glue: ${layer.source.name}", backHairFollowWarpId, part, rows, 3, true, grid)
+	}
+
+	// Glue the tips: hang under the BACK hair's swing (tips move with it); add the front-vs-back follow difference
+	// back where the piece is still front hair (the top).
+	private fun hairPinBottomWarp(
+		layer: ClassifiedLayer,
+		raw: Bounds,
+		anchor: HairAnchor,
+		head: Bounds,
+		frontHair: Bounds,
+		backHair: Bounds,
+		part: PartId,
+		turnDepth: Float = 0f,
+		turnDepthY: Float = 0f,
+		tuning: RigTuning = RigTuning(),
+	): Deformer.Warp {
+		val parentFrame = backHair
+		val frame = hairAnchorFrame(raw)
+		val inParent = mapBounds(frame, parentFrame)
+		val frontInHead = mapBounds(frontHair, head)
+		val backInHead = mapBounds(backHair, head)
+		val rows = 8
+		val grid = warpGrid(ninePoseAxes(), 3, rows) { u, v, values ->
+			val x = frame.left + u * frame.width
+			val y = frame.top + v * frame.height
+			val uf = normalizeX(x, frontHair); val vf = normalizeY(y, frontHair)
+			val ub = normalizeX(x, backHair); val vb = normalizeY(y, backHair)
+			val front = hairFollowPoint(frontInHead, uf, vf, values[0], values[1], frontHairYaw(tuning), frontHairPitch(tuning), frontHairPerspective(tuning), turnDepth, turnRadius(frontInHead), turnDepthY, turnRadiusY(frontInHead))
+			val front0 = hairFollowPoint(frontInHead, uf, vf, 0f, 0f, frontHairYaw(tuning), frontHairPitch(tuning), frontHairPerspective(tuning), turnDepth, turnRadius(frontInHead), turnDepthY, turnRadiusY(frontInHead))
+			val back = hairFollowPoint(backInHead, ub, vb, values[0], values[1], backHairYaw(tuning), backHairPitch(tuning), 0f, turnDepth, turnRadius(backInHead), turnDepthY, turnRadiusY(backInHead))
+			val back0 = hairFollowPoint(backInHead, ub, vb, 0f, 0f, backHairYaw(tuning), backHairPitch(tuning), 0f, turnDepth, turnRadius(backInHead), turnDepthY, turnRadiusY(backInHead))
+			// front-minus-back follow, head-normalized -> canvas px -> the parent frame this warp is expressed in
+			val fbx = ((front.first - front0.first) - (back.first - back0.first)) * head.width / parentFrame.width.coerceAtLeast(1f)
+			val fby = ((front.second - front0.second) - (back.second - back0.second)) * head.height / parentFrame.height.coerceAtLeast(1f)
+			val frontness = hairAnchorWeight((y - raw.top) / raw.height.coerceAtLeast(1f), anchor)
+			(inParent.left + u * inParent.width + frontness * fbx) to (inParent.top + v * inParent.height + frontness * fby)
+		}
+		return Deformer.Warp(hairAnchorWarpId(layer), "Hair anchor: ${layer.source.name}", backHairPhysicsWarpId, part, rows, 3, true, grid)
+	}
+
 	private fun hairFollowWarp(
 		id: DeformerId,
 		name: String,
@@ -2593,17 +2963,52 @@ object RigBuilder {
 		yawParallax: Float,
 		pitchParallax: Float,
 		yawPerspective: Float = 0f,
+		turnDepth: Float = 0f,
+		turnDepthY: Float = 0f,
 	): Deformer.Warp {
 		val inHead = mapBounds(frame, head)
+		val radius = turnRadius(inHead); val radiusY = turnRadiusY(inHead)
+		// a smooth squeeze across the width (or height) needs more than 3 columns (4 rows)
+		val columns = if (turnDepth > 0f) 10 else 3
+		val rows = if (turnDepthY > 0f) 10 else 4
 		val grid = warpGrid(
 			ninePoseAxes(),
-			3,
-			4,
+			columns,
+			rows,
 		) { u, v, values ->
-			hairFollowPoint(inHead, u, v, values[0], values[1], yawParallax, pitchParallax, yawPerspective)
+			hairFollowPoint(inHead, u, v, values[0], values[1], yawParallax, pitchParallax, yawPerspective, turnDepth, radius, turnDepthY, radiusY)
 		}
-		return Deformer.Warp(id, name, headWarpId, part, 4, 3, true, grid)
+		return Deformer.Warp(id, name, headWarpId, part, rows, columns, true, grid)
 	}
+
+	/** Layerloom patch: the up/down cylinder reaches just past this frame's farther edge (head space). */
+	private fun turnRadiusY(inHead: Bounds): Float =
+		(maxOf(kotlin.math.abs(inHead.top - 0.5f), kotlin.math.abs(inHead.top + inHead.height - 0.5f)) * 1.02f).coerceAtLeast(0.5f)
+
+	/**
+	 * Layerloom patch: [x] on a cylinder round [centre] (radius [radius]) turned by depth × 0.5 × angleX degrees: the
+	 * side turning away squeezes, the near side widens; past the far silhouette points pile up (out of view). PSD2Live
+	 * keeps a turn warp's overall width (RigIntegrityValidator), so positions are rescaled to [left]..[right] and
+	 * [centre] is held where it was: only the spacing inside changes. A negative depth turns the other way (used to
+	 * take back some of a turn a piece already rides).
+	 */
+	internal fun cylinderTurn(x: Float, angleX: Float, depth: Float, centre: Float, radius: Float, left: Float, right: Float): Float {
+		if (depth == 0f || angleX == 0f || radius <= 0f) return x
+		val theta = Math.toRadians((depth * 0.5f * angleX).toDouble())
+		fun cylinder(at: Float): Double {
+			val phi = asin(((at - centre) / radius).coerceIn(-1f, 1f).toDouble())
+			return sin((phi + theta).coerceIn(-PI / 2, PI / 2))
+		}
+		val cl = cylinder(left); val cr = cylinder(right)
+		if (cr - cl <= 1e-6) return x
+		val scale = (right - left) / (cr - cl)
+		val held = left + (cylinder(centre) - cl) * scale
+		return (left + (cylinder(x) - cl) * scale - (held - centre)).toFloat()
+	}
+
+	/** Layerloom patch: the cylinder the hair turns on reaches just past this frame's farther side (head space). */
+	private fun turnRadius(inHead: Bounds): Float =
+		(maxOf(kotlin.math.abs(inHead.left - 0.5f), kotlin.math.abs(inHead.left + inHead.width - 0.5f)) * 1.02f).coerceAtLeast(0.5f)
 
 	/**
 	 * StretchyStudio/Hiyori-style hair-tip warp.  The root row is pinned exactly; cubic falloff

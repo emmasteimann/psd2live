@@ -137,8 +137,9 @@ internal fun toolOptions(editor: CanvasEditor): List<ToolOption> = buildList {
         else -> Unit
     }
     when (editor.hierarchyMode) {
-        EditHierarchyMode.SELECT -> addObjectMode(editor)
-        EditHierarchyMode.DEFORM, EditHierarchyMode.EDIT -> addPointModes(editor)
+        EditHierarchyMode.SELECT -> { addObjectMode(editor); addFormActions() }
+        EditHierarchyMode.DEFORM -> { addPointModes(editor); addFormActions() }
+        EditHierarchyMode.EDIT -> addPointModes(editor)
         EditHierarchyMode.SIMULATE -> addSimulate(editor)
         EditHierarchyMode.SKELETON -> addSkeleton(editor)
         EditHierarchyMode.PAINT -> addPaint(editor)
@@ -295,6 +296,14 @@ private fun MutableList<ToolOption>.addObjectMode(editor: CanvasEditor) {
         add(ActionOption("object.swing", "swing.menu", { it.editable }, { it.viewModel.beginSwing(it.swingTargets()) },
             OptionIcon.SWING, place = OptionPlace.MENU))
     }
+}
+
+/** Layerloom patch (ONE-APP-PLAN S4.2): Cubism's Copy Form / Paste Form / Paste Inverted on the object in hand. */
+private fun MutableList<ToolOption>.addFormActions() {
+    add(SectionOption("form", "editor.form", OptionPlace.MENU, submenu = true, icon = OptionIcon.DUPLICATE))
+    add(ActionOption("form.copy", "editor.form.copy", { it.target() != null }, { it.copyForm() }, place = OptionPlace.MENU))
+    add(ActionOption("form.paste", "editor.form.paste", { it.canPasteForm(false) }, { it.pasteForm(false) }, place = OptionPlace.MENU))
+    add(ActionOption("form.pasteInverted", "editor.form.pasteInverted", { it.canPasteForm(true) }, { it.pasteForm(true) }, place = OptionPlace.MENU))
 }
 
 /** The tree's place-then-confirm create on the mesh in hand, the same entry as the hierarchy tree's Add menu. */

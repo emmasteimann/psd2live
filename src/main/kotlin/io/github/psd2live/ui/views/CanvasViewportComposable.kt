@@ -684,6 +684,9 @@ fun CanvasViewportComposable(
 		if (editor.busy || canvasState.workspaceEditBusy) return true
 		return when (action) {
 			ShortcutAction.SELECT_ALL -> { editor.selectAll(); true }
+			ShortcutAction.FORM_COPY -> { editor.copyForm(); true }
+			ShortcutAction.FORM_PASTE -> { editor.pasteForm(false); true }
+			ShortcutAction.FORM_PASTE_INVERTED -> { editor.pasteForm(true); true }
 			ShortcutAction.INVERT_SELECTION -> { editor.selectAll(true); true }
 			ShortcutAction.TOOL_SELECT -> { editor.activateTool(CanvasTool.SELECT); true }
 			ShortcutAction.TOOL_TRANSFORM -> { editor.activateTool(CanvasTool.TRANSFORM); true }

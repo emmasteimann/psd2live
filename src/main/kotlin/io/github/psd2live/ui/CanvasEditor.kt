@@ -3134,6 +3134,48 @@ internal class CanvasEditor(
 		commit(RigBezierJournal.prepare(model, state.previewModel?.config?.rigEdits ?: state.rigEdits, "reset", bezierRequest(t)))
 	}
 
+	// Layerloom patch (ONE-APP-PLAN S4.2): Copy Form, Paste Form and Paste Inverted, as Cubism's keyform utilities.
+
+	/** The selected object's form at the default pose: what a form's offsets are measured from. */
+	private fun restForm(t: CanvasTarget): FloatArray =
+		RigGeometryTools.geometry(model, t.kind, t.id, model.parameters.associate { it.id.raw to it.default }).points
+
+	/** Remembers the selected object's form as it shows now (any pose), for [pasteForm]. */
+	fun copyForm(): Boolean {
+		val t = target() ?: return false
+		val rest = restForm(t)
+		FormClipboard.form = CopiedForm(t.kind, t.id, t.geometry.points.copyOf(), rest, t.mapping.localToWorld(rest))
+		return true
+	}
+
+	fun canPasteForm(inverted: Boolean): Boolean {
+		val form = FormClipboard.form ?: return false
+		val t = target() ?: return false
+		return editable && !busy && t.kind == form.kind && (inverted || t.kind == "rotation" || t.count * 2 == form.points.size)
+	}
+
+	/**
+	 * The copied form on the selected object at the current key, committed as dragging every point there would be.
+	 * Each point keeps its offset from the default pose. [inverted] mirrors it left to right first: a point takes the
+	 * offset of the copied point whose rest position mirrors nearest to its own, with x reversed. On the same object
+	 * the mirror line is the object's own centre (AngleX +30 to -30); onto another object, the model's centre line
+	 * (the skeleton's symmetry axis, else the canvas centre), as left eye to right eye.
+	 */
+	fun pasteForm(inverted: Boolean): Boolean {
+		if (!canPasteForm(inverted)) return false
+		val form = FormClipboard.form ?: return false
+		val t = target() ?: return false
+		val rest = restForm(t)
+		val sameObject = form.kind == t.kind && form.id == t.id
+		val axis = (state.previewModel?.config?.rigEdits ?: state.rigEdits).skeleton?.symmetryAxisX ?: (model.canvasWidth / 2f)
+		val points = io.github.psd2live.core.FormPaste.points(t.kind, form.points, form.rest, form.restWorld, rest,
+			if (inverted && t.kind != "rotation") t.mapping.localToWorld(rest) else rest, inverted, if (sameObject) null else axis)
+		clearHover(); gestureState = null
+		// Always a deformation of the current key, whatever the canvas mode: never the mesh's rest structure.
+		commit(canvasGeometryCommand(EditHierarchyMode.DEFORM, t.kind, t.id, coordinate(t), points))
+		return true
+	}
+
     fun clearHover() {
         cursor = null
         altHeld = false
@@ -5865,3 +5907,9 @@ internal fun insidePolygon(p: Offset, polygon: List<Offset>): Boolean {
     }
     return inside
 }
+
+/** Layerloom patch: a copied form: its points and its default-pose points (local), and those at rest in canvas space. */
+internal class CopiedForm(val kind: String, val id: String, val points: FloatArray, val rest: FloatArray, val restWorld: FloatArray)
+
+/** One form clipboard for every canvas, as Cubism has. */
+internal object FormClipboard { @Volatile var form: CopiedForm? = null }

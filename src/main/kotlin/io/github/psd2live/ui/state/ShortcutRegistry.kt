@@ -143,6 +143,10 @@ enum class ShortcutAction(
 
     // Canvas editing
     SELECT_ALL(ShortcutCategory.CANVAS_EDIT, "shortcut.selectAll"),
+    // Layerloom patch: Cubism's form utilities.
+    FORM_COPY(ShortcutCategory.CANVAS_EDIT, "editor.form.copy"),
+    FORM_PASTE(ShortcutCategory.CANVAS_EDIT, "editor.form.paste"),
+    FORM_PASTE_INVERTED(ShortcutCategory.CANVAS_EDIT, "editor.form.pasteInverted"),
     INVERT_SELECTION(ShortcutCategory.CANVAS_EDIT, "help.shortcuts.invertSelection"),
     SELECTION_STYLE_BOX(ShortcutCategory.CANVAS_EDIT, "shortcut.selectionBox"),
     SELECTION_STYLE_LASSO(ShortcutCategory.CANVAS_EDIT, "shortcut.selectionLasso"),
@@ -315,6 +319,9 @@ private val PS_DEFAULTS: Map<ShortcutAction, List<KeyBinding>> = mapOf(
     ShortcutAction.PICK_OPTION_5 to keys("5", "NumPad5"),
 
     ShortcutAction.SELECT_ALL to keys("Ctrl+A"),
+    ShortcutAction.FORM_COPY to keys("Ctrl+Alt+C"),
+    ShortcutAction.FORM_PASTE to keys("Ctrl+Alt+V"),
+    ShortcutAction.FORM_PASTE_INVERTED to keys("Ctrl+Alt+Shift+V"),
     ShortcutAction.INVERT_SELECTION to keys("Ctrl+I"),
     ShortcutAction.SELECTION_STYLE_BOX to keys("Q"),
     ShortcutAction.SELECTION_STYLE_LASSO to keys("Shift+Q"),

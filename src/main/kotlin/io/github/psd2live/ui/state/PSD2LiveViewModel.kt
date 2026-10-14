@@ -3625,6 +3625,62 @@ class PSD2LiveViewModel : AutoCloseable {
 		}
 	}
 
+	// Layerloom patch (ONE-APP-PLAN S4.1): authored expressions, edited as whole expressions through the document.
+	val expressions: List<io.github.psd2live.core.ExpressionEdit> get() = _state.value.rigEdits.expressions
+
+	/** Creates or replaces [expression] (one history step); [completed] runs once it's saved. */
+	fun putExpression(expression: io.github.psd2live.core.ExpressionEdit, completed: () -> Unit = {}) =
+		saveExpressionOperations(listOf("put" to kotlinx.serialization.json.buildJsonObject {
+			put("expression", io.github.psd2live.core.Expressions.toJson(expression)) }), completed)
+
+	fun deleteExpression(id: String) {
+		if (expressions.none { it.id == id }) return
+		saveExpressionOperations(listOf("delete" to kotlinx.serialization.json.buildJsonObject { put("id", id) }))
+	}
+
+	/** A new expression holding the pose as it is now (each parameter away from its default, overwritten). */
+	fun createExpression(name: String, completed: (String) -> Unit = {}) {
+		val id = io.github.psd2live.core.Expressions.newId(expressions)
+		putExpression(io.github.psd2live.core.ExpressionEdit(id, io.github.psd2live.core.Expressions.uniqueName(expressions, name),
+			entries = capturedExpressionEntries())) { completed(id) }
+	}
+
+	/** The standard smile, sad, angry and surprised as editable expressions, added after the project's own. */
+	fun addStarterExpressions() {
+		val puppet = _state.value.previewModel?.rig?.puppet ?: return
+		val added = io.github.psd2live.core.Expressions.starters(puppet, expressions).drop(expressions.size)
+		if (added.isEmpty()) return
+		saveExpressionOperations(added.map { e -> "put" to kotlinx.serialization.json.buildJsonObject {
+			put("expression", io.github.psd2live.core.Expressions.toJson(e)) } })
+	}
+
+	/** The current pose as Overwrite entries: every parameter that isn't at its default. */
+	fun capturedExpressionEntries(): List<io.github.psd2live.core.ExpressionEntry> {
+		val current = _state.value
+		val parameters = current.previewModel?.rig?.puppet?.parameters.orEmpty()
+		return parameters.mapNotNull { p ->
+			val value = current.parameterValues[p.id] ?: return@mapNotNull null
+			if (kotlin.math.abs(value - p.default) < 1e-3f) null
+			else io.github.psd2live.core.ExpressionEntry(p.id.raw, io.github.psd2live.format.model.ExpressionBlend.OVERWRITE, value)
+		}
+	}
+
+	/** Shows [entries] over the default pose, as a runtime plays the expression on a neutral face. */
+	fun previewExpression(entries: List<io.github.psd2live.core.ExpressionEntry>) {
+		val parameters = _state.value.previewModel?.rig?.puppet?.parameters ?: return
+		val defaults = parameters.associate { it.id.raw to it.default }
+		val applied = io.github.psd2live.core.Expressions.apply(defaults, entries, parameters.associate { it.id.raw to (it.min..it.max) })
+		setParameterValues(parameters.associate { it.id to (applied[it.id.raw] ?: it.default) })
+	}
+
+	private fun saveExpressionOperations(operations: List<Pair<String, kotlinx.serialization.json.JsonObject>>, completed: () -> Unit = {}) {
+		val state = currentWorkspaceState() ?: return
+		saveDocumentEdits(state, "Edit expression", operations.map { (mode, fields) ->
+			io.github.psd2live.application.WorkspaceDocumentOperation("expression_$mode", fields) }) { failure ->
+			if (failure == null) completed() else updateState { it.copy(statusText = failure) }
+		}
+	}
+
 	/** A new clip, blank or a copy of a generated motion as it plays now, opened in the editor. */
 	fun createMotionClip(fromBuiltin: String? = null): String {
 		val id = MotionClips.newId(motionClips)

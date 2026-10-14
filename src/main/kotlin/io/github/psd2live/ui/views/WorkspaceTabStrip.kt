@@ -490,6 +490,7 @@ internal fun moduleTitle(id: String): String = when {
 		"inspector" -> "tab.inspector"
 		"animation" -> "tab.animation"
 		"physics" -> "tab.physics"
+		"expressions" -> "tab.expressions"
 		"simulation" -> "tab.simulation"
 		"atlas" -> "dock.atlas"
 		"texture" -> "dock.texture"

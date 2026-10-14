@@ -312,7 +312,8 @@ class DesktopWorkspace(
         val input = Path.of(path)
         val owned = runInterruptible(Dispatchers.IO) { io.github.psd2live.project.OwnedProjectSource.capture(workspaceStore.root, input) }
         val result = sourceImporter.importPsd(owned.path, state.capture?.projectId, state.state, discardUnsaved,
-            state.capture?.document?.rawConfig() ?: current.rawConfig(), sourceAuxiliary = owned.auxiliary) { document, preview, id ->
+            state.capture?.document?.rawConfig() ?: current.rawConfig(), sourceAuxiliary = owned.auxiliary,
+            jobFrom = input.toAbsolutePath().normalize()) { document, preview, id ->
             viewModel.applySourceImport(current, document, preview, input, id)
         }
         finishSourceImport(result)

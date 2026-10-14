@@ -28,11 +28,13 @@ internal class WorkspaceSourceImporter(
     suspend fun importPsd(path: Path, projectId: String?, state: String, discardUnsaved: Boolean = false,
                          initialConfig: PipelineConfig = PipelineConfig(),
                          sourceAuxiliary: JsonObject = JsonObject(emptyMap()),
+                         /** Where the PSD came from, when [path] is the store's own copy: its rig job lies beside the original. */
+                         jobFrom: Path = path,
                          project: (WorkspaceDocument, RigPreviewModel, String) -> Unit = { _, _, _ -> }): WorkspaceCommit<RigPreviewModel> {
         // Layerloom patch: a rig job beside the PSD (NAME.layerloom.json) builds the rig Layerloom asked for: its build
         // inputs go into the project settings, its toggles become layer overrides, and its skeleton and swings
         // become rig edits after the first build (LayerloomJob).
-        val job = runCatching { LayerloomJob.besidePsd(path)?.let(LayerloomJob::read) }
+        val job = runCatching { LayerloomJob.besidePsd(jobFrom)?.let(LayerloomJob::read) }
             .onFailure { System.err.println("Warning: Layerloom job beside ${path.fileName}: ${it.message}") }.getOrNull()
             ?.takeUnless { it.isEmpty }
         return install(projectId, state, discardUnsaved, job?.configure(initialConfig) ?: initialConfig, "Imported PSD ${path.fileName}",

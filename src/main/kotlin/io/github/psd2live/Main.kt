@@ -154,6 +154,8 @@ private fun runGui() {
 	val agentMcp = AgentMcpController(agentWorkspace, observer = viewModel.agentCallObserver)
 	agentMcp.start()
 	viewModel.watchAgentMcp(agentMcp.status)
+	// Layerloom patch: "Open in PSD2Live" requests (ui/state/OpenRequests).
+	io.github.psd2live.ui.state.OpenRequests.watch(viewModel)
 
 	// Both close() calls are idempotent, so the hook (Ctrl+C, SIGTERM, logoff) and the normal exit can race.
 	val shutdown = {

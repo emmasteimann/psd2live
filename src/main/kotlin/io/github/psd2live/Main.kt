@@ -40,11 +40,14 @@ import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.Alignment
 import io.github.psd2live.ui.state.AppSettings
+import io.github.psd2live.ui.components.NativeAppMenuBar
 
 fun main(arguments: Array<String>) {
 	System.setProperty("sun.java2d.uiScale.enabled", "true")
 	// The name macOS shows in the menu bar and Dock instead of the main class; read when AWT starts.
 	System.setProperty("apple.awt.application.name", "Layerloom")
+	// The menus go in the menu bar at the top of the screen, as in every Mac app.
+	System.setProperty("apple.laf.useScreenMenuBar", "true")
 	// Canvases draw on the GPU in Skia's own OpenGL context, so Skia must draw the window with OpenGL.
 	io.github.psd2live.render.SkiaGpu.requestOpenGl()
 	configureLanguage(arguments)
@@ -250,17 +253,36 @@ private fun runGui() {
 			// background to or from transparent replaces the window; windowState keeps its bounds.
 			// A language switch replaces it too: text is read through tr() wherever it is composed,
 			// remembered, or handed to Swing, so only a fresh composition shows none of the old language.
+			val menuSink = remember { if (isMacWindow) io.github.psd2live.ui.components.AppMenuSink() else null }
 			CompositionLocalProvider(LocalWindowExceptionHandlerFactory provides exceptionHandlers) {
 				key(transparent, language) {
+					// On macOS the window keeps its own red-yellow-green buttons, with the app's title bar drawn
+					// underneath them; elsewhere, and for a see-through window, the app draws the whole frame.
+					val nativeChrome = isMacWindow && !transparent
 					Window(
 						onCloseRequest = closeApp,
 						title = tr("app.title"),
 						icon = painterResource("icons/psd2live.png"),
 						state = windowState,
-						undecorated = true,
+						undecorated = !nativeChrome,
 						transparent = transparent,
 					) {
-						androidx.compose.runtime.CompositionLocalProvider(io.github.psd2live.ui.views.LocalAwtWindow provides window) {
+						if (nativeChrome) {
+							remember(window) {
+								window.rootPane.putClientProperty("apple.awt.fullWindowContent", true)
+								window.rootPane.putClientProperty("apple.awt.transparentTitleBar", true)
+								window.rootPane.putClientProperty("apple.awt.windowTitleVisible", false)
+							}
+						}
+						if (menuSink != null) {
+							val keymap by remember { derivedStateOf { viewModel.uiState.value.keymap } }
+							NativeAppMenuBar(menuSink, keymap)
+						}
+						androidx.compose.runtime.CompositionLocalProvider(
+							io.github.psd2live.ui.views.LocalAwtWindow provides window,
+							io.github.psd2live.ui.components.LocalAppMenuSink provides menuSink,
+							io.github.psd2live.ui.views.LocalNativeWindowChrome provides nativeChrome,
+						) {
 							PSD2LiveApp(
 								viewModel = viewModel,
 								window = window,
@@ -402,3 +424,5 @@ internal data class CliOptions(val values: Map<String, String>, val flags: Set<S
 		}
 	}
 }
+
+private val isMacWindow: Boolean = System.getProperty("os.name").orEmpty().lowercase().contains("mac")

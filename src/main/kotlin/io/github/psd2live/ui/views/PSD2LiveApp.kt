@@ -30,6 +30,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.LinearProgressIndicator
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.delay
@@ -488,6 +491,120 @@ fun FrameWindowScope.PSD2LiveApp(
 			}
 		}
 
+		// On macOS the app's commands live in the menu bar at the top of the screen. They are built here, from
+		// the same actions as the in-window menus, and drawn by Main's window (NativeAppMenuBar).
+		val menuSink = io.github.psd2live.ui.components.LocalAppMenuSink.current
+		if (menuSink != null) {
+			val recentForMenu = io.github.psd2live.ui.state.rememberExistingRecentFiles(state.recentFiles)
+			// A dialog or the tour owns the input, as with the keys; opening a file still works from the tour.
+			val menusFree = !modalOpen
+			val canWork = hasInput && !isBusy && menusFree
+			val build = io.github.psd2live.ui.components.appMenus {
+				menu(tr("menu.file")) {
+					item("project.open", tr("project.open"), ShortcutAction.OPEN_PROJECT, !isBusy && (menusFree || tutorial.active)) { onOpenProjectAction() }
+					submenu(tr("menu.file.recent"), enabled = menusFree) {
+						if (recentForMenu.isNullOrEmpty()) {
+							item("recent.none", tr(if (recentForMenu == null) "menu.file.recent.checking" else "menu.file.recent.empty"), enabled = false) {}
+						} else recentForMenu.forEach { file ->
+							item("recent:${file.path}", file.name, enabled = !isBusy) { viewModel.openRecentFile(file.path) }
+						}
+						separator()
+						item("recent.clear", tr("menu.file.recent.clear"), enabled = state.recentFiles.isNotEmpty()) { viewModel.clearRecentFiles() }
+					}
+					item("project.save", tr("project.save"), ShortcutAction.SAVE_PROJECT, hasInput && menusFree) { viewModel.requestProjectSave() }
+					item("project.saveAs", tr("project.saveAs"), ShortcutAction.SAVE_PROJECT_AS, hasInput && menusFree) { viewModel.requestProjectSave(true) }
+					separator()
+					submenu(tr("menu.file.import"), enabled = menusFree || tutorial.active) {
+						item("import.psd", tr("menu.file.openPsd"), ShortcutAction.OPEN_PSD, !isBusy) { onOpenPsdAction() }
+						item("import.cmo3.new", tr("cmo3.new"), enabled = !isBusy && menusFree) {
+							NativeFilePicker.chooseCmo3File(window, state.inputPath)?.let {
+								viewModel.withSavedChanges { viewModel.importCmo3(Path.of(it), io.github.psd2live.core.Cmo3ImportMode.NEW) }
+							}
+						}
+						separator()
+						item("import.cmo3.replace", tr("cmo3.replace"), enabled = !isBusy && menusFree) {
+							NativeFilePicker.chooseCmo3File(window, state.inputPath)?.let {
+								viewModel.importCmo3(Path.of(it), io.github.psd2live.core.Cmo3ImportMode.REPLACE)
+							}
+						}
+						item("import.reanalyze", tr("menu.file.reanalyze"), ShortcutAction.REANALYZE, canWork) { onReanalyzeAction() }
+					}
+					separator()
+					item("export", tr("menu.file.export"), ShortcutAction.GENERATE, canWork) { viewModel.openExportDialog() }
+					submenu(tr("menu.file.exportAs"), enabled = canWork) {
+						io.github.psd2live.ui.components.exportMenuGroups.forEachIndexed { index, (group, targets) ->
+							if (index > 0) separator()
+							header(tr(group))
+							for (target in targets) item("exportAs:$target", tr("export.menu.$target")) { viewModel.openOtherExport(target) }
+						}
+						item("exportAs.sourcePsd", tr("export.menu.sourcePsd"), ShortcutAction.REEXPORT_PSD) { viewModel.openExportPsdDialog() }
+					}
+					item("openOutput", tr("menu.file.openOutput"), enabled = canOpenOutput) { openFolder(state.outputPath) }
+				}
+				menu(tr("menu.view")) {
+					header(tr("menu.view.tabs"))
+					item("tab.new.edit", tr("tab.new.edit"), ShortcutAction.NEW_EDIT_TAB, menusFree) { viewModel.addWorkspace() }
+					item("tab.new.preview", tr("tab.new.preview"), ShortcutAction.NEW_PREVIEW_TAB, menusFree) { viewModel.addCanvas(CanvasMode.PREVIEW) }
+					item("tab.new.history", tr("tab.new.history"), ShortcutAction.OPEN_HISTORY_TAB, menusFree) { viewModel.showHistoryModule() }
+					item("tab.duplicate", tr("tab.duplicate"), ShortcutAction.DUPLICATE_TAB, menusFree) { viewModel.duplicateWorkspace() }
+					item("tab.close", tr("tab.close"), ShortcutAction.CLOSE_TAB, menusFree) { viewModel.closeWorkspace(state.activeWorkspace.id) }
+					item("tab.next", tr("tab.next"), ShortcutAction.NEXT_TAB, menusFree) { viewModel.cycleWorkspace(1) }
+					item("tab.prev", tr("tab.prev"), ShortcutAction.PREV_TAB, menusFree) { viewModel.cycleWorkspace(-1) }
+					separator()
+					header(tr("menu.view.category.zoom"))
+					item("zoom.in", tr("menu.view.zoomIn"), ShortcutAction.ZOOM_IN, menusFree) { viewModel.zoomIn() }
+					item("zoom.out", tr("menu.view.zoomOut"), ShortcutAction.ZOOM_OUT, menusFree) { viewModel.zoomOut() }
+					item("zoom.reset", tr("menu.view.zoomReset"), ShortcutAction.ZOOM_RESET, menusFree) { viewModel.resetZoom() }
+					separator()
+					submenu("${tr("menu.view.uiScale")} (${(state.uiScale * 100).toInt()}%)") {
+						for (scale in listOf(1.0f, 1.15f, 1.25f, 1.35f, 1.50f, 1.75f, 2.00f, 2.50f)) {
+							item("uiScale:$scale", "${(scale * 100).toInt()}%", checked = kotlin.math.abs(state.uiScale - scale) < 0.04f) { viewModel.setUiScale(scale) }
+						}
+					}
+					submenu("${tr("menu.view.fontScale")} (${(state.fontScale * 100).toInt()}%)") {
+						for ((scale, label) in listOf(0.90f to "settings.font.compact", 1.00f to "settings.font.standard",
+							1.15f to "settings.font.large", 1.30f to "settings.font.extraLarge")) {
+							item("fontScale:$scale", tr(label), checked = kotlin.math.abs(state.fontScale - scale) < 0.04f) { viewModel.setFontScale(scale) }
+						}
+					}
+					item("theme.toggle", tr(if (state.darkTheme) "theme.toggle.toLight" else "theme.toggle.toDark")) { viewModel.toggleDarkTheme() }
+				}
+				menu(tr("menu.tools")) {
+					item("tools.upscale", tr("menu.tools.textureUpscale"), ShortcutAction.TEXTURE_UPSCALE, canWork) { viewModel.openTextureUpscaleDialog() }
+					item("tools.startScreen", tr("menu.tools.startScreen"), enabled = canWork) { viewModel.requestStartScreen() }
+					separator()
+					val canUpgrade = canWork && viewModel.canUpdateGeneration(state)
+					item("tools.updateGeneration", tr("menu.tools.updateGeneration"), enabled = canUpgrade) { viewModel.updateGeneration() }
+					item("tools.previewGeneration", tr("menu.tools.previewGenerationUpdate"), enabled = canUpgrade) { viewModel.previewGenerationUpdate() }
+					separator()
+					item("tools.agent", tr("menu.agent"), enabled = menusFree) { showAgentDialog = true }
+				}
+				menu(tr("menu.help")) {
+					item("help.tutorial", tr("menu.help.tutorial"), ShortcutAction.OPEN_HELP, menusFree) { openTutorialCatalog() }
+					item("help.psdSpec", tr("menu.help.psd_spec"), enabled = menusFree) { helpDialogTab = HelpTab.PSD_SPEC }
+					item("help.shortcuts", tr("menu.help.shortcuts"), enabled = menusFree) { helpDialogTab = HelpTab.SHORTCUTS }
+					separator()
+					item("help.github", tr("menu.help.github")) { DesktopUtils.openBrowser(DesktopUtils.GITHUB_REPO_URL) }
+					item("help.issues", tr("menu.help.issues")) { DesktopUtils.openBrowser(DesktopUtils.GITHUB_ISSUES_URL) }
+					item("help.releases", tr("menu.help.releases")) { DesktopUtils.openBrowser(DesktopUtils.GITHUB_RELEASES_URL) }
+					item("help.docs", tr("menu.help.docs")) { DesktopUtils.openBrowser(DesktopUtils.GITHUB_DOCS_URL) }
+				}
+			}
+			SideEffect { menuSink.publish(build) }
+			// The app menu's About and Settings items (macOS puts them there, with ⌘,).
+			val openAbout by rememberUpdatedState({ if (!modalOpen) helpDialogTab = HelpTab.ABOUT })
+			val openSettings by rememberUpdatedState({ if (!modalOpen) viewModel.openSettingsDialog() })
+			DisposableEffect(Unit) {
+				val desktop = if (java.awt.Desktop.isDesktopSupported()) java.awt.Desktop.getDesktop() else null
+				if (desktop?.isSupported(java.awt.Desktop.Action.APP_ABOUT) == true) desktop.setAboutHandler { javax.swing.SwingUtilities.invokeLater { openAbout() } }
+				if (desktop?.isSupported(java.awt.Desktop.Action.APP_PREFERENCES) == true) desktop.setPreferencesHandler { javax.swing.SwingUtilities.invokeLater { openSettings() } }
+				onDispose {
+					if (desktop?.isSupported(java.awt.Desktop.Action.APP_ABOUT) == true) desktop.setAboutHandler(null)
+					if (desktop?.isSupported(java.awt.Desktop.Action.APP_PREFERENCES) == true) desktop.setPreferencesHandler(null)
+				}
+			}
+		}
+
 		Box(Modifier.fillMaxSize()) {
 		CompositionLocalProvider(LocalTutorialTargets provides tutorialTargets) {
 		Box(
@@ -510,6 +627,8 @@ fun FrameWindowScope.PSD2LiveApp(
 					// dialogs and any focused text field.
 					val action = state.keymap.match(event, ShortcutScope.APP)
 						?: return@onPreviewKeyEvent false
+					// The macOS menu bar may already have run it for this key press.
+					if (!io.github.psd2live.ui.components.MenuShortcutGuard.allow(action, fromMenu = false)) return@onPreviewKeyEvent true
 					runAppAction(action)
 				}
 				// A lone Alt released unconsumed puts a Windows window into its menu mode: the system menu takes the

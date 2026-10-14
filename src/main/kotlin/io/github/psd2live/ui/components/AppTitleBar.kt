@@ -183,6 +183,7 @@ fun AppTitleBar(
 ) {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
+	val nativeChrome = io.github.psd2live.ui.views.LocalNativeWindowChrome.current
 
 	// Track which menu is open (null if none)
 	var activeMenu by remember { mutableStateOf<String?>(null) }
@@ -219,8 +220,10 @@ fun AppTitleBar(
 			modifier = Modifier.fillMaxHeight(),
 			verticalAlignment = Alignment.CenterVertically,
 		) {
-			Spacer(modifier = Modifier.width(6.dp))
+			Spacer(modifier = Modifier.width(if (nativeChrome) 76.dp else 6.dp))
 
+			// The menus are in the screen's menu bar on macOS; a tour that points at one still shows them here.
+			if (!nativeChrome || tutorialId != null) {
 			// 1. File Menu
 			TitleBarMenuItem(
 				title = tr("menu.file"),
@@ -806,6 +809,7 @@ fun AppTitleBar(
 					)
 				}
 			}
+			}
 		}
 
 		// --- CENTER: Draggable Window Area & App Title ---
@@ -913,6 +917,7 @@ fun AppTitleBar(
 
 			Spacer(modifier = Modifier.width(4.dp))
 
+			if (!nativeChrome) {
 			// Minimize
 			WindowControlButton(
 				onClick = { windowState.isMinimized = true },
@@ -948,6 +953,9 @@ fun AppTitleBar(
 				onClick = onClose,
 			) {
 				GridIcon(Modifier.size(10.dp), colors.textPrimary) { cross(reach = 8f, width = 1.6f) }
+			}
+			} else {
+				Spacer(modifier = Modifier.width(4.dp))
 			}
 		}
 	}

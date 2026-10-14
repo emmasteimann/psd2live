@@ -66,7 +66,7 @@ fun KeyChordCaps(
 	modifier: Modifier = Modifier,
 	compact: Boolean = true,
 ) {
-	KeyChordCaps(tokens = binding.format().split('+'), modifier = modifier, compact = compact)
+	KeyChordCaps(tokens = binding.displayTokens(), modifier = modifier, compact = compact)
 }
 
 /** Renders an already-split chord (`Ctrl`, `Shift`, `Z`) as keycaps. */

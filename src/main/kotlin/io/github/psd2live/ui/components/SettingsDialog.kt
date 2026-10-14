@@ -791,7 +791,7 @@ private fun ShortcutRow(
 						text = if (isRecording && capture.index == index) {
 							tr("dialog.settings.shortcuts.captureShort")
 						} else {
-							binding.format()
+							binding.display()
 						},
 						tint = when {
 							isRecording && capture.index == index -> colors.accent

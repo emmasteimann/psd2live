@@ -433,10 +433,10 @@ class Keymap private constructor(
     fun bindingsFor(action: ShortcutAction): List<KeyBinding> = bindings[action].orEmpty()
 
     /** All bindings formatted for display; the first entry is the primary one. */
-    fun labelsFor(action: ShortcutAction): List<String> = bindingsFor(action).map { it.format() }
+    fun labelsFor(action: ShortcutAction): List<String> = bindingsFor(action).map { it.display() }
 
     /** The single label menus show. Null when the action is unbound. */
-    fun labelFor(action: ShortcutAction): String? = bindingsFor(action).firstOrNull()?.format()
+    fun labelFor(action: ShortcutAction): String? = bindingsFor(action).firstOrNull()?.display()
 
     /** The action bound to this exact chord in this scope, or null. */
     fun match(event: KeyEvent, scope: ShortcutScope): ShortcutAction? = match(keyBindingOf(event), scope)

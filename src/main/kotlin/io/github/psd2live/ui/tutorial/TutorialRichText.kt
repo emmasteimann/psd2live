@@ -69,7 +69,7 @@ internal fun expandShortcutMarkup(text: String, keymap: Keymap): String =
 		when (span) {
 			is TutorialSpan.Text -> span.value
 			is TutorialSpan.Action -> keymap.labelFor(span.action) ?: tr("help.shortcuts.unbound")
-			is TutorialSpan.LiteralKey -> span.token
+			is TutorialSpan.LiteralKey -> span.token.split('+').joinToString(if (io.github.psd2live.ui.state.isMacOs) "" else "+") { io.github.psd2live.ui.state.platformKeyToken(it) }
 		}
 	}
 
@@ -109,7 +109,7 @@ fun TutorialRichText(
 						}
 						is TutorialSpan.Action -> ShortcutActionCaps(action = span.action, keymap = keymap)
 						is TutorialSpan.LiteralKey -> {
-							val tokens = span.token.split('+')
+							val tokens = span.token.split('+').map { io.github.psd2live.ui.state.platformKeyToken(it) }
 							if (tokens.size == 1) KeyCap(label = tokens.first())
 							else KeyChordCaps(tokens = tokens)
 						}

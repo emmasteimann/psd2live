@@ -95,6 +95,21 @@ data class KeyBinding(
 
     val hasModifier: Boolean get() = ctrl || shift || alt
 
+    /**
+     * Layerloom patch: the binding as this platform shows it. On macOS that is Apple's form - modifier symbols in
+     * Option, Shift, Command order and then the key (`⇧⌘O`); "Ctrl" is Command there, as [keyBindingOf] reads it.
+     * Elsewhere, [format]. Stored and compared bindings keep [format].
+     */
+    fun display(): String = if (!isMacOs) format() else displayTokens().joinToString("")
+
+    /** The keycaps of [display]: on macOS `⇧`, `⌘`, `O`; elsewhere [format]'s parts. */
+    fun displayTokens(): List<String> = if (!isMacOs) format().split('+') else buildList {
+        if (alt) add("⌥")
+        if (shift) add("⇧")
+        if (ctrl) add("⌘")
+        add(platformKeyToken(mouse?.token ?: nameOf(key!!)))
+    }
+
     /** Exact-modifier match against a Compose key event. */
     fun matches(event: KeyEvent): Boolean = keyBindingOf(event) == this
 }
@@ -251,3 +266,31 @@ internal fun isReservedBinding(binding: KeyBinding, scope: ShortcutScope = Short
 
 private val IS_MAC: Boolean =
     System.getProperty("os.name").orEmpty().lowercase().contains("mac")
+
+/** Layerloom patch: whether this is macOS, where keys show as Apple writes them ([KeyBinding.display]). */
+internal val isMacOs: Boolean get() = IS_MAC
+
+/** Layerloom patch: one key token as this platform names it: on macOS `Ctrl` is `⌘`, `Alt` `⌥`, Enter `↩` and so on. */
+internal fun platformKeyToken(token: String): String = if (!IS_MAC) token else when (token) {
+    "Ctrl" -> "⌘"; "Alt" -> "⌥"; "Shift" -> "⇧"
+    "Enter", "NumPadEnter" -> "↩"; "Backspace" -> "⌫"; "Del" -> "⌦"; "Tab" -> "⇥"; "Esc" -> "⎋"
+    "Left" -> "←"; "Right" -> "→"; "Up" -> "↑"; "Down" -> "↓"; "PageUp" -> "⇞"; "PageDown" -> "⇟"
+    else -> token
+}
+
+private val MAC_KEY_WORDS = listOf(Regex("\\bCtrl\\+") to "⌘", Regex("\\bAlt\\+") to "⌥", Regex("\\bShift\\+") to "⇧",
+    Regex("\\bCtrl\\b") to "⌘", Regex("\\bAlt\\b") to "⌥", Regex("\\bShift\\b") to "⇧")
+private val KEY_MARKUP = Regex("\\{(key|kbd):[^}]*\\}")
+
+/**
+ * Layerloom patch: prose that names modifier keys ("Ctrl+Click walks the hierarchy", "Alt subtract"), as this
+ * platform writes them: on macOS with ⌘ ⌥ ⇧. `{key:…}` / `{kbd:…}` markup is left for its own resolver.
+ */
+internal fun platformKeyWords(text: String): String {
+    if (!IS_MAC || !(text.contains("Ctrl") || text.contains("Alt") || text.contains("Shift"))) return text
+    val out = StringBuilder()
+    var last = 0
+    fun words(part: String) = MAC_KEY_WORDS.fold(part) { acc, (pattern, symbol) -> pattern.replace(acc, symbol) }
+    for (m in KEY_MARKUP.findAll(text)) { out.append(words(text.substring(last, m.range.first))).append(m.value); last = m.range.last + 1 }
+    return out.append(words(text.substring(last))).toString()
+}

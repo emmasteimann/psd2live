@@ -1,6 +1,7 @@
 package io.github.psd2live.ui.views
 
 import androidx.compose.animation.AnimatedVisibility
+import io.github.psd2live.ui.state.effectiveButton
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -372,7 +373,7 @@ private fun MotionRow(
 					}
 					.hoverable(interaction)
 					.onPointerEvent(PointerEventType.Press) { event ->
-						if (event.button == PointerButton.Secondary) {
+						if (event.effectiveButton == PointerButton.Secondary) {
 							menuOffset = event.changes.firstOrNull()?.position ?: Offset.Zero
 							menuOpen = true
 							event.changes.firstOrNull()?.consume()

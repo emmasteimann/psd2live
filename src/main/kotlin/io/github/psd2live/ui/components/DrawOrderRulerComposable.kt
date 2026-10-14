@@ -1,6 +1,7 @@
 package io.github.psd2live.ui.components
 
 import androidx.compose.foundation.BorderStroke
+import io.github.psd2live.ui.state.effectiveButton
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -218,7 +219,7 @@ fun DrawOrderRuler(
 				val pos = change.position
 				lastMousePos = pos
 
-				if (event.button == PointerButton.Primary) {
+				if (event.effectiveButton == PointerButton.Primary) {
 					val now = System.currentTimeMillis()
 					val isDoubleClick = (now - lastClickTime) < 350L
 					lastClickTime = now
@@ -256,7 +257,7 @@ fun DrawOrderRuler(
 						val newOrder = yToOrder(pos.y, rulerHeightPx).roundToInt().toFloat().coerceIn(0f, 1000f)
 						viewModel.setLayerDrawOrder(targetId, newOrder)
 					}
-				} else if (event.button == PointerButton.Secondary) {
+				} else if (event.effectiveButton == PointerButton.Secondary) {
 					isRightDragging = true
 					rightPressPos = pos
 				}
@@ -284,11 +285,11 @@ fun DrawOrderRuler(
 				val change = event.changes.firstOrNull()
 				val pos = change?.position ?: lastMousePos ?: Offset.Zero
 
-				if (event.button == PointerButton.Primary) {
+				if (event.effectiveButton == PointerButton.Primary) {
 					isLeftDragging = false
 					activeDragTargetId = null
 					viewModel.endEditorField("layer.draw_order.ruler")
-				} else if (event.button == PointerButton.Secondary) {
+				} else if (event.effectiveButton == PointerButton.Secondary) {
 					val press = rightPressPos
 					isRightDragging = false
 					rightPressPos = null

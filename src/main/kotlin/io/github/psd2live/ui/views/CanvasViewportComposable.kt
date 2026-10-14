@@ -1,6 +1,7 @@
 package io.github.psd2live.ui.views
 
 import io.github.psd2live.ui.SELECTION_TOOLS
+import io.github.psd2live.ui.state.effectiveButton
 
 import io.github.psd2live.core.RigInformationOverlay
 
@@ -944,7 +945,7 @@ fun CanvasViewportComposable(
                 // what it is doing.
                 // A press of the button already latched means its release never reached us; the stale gesture
                 // would otherwise refuse the new one and keep steering the old axis from the old anchor.
-                if (mode == CanvasMode.EDIT && editor.adjustingBrush && (event.button == brushAdjustButton || brushAdjustButton == null)) {
+                if (mode == CanvasMode.EDIT && editor.adjustingBrush && (event.effectiveButton == brushAdjustButton || brushAdjustButton == null)) {
                     brushAdjustButton = null
                     editor.endBrushAdjust(cancel = false)
                 }
@@ -953,12 +954,12 @@ fun CanvasViewportComposable(
                     !isDragging && !editor.inGesture &&
                     editor.beginBrushAdjust(change.position, shift = gesture == ShortcutAction.BRUSH_ADJUST_ALT_DRAG)
                 ) {
-                    brushAdjustButton = event.button
+                    brushAdjustButton = event.effectiveButton
                     showContextMenu = false
                     change.consume(); return@onPointerEvent
                 }
                 // A right press that starts no gesture opens the mode/tool context menu (parameters + topology/paint actions).
-                if (mode == CanvasMode.EDIT && previewModel != null && event.button == PointerButton.Secondary &&
+                if (mode == CanvasMode.EDIT && previewModel != null && event.effectiveButton == PointerButton.Secondary &&
                     gesture == null && !isDragging && !editor.inGesture && !editor.adjustingBrush &&
                     viewModel.swingSession == null && canvasContextMenuHasContent(editor)
                 ) {
@@ -969,7 +970,7 @@ fun CanvasViewportComposable(
                 }
                 // The pan gesture (the middle button by default) or Space + left drag pans; the zoom gesture
                 // zooms about the press point as the pointer moves up and down.
-                if (gesture == ShortcutAction.ZOOM_DRAG || CanvasNavigation.pans(gesture, event.button, mode == CanvasMode.EDIT && editor.space)) {
+                if (gesture == ShortcutAction.ZOOM_DRAG || CanvasNavigation.pans(gesture, event.effectiveButton, mode == CanvasMode.EDIT && editor.space)) {
                     isDragging = true
                     zoomDragAnchor = if (gesture == ShortcutAction.ZOOM_DRAG) change.position else null
                     lastDragPos = change.position
@@ -982,13 +983,13 @@ fun CanvasViewportComposable(
                 val command = if (canvasState.keyCapture == null) canvasState.keymap.mouseCommand(pressed, ShortcutScope.CANVAS) else null
                 if (command == ShortcutAction.TEMPORARY_SELECT) {
                     if (mode == CanvasMode.EDIT && !canvasState.workspaceEditBusy && editor.beginTemporarySelection())
-                        temporarySelectButton = event.button
+                        temporarySelectButton = event.effectiveButton
                     change.consume(); return@onPointerEvent
                 }
                 if (command != null && runCanvasCommand(command, event.keyboardModifiers.isShiftPressed, wheel = false)) {
                     change.consume(); return@onPointerEvent
                 }
-                if (mode == CanvasMode.EDIT && previewModel != null && event.button == PointerButton.Primary) {
+                if (mode == CanvasMode.EDIT && previewModel != null && event.effectiveButton == PointerButton.Primary) {
                     if (showContextMenu) {
                         showContextMenu = false
                         change.consume()
@@ -1002,7 +1003,7 @@ fun CanvasViewportComposable(
                         change.consume(); return@onPointerEvent
                     }
                 }
-				if (event.button == PointerButton.Primary) {
+				if (event.effectiveButton == PointerButton.Primary) {
 					isDragging = true
 					zoomDragAnchor = null
 					lastDragPos = change.position
@@ -1021,19 +1022,19 @@ fun CanvasViewportComposable(
                 // Alt-modified releases can arrive without the button that was pressed, so a release that leaves no
                 // button held ends the adjustment as well.
                 if (mode == CanvasMode.EDIT && editor.adjustingBrush &&
-                    (event.button == brushAdjustButton || !event.buttons.areAnyPressed)
+                    (event.effectiveButton == brushAdjustButton || !event.buttons.areAnyPressed)
                 ) {
                     brushAdjustButton = null
                     editor.endBrushAdjust(cancel = false)
                     return@onPointerEvent
                 }
-                if (temporarySelectButton != null && event.button == temporarySelectButton) {
+                if (temporarySelectButton != null && event.effectiveButton == temporarySelectButton) {
                     temporarySelectButton = null
                     editor.endTemporarySelection()
                     return@onPointerEvent
                 }
                 if(change?.isConsumed==true && (mode != CanvasMode.EDIT || !editor.inGesture) && !isDragging) return@onPointerEvent
-                if(mode == CanvasMode.EDIT && previewModel != null && event.button == PointerButton.Primary && !isDragging) {
+                if(mode == CanvasMode.EDIT && previewModel != null && event.effectiveButton == PointerButton.Primary && !isDragging) {
                     editorGuard {
                         editor.release()
                         editor.finishSelection(computeViewport(previewModel,viewSize.width,viewSize.height))

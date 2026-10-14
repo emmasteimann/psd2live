@@ -1,6 +1,7 @@
 package io.github.psd2live.ui.views.texture
 
 import androidx.compose.foundation.Canvas
+import io.github.psd2live.ui.state.effectiveButton
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -419,17 +420,17 @@ private fun AtlasPageCanvas(state: PSD2LiveState, vm: PSD2LiveViewModel, snapsho
 				focusRequester.requestFocus()
 				val pressed = buttonBindingOf(event.button, event.keyboardModifiers)
 				val gesture = if (state.keyCapture == null) state.keymap.gesture(pressed) else null
-				if (CanvasNavigation.pans(gesture, event.button, currentSpace)) {
+				if (CanvasNavigation.pans(gesture, event.effectiveButton, currentSpace)) {
 					panFrom = change.position
-					panButton = event.button
+					panButton = event.effectiveButton
 					change.consume()
 				} else if (gesture == ShortcutAction.ZOOM_DRAG) {
 					zoomDrag = change.position to change.position.y
-					panButton = event.button
+					panButton = event.effectiveButton
 					change.consume()
 				} else if (state.keyCapture == null && runAtlasCommand(state.keymap.mouseCommand(pressed, ShortcutScope.CANVAS))) {
 					change.consume()
-				} else if (event.button == PointerButton.Secondary) {
+				} else if (event.effectiveButton == PointerButton.Secondary) {
 					val tile = hit(change.position)
 					if (tile != null && tile.layerId !in currentSelected) vm.selectLayer(tile.layerId)
 					menu = AtlasMenu(change.position, tile?.layerId)
@@ -456,7 +457,7 @@ private fun AtlasPageCanvas(state: PSD2LiveState, vm: PSD2LiveViewModel, snapsho
 				hovered = hit(change.position)?.layerId
 			}
 			.onPointerEvent(PointerEventType.Release) { event ->
-				if ((panFrom != null || zoomDrag != null) && (event.button == panButton || !event.buttons.areAnyPressed)) {
+				if ((panFrom != null || zoomDrag != null) && (event.effectiveButton == panButton || !event.buttons.areAnyPressed)) {
 					panFrom = null
 					zoomDrag = null
 					panButton = null
@@ -478,9 +479,9 @@ private fun AtlasPageCanvas(state: PSD2LiveState, vm: PSD2LiveViewModel, snapsho
 					focusRequester.requestFocus()
 					// Panning and the menu belong to the press handler above.
 					val gesture = currentKeymap.gesture(buttonBindingOf(event.button, event.keyboardModifiers))
-					if (panFrom != null || zoomDrag != null || gesture != null || CanvasNavigation.pans(gesture, event.button, currentSpace) ||
-						event.button == PointerButton.Secondary) return@awaitEachGesture
-					if (event.button != null && event.button != PointerButton.Primary) return@awaitEachGesture
+					if (panFrom != null || zoomDrag != null || gesture != null || CanvasNavigation.pans(gesture, event.effectiveButton, currentSpace) ||
+						event.effectiveButton == PointerButton.Secondary) return@awaitEachGesture
+					if (event.effectiveButton != null && event.effectiveButton != PointerButton.Primary) return@awaitEachGesture
 					val select = CanvasNavigation.selectMode(event.keyboardModifiers)
 					val snapshotAtStart = currentSnapshot
 

@@ -1,6 +1,7 @@
 package io.github.psd2live.ui.views
 
 import io.github.psd2live.ui.views.physics.PhysicsPanelView
+import io.github.psd2live.ui.state.effectiveButton
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -837,7 +838,7 @@ private fun DockHeader(id: String, session: DockSession, modifier: Modifier,
                     else -> Cursor.DEFAULT_CURSOR
                 })))
                 .onPointerEvent(PointerEventType.Press) { event ->
-                    when (event.button) {
+                    when (event.effectiveButton) {
                         PointerButton.Secondary -> { menu = true; event.changes.forEach { it.consume() } }
                         PointerButton.Tertiary -> { if (canClose) close(); event.changes.forEach { it.consume() } }
                         else -> {}
@@ -847,7 +848,7 @@ private fun DockHeader(id: String, session: DockSession, modifier: Modifier,
                     val slop = DockDragSlop.toPx()
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
-                        if (currentEvent.button != null && currentEvent.button != PointerButton.Primary) return@awaitEachGesture
+                        if (currentEvent.effectiveButton != null && currentEvent.effectiveButton != PointerButton.Primary) return@awaitEachGesture
                         // A press only becomes a drag once it travels well past the usual slop, so a
                         // slightly shaky click still switches tabs instead of tearing one off.
                         while (true) {

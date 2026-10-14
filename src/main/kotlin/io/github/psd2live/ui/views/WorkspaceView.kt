@@ -1,6 +1,7 @@
 package io.github.psd2live.ui.views
 
 import androidx.compose.foundation.BorderStroke
+import io.github.psd2live.ui.state.effectiveButton
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -707,7 +708,7 @@ private fun HierarchyTreeList(
 					treeDragState.onMove(pos, itemBoundsMap.values, deformers, state.hierarchyParentOverrides)
 				}
 				.onPointerEvent(PointerEventType.Release) { event ->
-					if (event.button == PointerButton.Primary && treeDragState.isPressed) {
+					if (event.effectiveButton == PointerButton.Primary && treeDragState.isPressed) {
 						val additive = event.keyboardModifiers.isShiftPressed
 						val subtractive = event.keyboardModifiers.isAltPressed
 						val toggle = event.keyboardModifiers.isPrimaryPressed
@@ -1233,7 +1234,7 @@ private fun DeformerTreeItem(
 				}
 				.onPointerEvent(PointerEventType.Press) { event ->
 					if (event.changes.any { it.isConsumed }) return@onPointerEvent
-					if (event.button == PointerButton.Secondary) {
+					if (event.effectiveButton == PointerButton.Secondary) {
 						val clickPos = event.changes.firstOrNull()?.position ?: Offset.Zero
 						menuClickOffset = clickPos
 						val selectId = resolveSegmentId(clickPos)
@@ -1243,7 +1244,7 @@ private fun DeformerTreeItem(
 						treeDragState.clear()
 						event.changes.firstOrNull()?.consume()
 						showMenu = true
-					} else if (event.button == PointerButton.Primary) {
+					} else if (event.effectiveButton == PointerButton.Primary) {
 						val parent = containerCoordinates
 						val coords = rowCoords
 						if (parent != null && coords != null && parent.isAttached && coords.isAttached) {
@@ -1357,7 +1358,7 @@ private fun DeformerTreeItem(
 								viewModel.setHoveredItem(layerId = null, deformerId = segmentId)
 							}
 							.onPointerEvent(PointerEventType.Press) { event ->
-								if (event.button == PointerButton.Secondary) {
+								if (event.effectiveButton == PointerButton.Secondary) {
 									menuClickOffset = event.changes.firstOrNull()?.position ?: Offset.Zero
 									if (state.selectedDeformerId != segmentId) {
 										viewModel.selectDeformer(segmentId)
@@ -1365,7 +1366,7 @@ private fun DeformerTreeItem(
 									treeDragState.clear()
 									event.changes.firstOrNull()?.consume()
 									showMenu = true
-								} else if (event.button == PointerButton.Primary) {
+								} else if (event.effectiveButton == PointerButton.Primary) {
 									val row = rowCoords
 									val localInSegment = event.changes.firstOrNull()?.position ?: Offset.Zero
 									val rowLocal = if (row != null && row.isAttached) {
@@ -1743,7 +1744,7 @@ private fun DrawableTreeItem(
 				}
 				.onPointerEvent(PointerEventType.Press) { event ->
 					meshPreviewHover?.value = null
-					if (event.button == PointerButton.Secondary) {
+					if (event.effectiveButton == PointerButton.Secondary) {
 						val clickPos = event.changes.firstOrNull()?.position ?: Offset.Zero
 						menuClickOffset = clickPos
 						if (layerId != null && !isLayerSelected) {
@@ -1752,7 +1753,7 @@ private fun DrawableTreeItem(
 						treeDragState.clear()
 						event.changes.firstOrNull()?.consume()
 						showMenu = true
-					} else if (event.button == PointerButton.Primary) {
+					} else if (event.effectiveButton == PointerButton.Primary) {
 						val parent = containerCoordinates
 						val coords = rowCoords
 						if (parent != null && coords != null && parent.isAttached && coords.isAttached) {

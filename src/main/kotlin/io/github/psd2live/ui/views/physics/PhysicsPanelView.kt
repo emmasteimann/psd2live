@@ -1,6 +1,7 @@
 package io.github.psd2live.ui.views.physics
 
 import androidx.compose.foundation.VerticalScrollbar
+import io.github.psd2live.ui.state.effectiveButton
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
@@ -333,7 +334,7 @@ private fun PhysicsGroupRow(
 				}
 				.hoverable(interaction)
 				.onPointerEvent(PointerEventType.Press) { event ->
-					if (event.button == PointerButton.Secondary) {
+					if (event.effectiveButton == PointerButton.Secondary) {
 						menuOffset = event.changes.firstOrNull()?.position ?: Offset.Zero
 						menuOpen = true
 						onSelect(group.id)

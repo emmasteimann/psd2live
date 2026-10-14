@@ -1,6 +1,7 @@
 package io.github.psd2live.ui.views
 
 import androidx.compose.foundation.BorderStroke
+import io.github.psd2live.ui.state.effectiveButton
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.TooltipArea
 import androidx.compose.foundation.background
@@ -196,7 +197,7 @@ private fun ParameterSnapshotChip(
 						.border(BorderStroke(1.dp, if (hovered && enabled) colors.borderHover else colors.border), RoundedCornerShape(3.dp))
 						.hoverable(interaction)
 						.onPointerEvent(PointerEventType.Press) { event ->
-							when (event.button) {
+							when (event.effectiveButton) {
 								PointerButton.Secondary -> {
 									menuOffset = event.changes.firstOrNull()?.position ?: Offset.Zero
 									menuOpen = true

@@ -1,6 +1,7 @@
 package io.github.psd2live.ui.views
 
 import androidx.compose.foundation.BorderStroke
+import io.github.psd2live.ui.state.effectiveButton
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -281,11 +282,11 @@ private fun WorkspaceChip(
 				.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
 				.onPointerEvent(PointerEventType.Press, pass = PointerEventPass.Initial) { event ->
 					when {
-						event.button == PointerButton.Secondary -> {
+						event.effectiveButton == PointerButton.Secondary -> {
 							showMenu = true
 							event.changes.forEach { it.consume() }
 						}
-						event.button == PointerButton.Tertiary && !renaming -> {
+						event.effectiveButton == PointerButton.Tertiary && !renaming -> {
 							if (canClose) onClose()
 							event.changes.forEach { it.consume() }
 						}

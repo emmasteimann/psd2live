@@ -1,6 +1,7 @@
 package io.github.psd2live.ui.views
 
 import androidx.compose.foundation.Canvas
+import io.github.psd2live.ui.state.effectiveButton
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -167,7 +168,7 @@ internal fun ParameterKeyAxis(
             .onPointerEvent(PointerEventType.Move) { event -> hoverX = event.changes.firstOrNull()?.position?.x }
             .onPointerEvent(PointerEventType.Exit) { hoverX = null }
             .onPointerEvent(PointerEventType.Press) { event ->
-                if (!enabled || event.button != PointerButton.Secondary) return@onPointerEvent
+                if (!enabled || event.effectiveButton != PointerButton.Secondary) return@onPointerEvent
                 val x = event.changes.firstOrNull()?.position?.x ?: return@onPointerEvent
                 val pad = with(density) { inset.toPx() }
                 val width = size.width.toFloat()
@@ -206,7 +207,7 @@ internal fun ParameterKeyAxis(
                 )
                 awaitEachGesture {
                     val down = awaitFirstDown()
-                    if (currentEvent.button != null && currentEvent.button != PointerButton.Primary) return@awaitEachGesture
+                    if (currentEvent.effectiveButton != null && currentEvent.effectiveButton != PointerButton.Primary) return@awaitEachGesture
                     // Taking focus commits any open number editor via onFocusLost.
                     focus.requestFocus()
                     val hit = keys.minByOrNull { abs(xPx(it) - down.position.x) }?.takeIf { abs(xPx(it) - down.position.x) <= 8.dp.toPx() }

@@ -1,6 +1,7 @@
 package io.github.psd2live.ui.views
 
 import androidx.compose.animation.core.animateFloatAsState
+import io.github.psd2live.ui.state.effectiveButton
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.alpha
@@ -672,7 +673,7 @@ internal fun ParametersListView(
 						}
 						.onPointerEvent(PointerEventType.Press, pass = PointerEventPass.Initial) { event ->
 							val change = event.changes.firstOrNull() ?: return@onPointerEvent
-							if (dividerHovered && event.button == PointerButton.Primary) {
+							if (dividerHovered && event.effectiveButton == PointerButton.Primary) {
 								dividerDrag = change.position.x to shownNameWidth
 								change.consume()
 							}
@@ -691,7 +692,7 @@ internal fun ParametersListView(
 							dragState.onMove(pos, itemBoundsMap.values)
 						}
 						.onPointerEvent(PointerEventType.Release) { event ->
-							if (event.button == PointerButton.Primary && dragState.isPressed) {
+							if (event.effectiveButton == PointerButton.Primary && dragState.isPressed) {
 								dragState.onRelease(viewModel)
 							}
 						}
@@ -1143,7 +1144,7 @@ private fun ParameterDragHandle(
 			.onGloballyPositioned { handleCoords = it }
 			.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR)))
 			.onPointerEvent(PointerEventType.Press) { event ->
-				if (event.button != PointerButton.Primary) return@onPointerEvent
+				if (event.effectiveButton != PointerButton.Primary) return@onPointerEvent
 				val row = rowCoords ?: return@onPointerEvent
 				val handle = handleCoords
 				val localInHandle = event.changes.firstOrNull()?.position ?: Offset.Zero
@@ -1210,7 +1211,7 @@ private fun ParameterFolderRow(
 			)
 			.hoverable(interactionSource)
 			.onPointerEvent(PointerEventType.Press) { event ->
-				if (event.button == PointerButton.Secondary) {
+				if (event.effectiveButton == PointerButton.Secondary) {
 					val clickPos = event.changes.firstOrNull()?.position ?: Offset.Zero
 					onMenuOpenChange(true, clickPos)
 					event.changes.firstOrNull()?.consume()
@@ -1567,7 +1568,7 @@ private fun ParameterTrack(
 				hoverKeyCb?.invoke(null, null, 0f)
 			}
 			.onPointerEvent(PointerEventType.Press) { event ->
-				if (!enabled || event.button != PointerButton.Secondary) return@onPointerEvent
+				if (!enabled || event.effectiveButton != PointerButton.Secondary) return@onPointerEvent
 				val x = event.changes.firstOrNull()?.position?.x ?: return@onPointerEvent
 				val inset = insetDp.toPx()
 				val key = hitKey(x, size.width.toFloat(), inset, 10.dp.toPx()) ?: return@onPointerEvent
@@ -1579,7 +1580,7 @@ private fun ParameterTrack(
 				val inset = insetDp.toPx()
 				awaitEachGesture {
 					val down = awaitFirstDown()
-					if (currentEvent.button != null && currentEvent.button != PointerButton.Primary) {
+					if (currentEvent.effectiveButton != null && currentEvent.effectiveButton != PointerButton.Primary) {
 						down.consume()
 						do {
 							val event = awaitPointerEvent()
@@ -2100,7 +2101,7 @@ private fun ParameterPad2D(
 				hoverKeyCb?.invoke(null, null, null, 0f)
 			}
 			.onPointerEvent(PointerEventType.Press) { event ->
-				if ((xLockedState && yLockedState) || event.button != PointerButton.Secondary) return@onPointerEvent
+				if ((xLockedState && yLockedState) || event.effectiveButton != PointerButton.Secondary) return@onPointerEvent
 				val hit = hoverKey ?: return@onPointerEvent
 				onChangeState(
 					if (!xLockedState) hit.first else xValueNow(),
@@ -2114,7 +2115,7 @@ private fun ParameterPad2D(
 				val insetY = insetVerticalDp.toPx()
 				awaitEachGesture {
 					val down = awaitFirstDown()
-					if (currentEvent.button != null && currentEvent.button != PointerButton.Primary) {
+					if (currentEvent.effectiveButton != null && currentEvent.effectiveButton != PointerButton.Primary) {
 						down.consume()
 						do {
 							val event = awaitPointerEvent()
@@ -2300,7 +2301,7 @@ private fun EditableParameterName(
             }
             .clickable(enabled = editable, onClickLabel = tr("parameters.properties")) { editing = true }
             .onPointerEvent(PointerEventType.Press) { event ->
-                if (event.button == PointerButton.Secondary && editable) {
+                if (event.effectiveButton == PointerButton.Secondary && editable) {
                     editing = true
                     event.changes.forEach { it.consume() }
                 }

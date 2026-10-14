@@ -127,6 +127,30 @@ internal fun keyBindingOf(event: KeyEvent): KeyBinding = KeyBinding(
     alt = event.isAltPressed,
 )
 
+/**
+ * The button a press counts as. On macOS a Control-click with the left button is a right-click, as in every Mac
+ * app (and the only right-click on a one-button trackpad set up that way), so context menus open for it.
+ * Shortcut capture reads the raw button instead: left and right clicks cannot be bound.
+ */
+internal val androidx.compose.ui.input.pointer.PointerEvent.effectiveButton: PointerButton?
+    @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+    get() {
+        val raw = button
+        if (!IS_MAC || raw != PointerButton.Primary) return raw
+        when (type) {
+            // Read as often as handlers like: a press decides, idempotently, from its own modifiers.
+            androidx.compose.ui.input.pointer.PointerEventType.Press ->
+                controlClickDown = keyboardModifiers.isPointerCtrlPressed && !keyboardModifiers.isPointerMetaPressed
+            // The release matches its press even when Control was let go first.
+            androidx.compose.ui.input.pointer.PointerEventType.Release -> Unit
+            else -> return raw
+        }
+        return if (controlClickDown) PointerButton.Secondary else raw
+    }
+
+/** Whether the last left press was a Control-click (macOS), so its release is a right release too. */
+@Volatile private var controlClickDown = false
+
 /** Ctrl, or on macOS also Command: the modifier pointer gestures (toggle selection, Ctrl-click) read. */
 internal val PointerKeyboardModifiers.isPrimaryPressed: Boolean
     get() = if (IS_MAC) isPointerCtrlPressed || isPointerMetaPressed else isPointerCtrlPressed

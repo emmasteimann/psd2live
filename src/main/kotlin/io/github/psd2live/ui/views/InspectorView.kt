@@ -1,6 +1,7 @@
 package io.github.psd2live.ui.views
 
 import io.github.psd2live.project.displayedRect
+import io.github.psd2live.ui.state.effectiveButton
 import io.github.psd2live.project.canvasRect
 import io.github.psd2live.project.transform
 import kotlinx.serialization.json.contentOrNull
@@ -619,7 +620,7 @@ internal fun LayersTableView(
 								.fillMaxHeight()
 								.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
 								.onPointerEvent(PointerEventType.Press) { event ->
-									if (event.button != PointerButton.Primary) return@onPointerEvent
+									if (event.effectiveButton != PointerButton.Primary) return@onPointerEvent
 									val ordered = layers.map { it.source.id.raw }
 									when {
 										event.keyboardModifiers.isAltPressed ->

@@ -1,6 +1,7 @@
 package io.github.psd2live.ui.views
 
 import io.github.psd2live.ui.utils.toImageBitmapFast
+import io.github.psd2live.ui.state.effectiveButton
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
@@ -723,7 +724,7 @@ private fun LogColumnHeader(
 				awaitPointerEventScope {
 					while (true) {
 						val event = awaitPointerEvent()
-						if (event.type == PointerEventType.Press && event.buttons.isSecondaryPressed) {
+						if (event.type == PointerEventType.Press && (event.buttons.isSecondaryPressed || event.effectiveButton == androidx.compose.ui.input.pointer.PointerButton.Secondary)) {
 							val position = event.changes.first().position
 							menuAt = IntOffset(position.x.toInt(), position.y.toInt())
 						}

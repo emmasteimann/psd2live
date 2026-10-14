@@ -50,4 +50,26 @@ class CubismExtrasExportTest {
 		val written = pose["Groups"]!!.jsonArray.map { g -> g.jsonArray.map { it.jsonObject["Id"]!!.jsonPrimitive.content } }
 		assertEquals(listOf(listOf(parts[1], parts[2])), written, "missing parts and one-part groups are dropped")
 	}
+
+	/** The Inspector's 5.3 blend edits replay into the model; an export for Cubism 5.0 falls back and says so. */
+	@Test
+	fun extendedBlendModesReplayAndFallBack() {
+		val dir = System.getenv("LAYERLOOM_PARITY_DIR") ?: return
+		val puppet = PSD2LivePipeline().buildPreview(Path.of(dir, "quill.psd")).rig.puppet
+		val id = puppet.drawables.first().id.raw
+		val edit = kotlinx.serialization.json.buildJsonObject {
+			put("action", kotlinx.serialization.json.JsonPrimitive("static")); put("kind", kotlinx.serialization.json.JsonPrimitive("mesh"))
+			put("id", kotlinx.serialization.json.JsonPrimitive(id)); put("blend_mode", kotlinx.serialization.json.JsonPrimitive("Screen"))
+			put("alpha_blend", kotlinx.serialization.json.JsonPrimitive("Atop"))
+		}
+		val edited = RigStructureEdits.apply(puppet, listOf(edit))
+		val drawable = edited.drawables.first { it.id.raw == id }
+		assertEquals(org.umamo.runtime.model.BlendMode.Screen, drawable.blendMode)
+		assertEquals(org.umamo.runtime.model.AlphaBlendMode.Atop, drawable.alphaBlendMode)
+		val command = kotlinx.serialization.json.buildJsonObject {
+			put("op", kotlinx.serialization.json.JsonPrimitive("structure")); put("edits", kotlinx.serialization.json.JsonArray(listOf(edit)))
+		}
+		assertTrue(RigCommandDelta.isNoOp(edited, command), "the same edit again changes nothing")
+		assertTrue(!RigCommandDelta.isNoOp(puppet, command), "on the original it is a change")
+	}
 }

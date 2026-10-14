@@ -273,6 +273,10 @@ internal object RigCommandDelta {
             any = true
             if (drawable == null || !drawable.blendMode.name.equals(value, ignoreCase = true)) return false
         }
+        edit["alpha_blend"]?.jsonPrimitive?.contentOrNull?.let { value ->
+            any = true
+            if (drawable == null || !drawable.alphaBlendMode.name.equals(value, ignoreCase = true)) return false
+        }
         edit["masked_by"]?.jsonArray?.let { value ->
             any = true
             val requested = value.map { it.jsonPrimitive.content }

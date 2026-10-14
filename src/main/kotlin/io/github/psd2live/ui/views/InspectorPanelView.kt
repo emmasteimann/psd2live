@@ -632,11 +632,13 @@ private fun ArtMeshInspector(
 
         // 11. 混合模式 (Blend Mode)
         InspectorFormRow(label = tr("inspector.blendMode")) {
+            // Layerloom patch: every Cubism 5.3 colour mode, after the three classic ones. An export to an older
+            // Cubism version falls back to the nearest classic mode (and says so in its report).
             val modeItems = listOf(
                 BlendMode.Normal to tr("inspector.blendMode.normal"),
                 BlendMode.Multiply to tr("inspector.blendMode.multiply"),
                 BlendMode.Additive to tr("inspector.blendMode.additive"),
-            )
+            ) + EXTENDED_BLEND_MODES.map { it to tr("inspector.blendMode.${it.name.replaceFirstChar(Char::lowercase)}") }
             val currentMode = modeItems.firstOrNull {
                 it.first == drawable.blendMode ||
                 (drawable.blendMode == BlendMode.MultiplyPremultiplied && it.first == BlendMode.Multiply) ||
@@ -650,6 +652,26 @@ private fun ArtMeshInspector(
                     viewModel.applyRigStaticNow("mesh", drawable.id.raw, "blend_mode" to JsonPrimitive(selected.first.name))
                 },
                 itemLabel = { it.second },
+                modifier = Modifier.fillMaxWidth(),
+                height = 23.dp,
+            )
+        }
+
+        if (drawable.blendMode in EXTENDED_BLEND_MODES || drawable.alphaBlendMode != org.umamo.runtime.model.AlphaBlendMode.Over) {
+            Text(tr("inspector.blendMode.cubism53"), color = LocalToolColors.current.textMuted,
+                style = LocalToolTypography.current.caption.copy(fontSize = 10.5.sp, lineHeight = 14.sp), modifier = Modifier.padding(start = 4.dp))
+        }
+
+        // Layerloom patch: the 5.3 alpha blend, how the mesh's own transparency combines with what's under it.
+        InspectorFormRow(label = tr("inspector.alphaBlend")) {
+            val alphaItems = org.umamo.runtime.model.AlphaBlendMode.entries
+            CompactDropdown(
+                items = alphaItems,
+                selectedItem = drawable.alphaBlendMode,
+                onItemSelected = { selected ->
+                    viewModel.applyRigStaticNow("mesh", drawable.id.raw, "alpha_blend" to JsonPrimitive(selected.name))
+                },
+                itemLabel = { tr("inspector.alphaBlend.${it.name.lowercase()}") },
                 modifier = Modifier.fillMaxWidth(),
                 height = 23.dp,
             )
@@ -1302,3 +1324,10 @@ private fun parseHexToColorRgb(hex: String): ColorRgb? {
 /** A colour as the `static` action takes it: three 0..1 channels. */
 private fun ColorRgb.toJsonArray() =
     JsonArray(listOf(JsonPrimitive(red), JsonPrimitive(green), JsonPrimitive(blue)))
+
+/** Layerloom patch: Cubism 5.3's colour blend modes beyond Normal, Multiply and Add. */
+private val EXTENDED_BLEND_MODES = listOf(
+    BlendMode.AdditiveGlow, BlendMode.Darken, BlendMode.ColorBurn, BlendMode.LinearBurn, BlendMode.Lighten,
+    BlendMode.Screen, BlendMode.ColorDodge, BlendMode.Overlay, BlendMode.SoftLight, BlendMode.HardLight,
+    BlendMode.LinearLight, BlendMode.Hue, BlendMode.Color,
+)

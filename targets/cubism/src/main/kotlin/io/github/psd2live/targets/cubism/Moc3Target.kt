@@ -84,7 +84,7 @@ public object Moc3Target : ExportTarget {
 			}
 			// Layerloom patch: the Inspector's per-mesh user data as userdata3.
 			val userData = ir.meshes.filter { it.userData.isNotEmpty() }.map { UserDataEntry("ArtMesh", it.id, it.userData) }
-			if (userData.isNotEmpty()) add(Moc3Sidecars.PassThroughSidecar(Moc3Sidecars.SidecarKind.UserData, "$baseName.userdata3.json",
+			if (moc3Options.includeUserData && userData.isNotEmpty()) add(Moc3Sidecars.PassThroughSidecar(Moc3Sidecars.SidecarKind.UserData, "$baseName.userdata3.json",
 				Moc3.writeUserData3(UserData3Json(3, UserDataMeta(userData.size, userData.sumOf { it.value.encodeToByteArray().size }), userData))))
 		}
 		val manifest = Model3Json(

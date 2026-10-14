@@ -3,6 +3,7 @@ package io.github.psd2live.core
 import kotlinx.serialization.json.*
 import kotlin.math.abs
 import org.umamo.edit.withParameterCreated
+import org.umamo.edit.withDrawableAlphaBlendMode
 import org.umamo.edit.withParameterDeleted
 import org.umamo.edit.withParameterRange
 import org.umamo.edit.ParameterPanelRef
@@ -78,7 +79,7 @@ internal object RigStructureEdits {
             "visibility" -> setOf("visible")
             "move" -> setOf("parent_id", "before_id", "before_kind", "space")
             "bind" -> setOf("parent_id", "space")
-            "static" -> setOf("opacity", "draw_order", "multiply_color", "screen_color", "blend_mode", "masked_by", "invert_mask", "culling", "selectable", "quad", "user_data")
+            "static" -> setOf("opacity", "draw_order", "multiply_color", "screen_color", "blend_mode", "alpha_blend", "masked_by", "invert_mask", "culling", "selectable", "quad", "user_data")
             // A deformer's organizational part. Distinct from `move`, which walks the deformer parent
             // chain: this is only the Parts-panel membership, and meshes use `move` instead because they
             // are org children in a way a deformer is not.
@@ -140,6 +141,13 @@ internal object RigStructureEdits {
                     val mode = BlendMode.entries.firstOrNull { it.name.equals(value, ignoreCase = true) }
                         ?: throw IllegalArgumentException("Unknown blend mode: $value")
                     next = next.withDrawableBlendMode(mesh!!.id, mode)
+                }
+                // Layerloom patch: the 5.3 alpha blend (Over, Atop, Out, Conjoint, Disjoint).
+                edit["alpha_blend"]?.jsonPrimitive?.contentOrNull?.let { value ->
+                    require(kind == "mesh") { "Alpha blend belongs to a mesh" }
+                    val mode = org.umamo.runtime.model.AlphaBlendMode.entries.firstOrNull { it.name.equals(value, ignoreCase = true) }
+                        ?: throw IllegalArgumentException("Unknown alpha blend: $value")
+                    next = next.withDrawableAlphaBlendMode(mesh!!.id, mode)
                 }
                 edit["masked_by"]?.jsonArray?.let { value ->
                     require(kind == "mesh") { "Only a mesh is masked" }

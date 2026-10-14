@@ -3703,6 +3703,16 @@ class PSD2LiveViewModel : AutoCloseable {
 		saveMotionOperation("duplicate", kotlinx.serialization.json.buildJsonObject { put("id", id); put("new_id", nextId) }) { openMotionInEditor(nextId) }
 	}
 
+	/** Layerloom patch: a copy of the clip mirrored left to right ([io.github.psd2live.core.MotionMirror]), opened in the editor. */
+	fun mirrorMotionClip(id: String) {
+		val clip = motionClips.firstOrNull { it.id == id } ?: return
+		val parameters = _state.value.previewModel?.rig?.puppet?.parameters ?: return
+		val nextId = MotionClips.newId(motionClips)
+		val name = MotionClips.uniqueName(motionClips, tr("animation.mirroredName", clip.name))
+		val mirrored = clip.copy(id = nextId, name = name, builtin = null, curves = io.github.psd2live.core.MotionMirror.mirrored(clip, parameters))
+		saveMotionOperation("put", kotlinx.serialization.json.buildJsonObject { put("clip", MotionClips.toJson(mirrored)) }) { openMotionInEditor(nextId) }
+	}
+
 	fun renameMotionClip(id: String, name: String) {
 		val trimmed = name.trim()
 		if (trimmed.isEmpty() || trimmed.any(Char::isISOControl)) return

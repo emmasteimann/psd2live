@@ -312,6 +312,7 @@ private fun customEntries(viewModel: PSD2LiveViewModel, state: PSD2LiveState): L
 			settings = { ClipSettings(viewModel, clip) },
 			menu = { dismiss ->
 				CompactMenuItem(text = tr("animation.duplicate"), onClick = { dismiss(); viewModel.duplicateMotionClip(clip.id) })
+				CompactMenuItem(text = tr("animation.mirror"), onClick = { dismiss(); viewModel.mirrorMotionClip(clip.id) })
 				CompactMenuItem(text = tr("animation.delete"), danger = true, onClick = { dismiss(); viewModel.deleteMotionClip(clip.id) })
 			},
 		)

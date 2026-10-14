@@ -28,6 +28,13 @@ internal object WorkspaceDocumentEdits {
         setOf("put", "delete", "deform").map { "path_$it" } +
         setOf("swing_put", "swing_delete") + setOf("expression_put", "expression_delete", "pose_put") + WorkspacePhysicsEdits.batchable + WorkspaceSimulationEdits.supported + WorkspaceCanvasWeightEdits.supported + WorkspaceCanvasDeformEdits.supported + WorkspaceTextureEdits.supported
 
+    /**
+     * Layerloom patch: document operations only the editor sends (its Expressions tab). They aren't agent operations,
+     * so the agent registry and its batch schema leave them out ([agentBatchable]).
+     */
+    val editorOnly: Set<String> = setOf("expression_put", "expression_delete", "pose_put")
+    val agentBatchable: Set<String> get() = supported - editorOnly
+
     fun apply(operation: WorkspaceDocumentOperation, document: WorkspaceDocument, model: RigPreviewModel,
               simulationWork: WorkspaceSimulationWork = WorkspaceSimulationWork.Direct,
               physicsWork: WorkspacePhysicsWork = WorkspacePhysicsWork.Direct,

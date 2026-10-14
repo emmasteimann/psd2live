@@ -12,7 +12,7 @@ internal class WorkspaceBatchEditException(val index: Int, val editOperation: St
 
 /** Each batchable operation's business request: its published schema without the shared request context. */
 internal fun batchMemberSchemas(registry: WorkspaceOperationRegistry): Map<String, JsonObject> =
-    WorkspaceDocumentEdits.supported.sorted().associateWith { id ->
+    WorkspaceDocumentEdits.agentBatchable.sorted().associateWith { id ->
         val published = registry.definition(id).requestSchema
         val contextFields = setOf("state", "project_id", "request_id")
         JsonObject(published + mapOf(
@@ -37,7 +37,7 @@ internal suspend fun startDocumentBatch(port: WorkspaceDocumentPort, statePort: 
 
 internal fun registerDocumentBatch(registry: WorkspaceOperationRegistry, port: WorkspaceDocumentPort,
                                    statePort: WorkspaceStatePort, jobs: WorkspaceJobs) {
-    val supported = WorkspaceDocumentEdits.supported
+    val supported = WorkspaceDocumentEdits.agentBatchable
     registry.markBatchable(supported)
     val variants = batchMemberSchemas(registry).map { (id, business) ->
         buildJsonObject {

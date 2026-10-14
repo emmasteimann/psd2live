@@ -53,7 +53,8 @@ internal object RigIrCompiler {
 			// The open mouth keeps its texture coordinates over the whole artwork in a canvas-space base mesh.
 			restPose = if (config.rigEdits.importedCmo3 != null) emptyMap() else mapOf(StandardParameters.MOUTH_OPEN.raw to 1f),
 			advanced = advanced(rig, config, base, simulations).copy(
-				expressions = RuntimeExtras.expressions(rig.puppet),
+				// Layerloom patch: the project's expressions, or the standard set when it has none.
+				expressions = Expressions.forExport(config.rigEdits.expressions, rig.puppet),
 				hitAreas = RuntimeExtras.hitAreas(rig.puppet, analysis, rig.layerIdByDrawableId),
 			),
 		)

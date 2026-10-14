@@ -110,6 +110,10 @@ fun main(arguments: Array<String>) {
 		} ?: emptyMap(),
 		layerGlues = options.value("--glues")?.let(::readLayerGlues) ?: emptyMap(),
 		layerSwings = options.value("--swings")?.let(::readJsonObject)?.mapValues { it.value as kotlinx.serialization.json.JsonObject } ?: emptyMap(),
+		// Layerloom patch: --expressions FILE, the rig job's expression list (exported as exp3 + VTS hotkeys).
+		rigEdits = io.github.psd2live.core.RigEditOverlay(expressions = options.value("--expressions")?.let {
+			io.github.psd2live.core.Expressions.fromJob(kotlinx.serialization.json.Json.parseToJsonElement(java.io.File(it).readText()) as kotlinx.serialization.json.JsonArray)
+		}.orEmpty()),
 	)
 	require(config.exportCmo3 || config.exportMoc3 || config.exportJson) { tr("cli.exportFormatRequired") }
 	val input = Path.of(options.required("--input"))
@@ -364,7 +368,7 @@ internal data class CliOptions(val values: Map<String, String>, val flags: Set<S
 
 	companion object {
 		internal val flagNames = setOf("--no-upscale-neural-alpha", "--upscale-neural-alpha", "--mesh-pixels", "--no-physics", "--no-cmo3", "--no-moc3", "--mesh-only", "--no-deformers", "--no-motions", "--no-json")
-		internal val valueNames = setOf("--upscale", "--upscale-noise", "--upscale-python", "--nunif-dir", "--upscale-model", "--upscale-tile", "--input", "--output", "--lang", "--atlas", "--mesh-spacing", "--mesh-wrap", "--head-strength", "--body-strength", "--hair-anchors", "--glues", "--swings", "--skeleton", "--arm-joints", "--hair-turn-depth", "--turn-depths", "--hair-turn-depth-y", "--turn-depths-y", "--toggles")
+		internal val valueNames = setOf("--upscale", "--upscale-noise", "--upscale-python", "--nunif-dir", "--upscale-model", "--upscale-tile", "--input", "--output", "--lang", "--atlas", "--mesh-spacing", "--mesh-wrap", "--head-strength", "--body-strength", "--hair-anchors", "--glues", "--swings", "--skeleton", "--arm-joints", "--hair-turn-depth", "--turn-depths", "--hair-turn-depth-y", "--turn-depths-y", "--toggles", "--expressions")
 		fun parse(arguments: Array<String>): CliOptions {
 			val values = linkedMapOf<String, String>()
 			val flags = linkedSetOf<String>()

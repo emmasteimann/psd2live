@@ -243,8 +243,11 @@ data class RigEditOverlay(
     val motionPresets: Map<String, MotionPresetSettings> = emptyMap(),
     /** Simulated bodies; they read the rebuilt rig and, once baked, write back through their own generator. */
     val simEdits: List<io.github.psd2live.core.sim.RigSimEdit> = emptyList(),
+    /** Layerloom patch: authored facial expressions (exp3); they do not touch the rig. */
+    val expressions: List<ExpressionEdit> = emptyList(),
 ) {
 	init {
+        require(expressions.map { it.id }.distinct().size == expressions.size) { "Duplicate expression IDs" }
         require(motionClips.map { it.id }.distinct().size == motionClips.size) { "Duplicate motion IDs" }
         require(motionClips.mapNotNull { it.builtin?.lowercase() }.let { it.distinct().size == it.size }) { "A generated motion has one override" }
 		require(warpEdits.map { it.id }.distinct().size == warpEdits.size) { "Duplicate Warp IDs" }

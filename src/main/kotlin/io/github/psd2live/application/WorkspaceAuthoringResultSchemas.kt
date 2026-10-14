@@ -25,6 +25,7 @@ internal object WorkspaceAuthoringResultSchemas {
         "motion_put", "motion_delete", "motion_seed_builtin", "motion_set_key", "motion_delete_key", "motion_remove_curve",
         "motion_pose", "motion_move_keys", "motion_delete_keys", "motion_paste_keys", "motion_replace_keys", "motion_preset",
         "motion_create", "motion_duplicate", "motion_rename", "motion_properties",
+        "expression_put", "expression_delete",
     )
     private val normalizedOperations = setOf(
         "parameter_create", "parameter_update", "parameter_delete", "swing_put", "swing_delete",

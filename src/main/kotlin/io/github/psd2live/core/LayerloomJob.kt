@@ -23,7 +23,8 @@ import java.nio.file.Path
  *
  * The file uses the same keys as the CLI option files:
  * `{"hairAnchors": {...}, "glues": {...}, "swings": {...}, "toggles": {layer: param}, "turnDepths": {...},
- * "turnDepthsY": {...}, "hairTurnDepth": 0.5, "hairTurnDepthY": 0.5, "skeleton": "arms", "armJoints": {...}}`.
+ * "turnDepthsY": {...}, "hairTurnDepth": 0.5, "hairTurnDepthY": 0.5, "skeleton": "arms", "armJoints": {...},
+ * "expressions": [{"name": "Glasses", "parameters": [{"Id": "ParamGlasses", "Value": 1, "Blend": "Add"}]}]}`.
  */
 data class LayerloomJob(
 	val rig: LayerloomRigOptions = LayerloomRigOptions(),
@@ -31,12 +32,15 @@ data class LayerloomJob(
 	val skeleton: String? = null,
 	val armJoints: Map<String, Map<String, List<Float>>> = emptyMap(),
 	val swings: Map<String, JsonObject> = emptyMap(),
+	/** Expressions (the studio's toggle expressions); they become the project's own, editable in Expressions. */
+	val expressions: List<ExpressionEdit> = emptyList(),
 ) {
 	val isEmpty: Boolean get() = this == LayerloomJob()
 
 	/** [base] with this job's build inputs and settings (the one-time setup is applied by [setUp]). */
 	fun configure(base: PipelineConfig): PipelineConfig = rig.appliedTo(base).copy(
-		layerToggles = toggles, autoSkeleton = skeleton, armJoints = armJoints, layerSwings = swings)
+		layerToggles = toggles, autoSkeleton = skeleton, armJoints = armJoints, layerSwings = swings,
+		rigEdits = if (expressions.isEmpty() || base.rigEdits.expressions.isNotEmpty()) base.rigEdits else base.rigEdits.copy(expressions = expressions))
 
 	companion object {
 		const val SUFFIX = ".layerloom.json"
@@ -71,6 +75,7 @@ data class LayerloomJob(
 					}?.toMap()?.let { side to it }
 				}?.toMap().orEmpty(),
 				swings = obj("swings")?.mapNotNull { (layer, settings) -> (settings as? JsonObject)?.let { layer to it } }?.toMap().orEmpty(),
+				expressions = (root["expressions"] as? JsonArray)?.let(Expressions::fromJob).orEmpty(),
 			)
 		}
 

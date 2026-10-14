@@ -42,7 +42,7 @@ internal class WorkspaceSourceImporter(
                 require(path.isAbsolute && Files.isRegularFile(path) && path.fileName.toString().endsWith(".psd", true)) { "Provide an absolute local PSD path" }
                 val source = readPsd(path)
                 source to (job?.let { LayerloomJob.toggleOverrides(source, it.toggles) } ?: emptyMap())
-            }, project = project, sourceAuxiliary = sourceAuxiliary)
+            }, project = project, sourceAuxiliary = sourceAuxiliary, rigEdits = RigEditOverlay(expressions = job?.expressions.orEmpty()))
     }
 
     suspend fun createArtwork(arguments: JsonObject, projectId: String?, state: String, discardUnsaved: Boolean = false,
@@ -53,7 +53,9 @@ internal class WorkspaceSourceImporter(
     private suspend fun install(projectId: String?, state: String, discardUnsaved: Boolean, initialConfig: PipelineConfig,
                                 summary: String, prepare: suspend () -> Pair<SourceArt, Map<String, LayerClassificationOverride>>,
                                 project: (WorkspaceDocument, RigPreviewModel, String) -> Unit,
-                                sourceAuxiliary: JsonObject = JsonObject(emptyMap())): WorkspaceCommit<RigPreviewModel> {
+                                sourceAuxiliary: JsonObject = JsonObject(emptyMap()),
+                                /** Layerloom patch: rig edits a new source project starts with (a rig job's expressions). */
+                                rigEdits: RigEditOverlay = RigEditOverlay.Empty): WorkspaceCommit<RigPreviewModel> {
         val before = runtime.state.value
         currentCoroutineContext().ensureActive()
         // Capture before source I/O. Another edit or reload cannot be hidden by taking a newer token.
@@ -68,8 +70,8 @@ internal class WorkspaceSourceImporter(
         progress(0.4f, "Preparing new source document")
         val config = initialConfig.copy(layerVisibility = emptyMap(), deletedLayerIds = emptySet(),
             layerOverrides = overrides, parentOverrides = emptyMap(), drawOrderOverrides = emptyMap(), meshOverrides = emptyMap(),
-            rigEdits = RigEditOverlay.Empty, generationSource = null, meshSource = null, hairSimulationFront = false, hairSimulationBack = false)
-        val document = WorkspaceDocument(source, emptyMap(), emptySet(), overrides, emptyMap(), RigEditOverlay.Empty,
+            rigEdits = rigEdits, generationSource = null, meshSource = null, hairSimulationFront = false, hairSimulationBack = false)
+        val document = WorkspaceDocument(source, emptyMap(), emptySet(), overrides, emptyMap(), rigEdits,
             WorkspaceSettingsCodec.encode(config))
         progress(0.6f, "Rebuilding new source project")
         val built = if (config.autoSkeleton == null && config.layerSwings.isEmpty()) build(document)

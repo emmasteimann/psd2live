@@ -10,6 +10,7 @@ import org.umamo.format.moc3.json.FileReferences
 import org.umamo.format.moc3.json.Model3Group
 import org.umamo.format.moc3.json.Model3Json
 import org.umamo.format.moc3.json.Model3Motion
+import org.umamo.format.moc3.json.Model3Expression
 import org.umamo.interop.ExportNotice
 import org.umamo.interop.moc3.Moc3ExportOptions
 import org.umamo.interop.moc3.Moc3Sidecars
@@ -62,16 +63,23 @@ public object Moc3Target : ExportTarget {
 		}
 		val texts = sidecarTexts(SidecarKey(ir.physics, ir.clips, parameterIds, baseName))
 		val motions = texts.motions
+		// Layerloom patch: one exp3 per expression, listed in model3's Expressions.
+		val stems = Cubism3Json.expressionStems(ir.advanced.expressions)
+		val expressions = ir.advanced.expressions.mapNotNull { e ->
+			Cubism3Json.exp3(e, parameterIds)?.let { Triple(e, "$baseName.${stems.getValue(e.id)}.exp3.json", it) }
+		}
 		val sidecars = buildList {
 			if (moc3Options.includePhysics) texts.physics?.let {
 				add(Moc3Sidecars.PassThroughSidecar(Moc3Sidecars.SidecarKind.Physics, "$baseName.physics3.json", it))
 			}
 			for ((_, file, json) in motions) add(Moc3Sidecars.PassThroughSidecar(Moc3Sidecars.SidecarKind.Motion, file, json))
+			for ((_, file, json) in expressions) add(Moc3Sidecars.PassThroughSidecar(Moc3Sidecars.SidecarKind.Expression, file, json))
 		}
 		val manifest = Model3Json(
 			version = 3,
 			fileReferences = FileReferences(moc = "", textures = emptyList(),
-				motions = motions.takeIf { it.isNotEmpty() }?.groupBy({ it.first }, { Model3Motion(file = it.second) })),
+				motions = motions.takeIf { it.isNotEmpty() }?.groupBy({ it.first }, { Model3Motion(file = it.second) }),
+				expressions = expressions.takeIf { it.isNotEmpty() }?.map { (e, file, _) -> Model3Expression(name = e.name, file = file) }),
 			// Cubism knows these two groups; the other roles are for runtimes that drive them themselves.
 			groups = ir.parameterRoles.filter { it.role == "EyeBlink" || it.role == "LipSync" }.mapNotNull { role ->
 				role.parameters.filter(parameterIds::contains).takeIf { it.isNotEmpty() }?.let { Model3Group("Parameter", role.role, it) }

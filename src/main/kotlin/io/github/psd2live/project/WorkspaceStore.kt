@@ -544,6 +544,8 @@ internal class WorkspaceStore(
             putJsonArray("motions") { document.rigEdits.motionClips.forEach { add(io.github.psd2live.core.MotionClips.toJson(it)) } }
             if (document.rigEdits.motionPresets.isNotEmpty()) put("motionPresets", io.github.psd2live.core.MotionPresets.toJson(document.rigEdits.motionPresets))
             if (document.rigEdits.simEdits.isNotEmpty()) putJsonArray("simulations") { document.rigEdits.simEdits.forEach { add(it.toJson()) } }
+            // Layerloom patch: written only when there are any, so earlier documents keep their revision.
+            if (document.rigEdits.expressions.isNotEmpty()) putJsonArray("expressions") { document.rigEdits.expressions.forEach { add(io.github.psd2live.core.Expressions.toJson(it)) } }
 			putJsonArray("parameters") {
 				document.rigEdits.parameterEdits.forEach { edit ->
 					add(buildJsonObject {
@@ -684,6 +686,7 @@ internal class WorkspaceStore(
             motionClips = rigEditObject.optionalArray("motions").map { io.github.psd2live.core.MotionClips.fromJson(it.jsonObject) },
             motionPresets = io.github.psd2live.core.MotionPresets.fromJson(rigEditObject["motionPresets"]?.jsonObject),
             simEdits = rigEditObject.optionalArray("simulations").map { io.github.psd2live.core.sim.RigSimEdit.fromJson(it.jsonObject) },
+            expressions = rigEditObject.optionalArray("expressions").map { io.github.psd2live.core.Expressions.fromJson(it.jsonObject) },
 			parameterEdits = rigEditObject.optionalArray("parameters").map { element ->
 				val edit = element.jsonObject
 				RigParameterEdit(

@@ -173,4 +173,37 @@ public object Cubism3Json {
 		}
 		append('"')
 	}
+
+	/**
+	 * Layerloom patch: the exp3 JSON of [expression], keeping only entries on [availableParameters]; null when none
+	 * remain. Values in Cubism's form: Add and Overwrite in parameter units, Multiply as a factor.
+	 */
+	public fun exp3(expression: io.github.psd2live.format.model.ExpressionIR, availableParameters: Set<String>): String? {
+		val entries = expression.parameters.filter { it.parameter in availableParameters }
+		if (entries.isEmpty()) return null
+		fun blend(b: io.github.psd2live.format.model.ExpressionBlend) = when (b) {
+			io.github.psd2live.format.model.ExpressionBlend.ADD -> "Add"
+			io.github.psd2live.format.model.ExpressionBlend.MULTIPLY -> "Multiply"
+			io.github.psd2live.format.model.ExpressionBlend.OVERWRITE -> "Overwrite"
+		}
+		fun q(text: String) = kotlinx.serialization.json.JsonPrimitive(text).toString()
+		return buildString {
+			append("{\n\t\"Type\": \"Live2D Expression\",\n")
+			append("\t\"FadeInTime\": ${expression.fadeIn},\n\t\"FadeOutTime\": ${expression.fadeOut},\n\t\"Parameters\": [\n")
+			append(entries.joinToString(",\n") { "\t\t{ \"Id\": ${q(it.parameter)}, \"Value\": ${it.value}, \"Blend\": \"${blend(it.blend)}\" }" })
+			append("\n\t]\n}\n")
+		}
+	}
+
+	/** Layerloom patch: a file stem per expression id, from the names: ASCII, unique, stable for a given list. */
+	public fun expressionStems(expressions: List<io.github.psd2live.format.model.ExpressionIR>): Map<String, String> {
+		val used = HashSet<String>()
+		return expressions.associate { e ->
+			val base = e.name.lowercase().map { if (it.code < 128 && it.isLetterOrDigit()) it else '_' }.joinToString("")
+				.replace(Regex("_+"), "_").trim('_').ifEmpty { e.id }
+			var stem = base; var n = 2
+			while (!used.add(stem)) stem = "${base}_${n++}"
+			e.id to stem
+		}
+	}
 }

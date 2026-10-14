@@ -46,7 +46,7 @@ public object VTubeStudioTarget : ExportTarget {
 	private fun id(seed: String): String = MessageDigest.getInstance("SHA-256").digest(seed.encodeToByteArray())
 		.take(16).joinToString("") { "%02x".format(it) }
 
-	public fun config(ir: RigIR, baseName: String, motionFiles: List<String>): String {
+	public fun config(ir: RigIR, baseName: String, motionFiles: List<String>, expressionFiles: List<String> = emptyList()): String {
 		val parameters = ir.parameters.associateBy { it.id }
 		val settings = mappings.mapNotNull { m ->
 			val p = parameters[m.parameter] ?: return@mapNotNull null
@@ -68,6 +68,16 @@ public object VTubeStudioTarget : ExportTarget {
 				put("StopsOnLastFrame", false); put("DeactivateAfterKeyTypedAfterMillis", -1)
 			}
 		}
+		// Layerloom patch: a hotkey that toggles each expression.
+		val expressionHotkeys = expressionFiles.map { file ->
+			buildJsonObject {
+				put("HotkeyID", id("$baseName/hotkey/$file")); put("Name", file.removePrefix("$baseName.").removeSuffix(".exp3.json"))
+				put("Action", "ToggleExpression"); put("File", file); put("Folder", "")
+				putJsonObject("Triggers") { put("Trigger1", ""); put("Trigger2", ""); put("Trigger3", ""); put("ScreenButton", 0) }
+				put("IsGlobal", false); put("IsActive", true); put("Minimized", false)
+				put("StopsOnLastFrame", false); put("DeactivateAfterKeyTypedAfterMillis", -1)
+			}
+		}
 		val json = buildJsonObject {
 			put("Version", 1)
 			put("Name", baseName)
@@ -76,7 +86,7 @@ public object VTubeStudioTarget : ExportTarget {
 				put("Icon", ""); put("Model", "$baseName.model3.json"); put("IdleAnimation", ""); put("IdleAnimationWhenTrackingLost", "")
 			}
 			put("ParameterSettings", JsonArray(settings))
-			put("Hotkeys", JsonArray(hotkeys))
+			put("Hotkeys", JsonArray(hotkeys + expressionHotkeys))
 		}
 		return Json { prettyPrint = true }.encodeToString(JsonElement.serializer(), json)
 	}
@@ -84,7 +94,7 @@ public object VTubeStudioTarget : ExportTarget {
 	override fun plan(ir: RigIR, options: ExportOptions): LoweredExport {
 		val bundle = Moc3Target.bundle(ir, options)
 		val motions = bundle.files.map { it.name }.filter { it.endsWith(".motion3.json") }
-		val config = config(ir, options.baseName, motions)
+		val config = config(ir, options.baseName, motions, bundle.files.map { it.name }.filter { it.endsWith(".exp3.json") })
 		val mapped = mappings.map { it.parameter }.toSet()
 		val losses = CapabilityScan.scan(ir, capabilities, options) + bundle.report.notices.map(Moc3Target::loss) +
 			listOf(LossEntry("*", Feature.STRUCTURE, Handling.APPROXIMATED,

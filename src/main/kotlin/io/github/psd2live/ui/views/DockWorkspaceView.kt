@@ -1065,7 +1065,7 @@ private fun DockModuleContent(
 		)
 		"skeleton" -> SkeletonTreeView(poseless, vm)
 		"history" -> HistoryTreeView(poseless, vm, Modifier.fillMaxSize())
-		"prepare" -> PrepareStudioView(Modifier.fillMaxSize())
+		"prepare" -> PrepareStudioView(viewModel = vm, modifier = Modifier.fillMaxSize())
 		"log" -> BottomLogDock(poseless, vm, Modifier.fillMaxSize(), fillDock = true)
 		"animationEditor" -> AnimationEditorView(state, vm)
 		"settings" -> {

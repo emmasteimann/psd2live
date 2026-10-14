@@ -317,6 +317,7 @@ class DesktopWorkspace(
             viewModel.applySourceImport(current, document, preview, input, id)
         }
         finishSourceImport(result)
+        keepStudioProject(result.capture.projectId, input)
         result.mutation("Imported PSD ${input.fileName}")
     }
 
@@ -335,8 +336,27 @@ class DesktopWorkspace(
         }
         synchronized(historyLock) { if (result.applied) scheduleHistoryPersistence(result.capture.projectId) }
         viewModel.refreshWorkspaceRenderer(result.capture.model)
+        keepStudioProject(result.capture.projectId, input)
         result.mutation("Updated art from ${input.fileName}")
     }
+
+    /**
+     * Layerloom patch (S3a): the Layerloom studio project beside [psd] (`<stem>.layerloom-project.json`, written by the
+     * studio with the rig) kept in the project's folder, which saving packs into the .psd2live.
+     */
+    private fun keepStudioProject(projectId: String, psd: Path) {
+        val beside = psd.resolveSibling(psd.fileName.toString().substringBeforeLast('.') + ".layerloom-project.json")
+        if (!java.nio.file.Files.isRegularFile(beside)) return
+        runCatching {
+            val target = workspaceStore.projectRoot(projectId).resolve("layerloom/project.json")
+            java.nio.file.Files.createDirectories(target.parent)
+            java.nio.file.Files.copy(beside, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        }.onFailure { System.err.println("Layerloom studio project not kept: ${it.message}") }
+    }
+
+    /** Layerloom patch (S3a): the open project's Layerloom studio project, when it carries one. */
+    fun studioProject(): Path? = runtime.state.value.capture?.projectId
+        ?.let { workspaceStore.projectRoot(it).resolve("layerloom/project.json") }?.takeIf { java.nio.file.Files.isRegularFile(it) }
 
     private suspend fun captureSourceImport(discardUnsaved: Boolean): Pair<WorkspaceRuntimeState<io.github.psd2live.core.RigPreviewModel>, PSD2LiveState> {
         draftQueue.awaitSettled()

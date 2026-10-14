@@ -71,7 +71,8 @@ internal object ProjectFormatV2 {
 	private val clipKeys = listOf("motions", "motionPresets")
 	private const val JOURNAL = "authoringJournal"
 	private const val OVERRIDE = "generated_override"
-	private val auxiliaryFolders = listOf("assets", "views", "view-images", "workflow")
+	// Layerloom patch (S3a): "layerloom" holds the Layerloom studio project, so one .psd2live file carries both.
+	private val auxiliaryFolders = listOf("assets", "views", "view-images", "workflow", "layerloom")
 
 	/** Moves the working-store layout under [root]/workspace/[projectId] into the v2 layout under [root]. */
 	fun pack(root: Path, projectId: String) {

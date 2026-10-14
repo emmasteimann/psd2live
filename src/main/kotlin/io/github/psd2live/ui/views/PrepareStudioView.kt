@@ -2,6 +2,8 @@ package io.github.psd2live.ui.views
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.Text
@@ -30,14 +32,24 @@ import java.net.URI
  * studio reaches this same app through its open-request inbox (ui/state/OpenRequests).
  */
 @Composable
-internal fun PrepareStudioView(modifier: Modifier = Modifier) {
+internal fun PrepareStudioView(modifier: Modifier = Modifier, viewModel: io.github.psd2live.ui.state.PSD2LiveViewModel? = null) {
 	var status by remember { mutableStateOf(PrepareStudio.status) }
 	var component by remember { mutableStateOf(PrepareStudio.component) }
 	LaunchedEffect(Unit) {
 		if (component == null) component = withContext(Dispatchers.IO) { PrepareStudio.open { status = it } }
 	}
 	val ui = component
-	if (ui != null) SwingPanel(factory = { ui }, modifier = modifier)
+	if (ui != null) Column(modifier) {
+		// Layerloom patch (S3a): the open project carries its studio project: hand it back to the studio.
+		val studio = viewModel?.studioProject()
+		if (studio != null) Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+			Text(io.github.psd2live.i18n.tr("prepare.projectArt"), modifier = Modifier.weight(1f))
+			io.github.psd2live.ui.components.CompactButton(io.github.psd2live.i18n.tr("prepare.loadProjectArt"), {
+				PrepareStudio.loadIntoStudio(studio)
+			})
+		}
+		SwingPanel(factory = { ui }, modifier = Modifier.fillMaxWidth().weight(1f))
+	}
 	else Box(modifier, contentAlignment = Alignment.Center) {
 		Column(Modifier.padding(24.dp)) { Text(status) }
 	}
@@ -63,6 +75,20 @@ internal object PrepareStudio {
 		.firstOrNull { File(it).canExecute() } ?: "node"
 
 	private val opening = kotlinx.coroutines.sync.Mutex()
+
+	/**
+	 * Layerloom patch (S3a): hands [project] (a studio project the editor's project carries) to the studio: it goes
+	 * where the studio's relay serves it, then the studio restores it as Open project would (its current project is
+	 * kept as the previous one).
+	 */
+	fun loadIntoStudio(project: java.nio.file.Path) {
+		runCatching {
+			val handoff = File(System.getProperty("user.home"), ".psd2live/prepare-handoff/project.json").toPath()
+			java.nio.file.Files.createDirectories(handoff.parent)
+			java.nio.file.Files.copy(project, handoff, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+			JbrBrowser.run("window.layerloomOpenFromRig && window.layerloomOpenFromRig()")
+		}.onFailure { status = "Couldn't hand the art to the studio: ${it.message}" }
+	}
 
 	suspend fun open(report: (String) -> Unit): java.awt.Component? = opening.withLock { openOnce(report) }
 
@@ -101,6 +127,10 @@ internal object PrepareStudio {
  */
 private object JbrBrowser {
 	private var app: org.cef.CefApp? = null
+	private var current: org.cef.browser.CefBrowser? = null
+
+	/** Runs [script] in the studio page. */
+	fun run(script: String) { current?.let { it.executeJavaScript(script, it.url ?: "", 0) } }
 
 	fun open(url: String): java.awt.Component {
 		val cef = app ?: run {
@@ -118,6 +148,7 @@ private object JbrBrowser {
 		}
 		val panel = StudioPanel()
 		val browser = cef.createClient().createBrowser(url, org.cef.browser.CefRendering.CefRenderingWithHandler(panel.handler, panel), false)
+		current = browser
 		panel.attach(browser)
 		browser.createImmediately()
 		return panel

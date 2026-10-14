@@ -6495,6 +6495,9 @@ class PSD2LiveViewModel : AutoCloseable {
         }) { it.importPsd(input.toAbsolutePath().normalize().toString(), discardUnsaved) }
     }
 
+    /** Layerloom patch (S3a): the open project's Layerloom studio project file, if it carries one. */
+    fun studioProject(): Path? = (workspaceBackend as? DesktopWorkspace)?.studioProject()
+
     /**
      * Layerloom patch (S3b): replaces the open project's art with [path], keeping its edits (one undoable step); with no
      * project open it imports the PSD as a new one.

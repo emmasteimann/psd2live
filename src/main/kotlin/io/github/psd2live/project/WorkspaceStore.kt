@@ -90,7 +90,7 @@ internal class WorkspaceStore(
     internal fun copyAuxiliary(projectId: String, target: Path, catalog: WorkspaceAssetCatalog? = null, targetProjectId: String = projectId,
                                viewImages: Boolean = true) {
         val source = projectRoot(projectId)
-        for (folder in listOf("assets", "views", "view-images", "workflow")) {
+        for (folder in listOf("assets", "views", "view-images", "workflow", "layerloom")) {
             if (folder == "view-images" && !viewImages) continue
             val directory = source.resolve(folder)
             if (!Files.isDirectory(directory)) continue

@@ -1727,7 +1727,7 @@ fun CanvasViewportComposable(
 			} else if (snapshotGeometry != null && editingPainter != null) drawIntoCanvas { target ->
 				val key = listOf(editingPainter, model, snapshotGeometry, viewport, w, h,
 					targetVisibleLayerIds, canvasState.drawOrderOverrides)
-				snapshotArtworkCache.draw(target.skiaCanvas, key, w, h) { recording ->
+				snapshotArtworkCache.draw(target.skiaCanvas, key, w, h, rasterize = !skiaGuides) { recording ->
 					org.jetbrains.skia.Paint().use { fade ->
 						fade.setAlphaf(0.6f)
 						val saved = recording.saveLayer(org.jetbrains.skia.Rect.makeWH(w.toFloat(), h.toFloat()), fade)

@@ -60,9 +60,16 @@ class PreviewSessions(
 	fun load(model: RigPreviewModel) {
 		this.model = model
 		// Both runtimes draw in the window's Skia OpenGL context; without one the canvas paints in software.
-		(io.github.psd2live.render.SkiaGpu.status.value as? io.github.psd2live.render.SkiaGpu.Status.Unavailable)?.let {
-			onStatus("The preview needs the window drawn with OpenGL: ${it.reason}")
-			return
+		// A window on the GPU without OpenGL (a Mac's Metal) has no context for them either: the canvas draws the
+		// preview through Skia there.
+		when (val status = io.github.psd2live.render.SkiaGpu.status.value) {
+			is io.github.psd2live.render.SkiaGpu.Status.Unavailable -> {
+				onStatus("The preview needs the window drawn with OpenGL: ${status.reason}"); return
+			}
+			is io.github.psd2live.render.SkiaGpu.Status.SkiaOnly -> {
+				onStatus("The preview needs the window drawn with OpenGL; it draws with ${status.api}"); return
+			}
+			else -> Unit
 		}
 		loadActive(model)
 	}

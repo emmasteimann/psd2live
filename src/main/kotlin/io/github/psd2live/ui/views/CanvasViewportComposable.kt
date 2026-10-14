@@ -1228,6 +1228,9 @@ fun CanvasViewportComposable(
 			// texture drawn below is the frame just requested.
 			previewTick.intValue
 			val previewDrawn = if (mode == CanvasMode.PREVIEW) previewGpu?.let { gpu -> gpu.drain(); gpu.resources.frame(renderKey) } else null
+			// A window without OpenGL (a Mac's Metal): the runtime's evaluated frame, drawn here with Skia.
+			val skiaPreview = if (mode == CanvasMode.PREVIEW && previewGpu == null) nativeFrame?.skia
+				?.takeIf { nativeFrame.width == w && nativeFrame.height == h } else null
 			// Path guides never paint outside the Edit tab (see 3e), so they cannot force the
 			// preview off its native SDK frame.
 			val canUseNativeSdk = mode == CanvasMode.PREVIEW &&
@@ -1237,8 +1240,8 @@ fun CanvasViewportComposable(
 				hoveredLayerId == null && hoveredDeformerId == null &&
 				(!showSelectionBounds || !hasActiveSelection) &&
 				canvasState.drawOrderOverrides.isEmpty() && simulated == null && simulationOverlay == null &&
-				nativeFrame != null && previewDrawn != null &&
-				previewDrawn.width == w && previewDrawn.height == h
+				nativeFrame != null && (skiaPreview != null ||
+				(previewDrawn != null && previewDrawn.width == w && previewDrawn.height == h))
 
 			// A snapshot hover temporarily replaces the current model, including its guides and paint tiles.
 			val composited = previewGpu?.takeIf { it.composited.value && it.compositing }
@@ -1263,6 +1266,12 @@ fun CanvasViewportComposable(
 					}
 				})
 				drawRect(Color.Transparent, blendMode = BlendMode.Clear)
+			} else if (canUseNativeSdk && snapshotGeometry == null && skiaPreview != null) {
+				previewHole.set(false)
+				drawIntoCanvas { target ->
+					io.github.psd2live.render.SkiaP2lrtPainter.draw(target.skiaCanvas, skiaPreview.frame,
+						skiaPreview.scale, skiaPreview.offsetX, skiaPreview.offsetY)
+				}
 			} else if (canUseNativeSdk && snapshotGeometry == null && previewDrawn != null) {
 				previewHole.set(false)
 				previewGpu?.hideView(renderKey)

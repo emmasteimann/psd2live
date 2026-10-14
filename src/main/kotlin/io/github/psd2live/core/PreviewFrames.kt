@@ -22,6 +22,8 @@ data class PreviewFrame(
 	val backend: PreviewBackend = PreviewBackend.CUBISM,
 	/** Drawn with the runtime's advanced mode (skinning, exact links, live simulation). */
 	val advanced: Boolean = false,
+	/** On a window without OpenGL: the evaluated frame for the canvas to draw with Skia, instead of a texture. */
+	val skia: io.github.psd2live.render.SkiaPreviewDraw? = null,
 )
 
 /** One frame a preview canvas asks for. Camera values are Cubism's: [scale] fits the canvas height, offsets in clip units. */

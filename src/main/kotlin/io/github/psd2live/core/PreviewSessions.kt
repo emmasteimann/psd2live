@@ -60,14 +60,10 @@ class PreviewSessions(
 	fun load(model: RigPreviewModel) {
 		this.model = model
 		// Both runtimes draw in the window's Skia OpenGL context; without one the canvas paints in software.
-		// A window on the GPU without OpenGL (a Mac's Metal) has no context for them either: the canvas draws the
-		// preview through Skia there.
+		// A window on the GPU without OpenGL (a Mac's Metal) runs p2lrt and draws its frames with Skia (loadActive).
 		when (val status = io.github.psd2live.render.SkiaGpu.status.value) {
 			is io.github.psd2live.render.SkiaGpu.Status.Unavailable -> {
 				onStatus("The preview needs the window drawn with OpenGL: ${status.reason}"); return
-			}
-			is io.github.psd2live.render.SkiaGpu.Status.SkiaOnly -> {
-				onStatus("The preview needs the window drawn with OpenGL; it draws with ${status.api}"); return
 			}
 			else -> Unit
 		}
@@ -75,6 +71,14 @@ class PreviewSessions(
 	}
 
 	private fun loadActive(model: RigPreviewModel) {
+		// Cubism's SDK draws with OpenGL only; on a Metal window p2lrt plays instead, as when Cubism fails to start.
+		val skiaOnly = io.github.psd2live.render.SkiaGpu.status.value is io.github.psd2live.render.SkiaGpu.Status.SkiaOnly
+		if (skiaOnly && active == PreviewBackend.CUBISM) {
+			if (!p2lrtAvailable()) { onStatus("The Cubism preview needs OpenGL, and the PSD2Live runtime is not available"); return }
+			cubismFailure = "Cubism's preview needs OpenGL; this window draws with Metal"
+			activate(PreviewBackend.P2LRT)
+			return
+		}
 		when (active) {
 			PreviewBackend.CUBISM -> {
 				cubism.load(model.runtimeBundle, model.rig.puppet.parameters.map { it.id })

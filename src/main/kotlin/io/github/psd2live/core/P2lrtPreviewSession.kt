@@ -28,7 +28,8 @@ class P2lrtPreviewSession(
 ) : AutoCloseable {
 	private class Loaded(val generation: Long, val bytes: ByteArray, val pages: List<java.awt.image.BufferedImage>)
 
-	private class View(val rig: P2lRuntime.Rig, val gpu: WindowGpu, val generation: Long) {
+	/** [gpu] is null for a view of a window without OpenGL, whose frames the canvas draws with Skia. */
+	private class View(val rig: P2lRuntime.Rig, val gpu: WindowGpu?, val generation: Long) {
 		var advanced = -1
 		/** The frame time of the last step, for the simulation's own clock. */
 		var lastFrameNanos = 0L
@@ -55,9 +56,16 @@ class P2lrtPreviewSession(
 	private val views = HashMap<String, View>()
 	private val lastRequests = HashMap<String, PreviewRenderRequest>()
 	private val serviceKey = Any()
+	/** Windows without OpenGL (a Mac's Metal): views render on this thread and the canvas draws the captured frame. */
+	private val skiaRenderer = Executors.newSingleThreadExecutor { Thread(it, "p2lrt-preview-skia").apply { isDaemon = true } }
+	private val skiaScheduled = AtomicBoolean(false)
+	/** The Skia drawing data of the loaded rig, by generation. */
+	private var skiaModel: Pair<Long, io.github.psd2live.render.SkiaP2lrtModel>? = null
+	private val skiaWindow: Boolean
+		get() = io.github.psd2live.render.SkiaGpu.status.value is io.github.psd2live.render.SkiaGpu.Status.SkiaOnly
 
 	/** How frames reach the window, for the log. */
-	val renderPath: String get() = "texture"
+	val renderPath: String get() = if (skiaWindow) "skia" else "texture"
 
 	/** Compiles [model] to `.p2lrt` in the background and plays it; requests coalesce to the newest model. */
 	fun load(model: RigPreviewModel) {
@@ -97,6 +105,7 @@ class P2lrtPreviewSession(
 				// Every view renders its last request again with the new rig.
 				val gpus = synchronized(lock) { lastRequests.values.mapNotNull { it.gpu }.toSet() }
 				gpus.forEach(::scheduleRender)
+				if (synchronized(lock) { lastRequests.values.any { it.gpu == null } }) scheduleSkiaRender()
 			}
 		} finally {
 			compileScheduled.set(false)
@@ -106,10 +115,107 @@ class P2lrtPreviewSession(
 
 	fun render(request: PreviewRenderRequest) {
 		if (closed || request.width <= 0 || request.height <= 0) return
-		val gpu = request.gpu ?: return postStatus("The preview needs a window drawn with OpenGL")
+		val gpu = request.gpu
+		if (gpu == null && !skiaWindow) return postStatus("The preview needs a window drawn with OpenGL")
 		latestRender.put(request.viewId, request)
 		synchronized(lock) { lastRequests[request.viewId] = request }
-		scheduleRender(gpu)
+		if (gpu != null) scheduleRender(gpu) else scheduleSkiaRender()
+	}
+
+	private fun scheduleSkiaRender() {
+		if (closed || loaded == null || !skiaScheduled.compareAndSet(false, true)) return
+		try {
+			skiaRenderer.execute { try { drainSkiaRenders() } finally { skiaScheduled.set(false) } }
+		} catch (_: RejectedExecutionException) {
+			skiaScheduled.set(false)
+		}
+	}
+
+	private fun drainSkiaRenders() {
+		val current = loaded ?: return
+		val others = ArrayList<PreviewRenderRequest>()
+		val rendered = HashSet<String>()
+		while (!closed) {
+			val request = latestRender.poll() ?: break
+			if (request.gpu != null) { others += request; continue }
+			renderSkiaFrame(current, request)
+			rendered += request.viewId
+		}
+		others.forEach { latestRender.putIfAbsent(it.viewId, it) }
+		val stale = synchronized(lock) {
+			lastRequests.values.filter { it.gpu == null && it.viewId !in rendered && views[it.viewId]?.generation != current.generation }
+		}
+		stale.forEach { renderSkiaFrame(current, it) }
+		others.mapNotNull { it.gpu }.toSet().forEach(::scheduleRender)
+	}
+
+	/** Evaluates [request]'s view and hands the canvas a copy of the frame to draw with Skia. */
+	private fun renderSkiaFrame(current: Loaded, request: PreviewRenderRequest): Unit = synchronized(lock) {
+		val rt = runtime ?: return
+		try {
+			var view = views[request.viewId]
+			if (view == null || view.generation != current.generation || view.gpu != null) {
+				view?.rig?.close()
+				view = View(rt.load(current.bytes).also { it.behaviors(0) }, null, current.generation)
+				views[request.viewId] = view
+			}
+			val rig = view.rig
+			val model = skiaModel?.takeIf { it.first == current.generation }?.second
+				?: io.github.psd2live.render.SkiaP2lrtModel.of(rig, current.pages).also { skiaModel = current.generation to it }
+			val features = step(view, request)
+			val (canvasWidth, canvasHeight) = rig.canvas
+			val pixelsPerCanvas = request.scale * minOf(request.width, request.height) / canvasHeight.coerceAtLeast(1f)
+			val centerX = request.width * 0.5f * (1f + request.offsetX)
+			val centerY = request.height * 0.5f * (1f - request.offsetY)
+			val draw = io.github.psd2live.render.SkiaPreviewDraw(io.github.psd2live.render.SkiaP2lrtFrame.capture(rig, model),
+				pixelsPerCanvas, centerX - canvasWidth * 0.5f * pixelsPerCanvas, centerY - canvasHeight * 0.5f * pixelsPerCanvas)
+			postFrame(PreviewFrame(
+				width = request.width, height = request.height, parameters = currentParameters(rig), animationEnabled = request.animationEnabled,
+				viewId = request.viewId, cameraScale = request.scale, cameraOffsetX = request.offsetX, cameraOffsetY = request.offsetY,
+				backend = PreviewBackend.P2LRT, advanced = features != 0, skia = draw,
+			))
+		} catch (failure: Throwable) {
+			postStatus(failure.message ?: failure.javaClass.simpleName)
+		}
+	}
+
+	private fun currentParameters(rig: P2lRuntime.Rig): Map<ParameterId, Float> {
+		val currentValues = rig.current
+		val parameters = HashMap<ParameterId, Float>(currentValues.size)
+		for ((i, id) in rig.parameterIds.withIndex()) parameters[ParameterId(id)] = currentValues[i]
+		return parameters
+	}
+
+	/** Poses [view]'s rig for [request] and evaluates or steps it; the advanced features it ran with. */
+	private fun step(view: View, request: PreviewRenderRequest): Int {
+		val rig = view.rig
+		// The physics switch decides whether the simulation runs; without it the baked swing shows, skinned.
+		val features = when {
+			!request.advanced -> 0
+			request.physics -> rig.advancedAvailable
+			else -> rig.advancedAvailable and (SIM or COLLISION).inv()
+		}
+		if (view.advanced != features) {
+			rig.setAdvanced(features)
+			rig.resetPhysics()
+			if (features and SIM != 0) rig.resetSimulation()
+			view.advanced = features
+			view.lastFrameNanos = 0L
+		}
+		// The pose is the whole pose: parameters it leaves out sit at their defaults.
+		val values = rig.defaults.copyOf()
+		val index = rig.parameterIds.withIndex().associate { it.value to it.index }
+		for ((id, value) in request.parameterOverrides) index[id.raw]?.let { values[it] = value }
+		rig.values = values
+		if (features and SIM != 0) {
+			// Stepped by the frame clock, not playback: a paused preview with physics on keeps swinging.
+			val elapsed = if (view.lastFrameNanos == 0L) 0f else ((request.frameTimeNanos - view.lastFrameNanos) / 1e9f).coerceIn(0f, 0.1f)
+			view.lastFrameNanos = request.frameTimeNanos
+			rig.update(elapsed)
+		} else {
+			rig.evaluate()
+		}
+		return features
 	}
 
 	private fun scheduleRender(gpu: WindowGpu) {
@@ -152,32 +258,7 @@ class P2lrtPreviewSession(
 				context.generation = current.generation
 			}
 			val rig = view.rig
-			// The physics switch decides whether the simulation runs; without it the baked swing shows, skinned.
-			val features = when {
-				!request.advanced -> 0
-				request.physics -> rig.advancedAvailable
-				else -> rig.advancedAvailable and (SIM or COLLISION).inv()
-			}
-			if (view.advanced != features) {
-				rig.setAdvanced(features)
-				rig.resetPhysics()
-				if (features and SIM != 0) rig.resetSimulation()
-				view.advanced = features
-				view.lastFrameNanos = 0L
-			}
-			// The pose is the whole pose: parameters it leaves out sit at their defaults.
-			val values = rig.defaults.copyOf()
-			val index = rig.parameterIds.withIndex().associate { it.value to it.index }
-			for ((id, value) in request.parameterOverrides) index[id.raw]?.let { values[it] = value }
-			rig.values = values
-			if (features and SIM != 0) {
-				// Stepped by the frame clock, not playback: a paused preview with physics on keeps swinging.
-				val elapsed = if (view.lastFrameNanos == 0L) 0f else ((request.frameTimeNanos - view.lastFrameNanos) / 1e9f).coerceIn(0f, 0.1f)
-				view.lastFrameNanos = request.frameTimeNanos
-				rig.update(elapsed)
-			} else {
-				rig.evaluate()
-			}
+			val features = step(view, request)
 
 			// Cubism's camera (the canvas height fits the shorter side times scale, offsets in clip units) in view pixels.
 			val (canvasWidth, canvasHeight) = rig.canvas
@@ -188,11 +269,8 @@ class P2lrtPreviewSession(
 				context.renderer.draw(rig, request.width, request.height, pixelsPerCanvas,
 					centerX - canvasWidth * 0.5f * pixelsPerCanvas, centerY - canvasHeight * 0.5f * pixelsPerCanvas)
 			} ?: return
-			val currentValues = rig.current
-			val parameters = HashMap<ParameterId, Float>(currentValues.size)
-			for ((i, id) in rig.parameterIds.withIndex()) parameters[ParameterId(id)] = currentValues[i]
 			postFrame(PreviewFrame(
-				width = request.width, height = request.height, parameters = parameters, animationEnabled = request.animationEnabled,
+				width = request.width, height = request.height, parameters = currentParameters(rig), animationEnabled = request.animationEnabled,
 				viewId = request.viewId, cameraScale = request.scale, cameraOffsetX = request.offsetX, cameraOffsetY = request.offsetY,
 				backend = PreviewBackend.P2LRT, advanced = features != 0,
 			))
@@ -205,7 +283,9 @@ class P2lrtPreviewSession(
 		latestRender.remove(viewId)
 		latestDelivery.remove(viewId)
 		val view = synchronized(lock) { lastRequests.remove(viewId); views.remove(viewId) } ?: return
-		view.gpu.post { resources -> synchronized(lock) { view.rig.close() }; resources.release(viewId) }
+		val gpu = view.gpu
+		if (gpu == null) synchronized(lock) { view.rig.close() }
+		else gpu.post { resources -> synchronized(lock) { view.rig.close() }; resources.release(viewId) }
 	}
 
 	private fun postFrame(frame: PreviewFrame) {
@@ -235,11 +315,13 @@ class P2lrtPreviewSession(
 		latestDelivery.clear()
 		pendingModel.set(null)
 		compiler.shutdownNow()
+		skiaRenderer.shutdown()
 		val byGpu = synchronized(lock) {
 			lastRequests.clear()
 			views.entries.groupBy({ it.value.gpu }, { it.key to it.value }).also { views.clear() }
 		}
-		for ((gpu, entries) in byGpu) gpu.post { resources ->
+		byGpu[null]?.let { entries -> synchronized(lock) { entries.forEach { (_, view) -> runCatching { view.rig.close() } } } }
+		for ((gpu, entries) in byGpu) if (gpu != null) gpu.post { resources ->
 			entries.forEach { (viewId, view) -> runCatching { view.rig.close() }; resources.release(viewId) }
 			resources.closeService(serviceKey)
 		}

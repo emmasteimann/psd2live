@@ -178,6 +178,29 @@ data class MeshSettings(
 	val wrap: Float = 0f,
 )
 
+/**
+ * Layerloom patch: a front-hair layer pinned to the back hair below a band. [from] and [to] are fractions of the
+ * layer's own height (0 = top): above [from] it moves as front hair, below [to] it moves exactly with the back hair,
+ * blending between. [pinTop] flips it: stuck to the back hair above [from], front hair below [to].
+ */
+data class HairAnchor(val from: Float, val to: Float, val pinTop: Boolean = false)
+
+/**
+ * Layerloom patch: glue part of one layer to another layer. [target] is the PSD layer name it is glued to; [from] and
+ * [to] are fractions of the glued layer's own height (0 = top). With [glueTop] the rows above [from] move exactly with
+ * the target (its swing included), blending to free below [to]; otherwise the rows below [to] are glued and the top is
+ * free. The free part hangs from the glued part: it follows the target's motion with the target's swing left out, so
+ * it never picks up the target's sway (give it its own with a swing).
+ */
+data class LayerGlue(
+	val target: String,
+	val from: Float,
+	val to: Float,
+	val glueTop: Boolean = true,
+	/** [from]/[to] run left to right across the layer's width instead of down its height; [glueTop] = the left side is glued. */
+	val horizontal: Boolean = false,
+)
+
 data class PipelineConfig(
 	val atlasSize: Int = 4096,
 	val textureUpscale: TextureUpscaleConfig = TextureUpscaleConfig(),
@@ -259,6 +282,44 @@ data class PipelineConfig(
 	val deletedLayerIds: Set<String> = emptySet(),
 	/** Manual parent deformer overrides (layerId or deformerId -> parentDeformerId or null for root). */
 	val parentOverrides: Map<String, String?> = emptyMap(),
+	/** Layerloom patch: hair anchors by PSD layer name (see [HairAnchor]); empty = PSD2Live's own behaviour. */
+	val hairAnchors: Map<String, HairAnchor> = emptyMap(),
+	/** Layerloom patch: glues by PSD layer name (see [LayerGlue]). */
+	val layerGlues: Map<String, LayerGlue> = emptyMap(),
+	/** Layerloom patch: swings by PSD layer name, as `swing_put` arguments without id/targets (see [LayerSwings]). */
+	val layerSwings: Map<String, kotlinx.serialization.json.JsonObject> = emptyMap(),
+	/**
+	 * Layerloom patch: build the editor's auto skeleton when the project has none: "arms" keeps the arm bones (upper
+	 * arm, forearm, hand) and the body bones they hang from; "full" keeps every limb the tags propose.
+	 */
+	val autoSkeleton: String? = null,
+	/**
+	 * Layerloom patch: hair wraps round the head on turns. 0 = PSD2Live as released; 1 = at a full 45° turn the hair
+	 * rotates 22.5° round a cylinder on the head's centre: the side turning away squeezes, the near side widens, the
+	 * centre stays with the face. Front and back hair follow warps (and what is glued to them).
+	 */
+	val hairTurnDepth: Float = 0f,
+	/**
+	 * Layerloom patch: per-layer turn depth by PSD layer name, overriding [hairTurnDepth] for that piece (or giving
+	 * any piece one: a hat brim, an ear). The piece gets a small warp that adds the difference to what it already rides.
+	 */
+	val layerTurnDepths: Map<String, Float> = emptyMap(),
+	/**
+	 * Layerloom patch: the same for looking up/down (AngleY): looking up squeezes the top of the hair, looking down the
+	 * bottom; height kept, spacing redistributed. 1 = at a full 30° look the hair rotates 15° on its cylinder.
+	 */
+	val hairTurnDepthY: Float = 0f,
+	/**
+	 * Layerloom patch: overlay layers that fade in by a parameter, by PSD layer name -> parameter id (a face shadow, a
+	 * blush): each becomes a toggle (opacity 0 at 0, 1 at 1), keeping the classification its name gives it.
+	 */
+	val layerToggles: Map<String, String> = emptyMap(),
+	val layerTurnDepthsY: Map<String, Float> = emptyMap(),
+	/**
+	 * Layerloom patch: arm joints placed by hand, canvas pixels, by side ("L" = the character's left): shoulder,
+	 * elbow, wrist, tip. They replace the auto skeleton's guesses for the upper arm, forearm and hand.
+	 */
+	val armJoints: Map<String, Map<String, List<Float>>> = emptyMap(),
 	/** Manual draw order overrides (layerId or drawableId -> drawOrder within 0..1000). */
 	val drawOrderOverrides: Map<String, Float> = emptyMap(),
 	/** Durable Agent/editor changes replayed over every generated base rig and retained on export. */

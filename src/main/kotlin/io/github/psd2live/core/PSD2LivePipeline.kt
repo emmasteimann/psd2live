@@ -566,7 +566,10 @@ class PSD2LivePipeline {
 		progress: ProgressListener = ProgressListener { _, _ -> },
 	): PipelineResult {
 		progress.update(tr("progress.readPsd"), 0.04)
-		val model = buildPreview(inspect(psd, config), config, building(progress))
+		require(Files.isRegularFile(psd)) { tr("error.psdMissing", psd) }
+		val bytes = Files.readAllBytes(psd)
+		require(PsdReader.matches(bytes)) { tr("error.invalidPsd", psd) }
+		val model = layerloomPreview(PsdReader.read(bytes), config, building(progress))
 		return export(model, psd.fileName.toString(), outputDirectory, progress)
 	}
 
@@ -579,7 +582,37 @@ class PSD2LivePipeline {
 		progress: ProgressListener = ProgressListener { _, _ -> },
 	): PipelineResult {
 		progress.update(tr("progress.readPsd"), 0.04)
-		return export(buildPreview(source, config, building(progress)), sourceName, outputDirectory, progress)
+		return export(layerloomPreview(source, config, building(progress)), sourceName, outputDirectory, progress)
+	}
+
+	/**
+	 * Layerloom patch: the preview with Layerloom's per-layer options applied around the ordinary build. Named
+	 * toggles become the editor's own per-layer toggle overrides (keeping the tag the name gives, e.g. "face detail"
+	 * rides the face warp). `--skeleton` proposes the editor's auto skeleton from the built rig and builds it in, as
+	 * its Skeleton tool does. Per-layer swings become ordinary rig edits, so physics3 and CMO3 see them. Without
+	 * any of them this is exactly [buildPreview].
+	 */
+	private fun layerloomPreview(source: SourceArt, requested: PipelineConfig, progress: ProgressListener): RigPreviewModel {
+		var config = if (requested.layerToggles.isEmpty()) requested else requested.copy(layerOverrides = requested.layerOverrides +
+			source.layers.mapNotNull { layer ->
+				val param = requested.layerToggles[layer.name] ?: return@mapNotNull null
+				val semantic = LayerClassifier.classify(layer.name)
+				layer.id.raw to LayerClassificationOverride(LayerType.TOGGLE, semantic.tag, semantic.side, param, 0)
+			})
+		var model = buildPreview(source, config, progress)
+		val skeletonMode = config.autoSkeleton
+		if (skeletonMode != null && config.rigEdits.skeleton == null) {
+			val spec = LayerSkeleton.propose(model.analysis, model.baseRig, skeletonMode, config.armJoints)
+			if (spec.bones.any { it.drawableIds.isNotEmpty() }) {
+				config = config.copy(rigEdits = config.rigEdits.copy(skeleton = spec))
+				model = buildPreview(source, config, progress)
+			} else System.err.println("Warning: skeleton: no limb layers to bind (arms need left/right handwear)")
+		}
+		if (config.layerSwings.isNotEmpty()) {
+			val swung = LayerSwings.apply(model.baseRig, config, model.analysis.layers)
+			if (swung != config) model = buildPreview(source, swung, progress)
+		}
+		return model
 	}
 
 	/** The build's own progress, in the part of an export before the model is written. */

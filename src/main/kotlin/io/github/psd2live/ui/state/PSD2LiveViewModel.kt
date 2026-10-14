@@ -1959,6 +1959,8 @@ class PSD2LiveViewModel : AutoCloseable {
 		keyEdits: List<kotlinx.serialization.json.JsonObject> = emptyList(),
 		expectedState: String? = null,
 		parentGroupId: String? = null,
+		/** Layerloom patch: Cubism 5.3 parameter repeat (the value wraps at its ends); null leaves it as it is. */
+		repeat: Boolean? = null,
 		onComplete: (String?) -> Unit,
 	) {
         flushEditorFields()
@@ -1971,6 +1973,7 @@ class PSD2LiveViewModel : AutoCloseable {
                 if (action != "delete") {
                     put("name", name); put("min", min); put("default", default); put("max", max)
                     put("kind", parameterKind.name)
+                    repeat?.let { put("repeat", it) }
                 }
             })
         val trailing = if (action == "delete") emptyList() else buildList {

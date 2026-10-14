@@ -60,6 +60,7 @@ internal fun ParameterDefinitionDialog(
     var default by remember { mutableStateOf((parameter?.default ?: 0f).toString()) }
     var max by remember { mutableStateOf((parameter?.max ?: 1f).toString()) }
     var kind by remember { mutableStateOf(parameter?.kind ?: ParameterKind.NORMAL) }
+    var repeat by remember { mutableStateOf(parameter?.repeat ?: false) }
     var deleting by remember { mutableStateOf(false) }
     var failure by remember { mutableStateOf<String?>(null) }
     var keyEdits by remember { mutableStateOf<List<JsonObject>>(emptyList()) }
@@ -112,6 +113,7 @@ internal fun ParameterDefinitionDialog(
             keyEdits = if (action == "delete") emptyList() else normalizedKeyEdits,
             expectedState = expectedState,
             parentGroupId = if (creating) parentGroupId else null,
+            repeat = if (kind == ParameterKind.NORMAL) repeat else null,
         ) { if (it == null) onDismiss() else failure = it }
     }
     val editorRegions = remember { InlineEditorRegions() }
@@ -199,6 +201,11 @@ internal fun ParameterDefinitionDialog(
                                 }
                             }, enabled = !busy, isPrimary = kind == ParameterKind.BLEND_SHAPE, height = 22.dp)
                         }
+                    }
+                    // Layerloom patch: Cubism 5.3 repeat, for parameters that go round (a wheel, a spinning prop).
+                    if (kind == ParameterKind.NORMAL) {
+                        CompactCheckbox(checked = repeat, onCheckedChange = { repeat = it }, label = tr("parameters.repeat"), enabled = !busy)
+                        if (repeat) Text(tr("parameters.repeatHint"), style = typography.caption, color = colors.textMuted)
                     }
                     if (copying) {
                         Text(tr("parameters.duplicateHint"), style = typography.caption, color = colors.textMuted)

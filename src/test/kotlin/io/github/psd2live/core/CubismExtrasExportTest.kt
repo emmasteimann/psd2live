@@ -40,7 +40,7 @@ class CubismExtrasExportTest {
 		assertTrue(parts.size >= 3, "Quill has parts to group: $parts")
 		val groups = listOf(listOf(parts[1], parts[2], "PartNotThere"), listOf(parts[0]))
 		val model = PSD2LivePipeline().buildPreview(Path.of(dir, "quill.psd"),
-			base.config.copy(rigEdits = base.config.rigEdits.copy(poseGroups = groups, poseFadeIn = 0.3f)))
+			base.config.copy(rigEdits = base.config.rigEdits.copy(poseGroups = groups, poseFadeIn = 0.3f, poseLinks = mapOf(parts[1] to listOf(parts[0])))))
 		val files = Moc3Target.bundle(RigIrCompiler.compile(model), ExportOptions("quill")).files.associate { it.name to it.bytes.decodeToString() }
 		val model3 = Json.parseToJsonElement(files.getValue("quill.model3.json")).jsonObject
 		assertEquals("quill.pose3.json", model3["FileReferences"]!!.jsonObject["Pose"]!!.jsonPrimitive.content)
@@ -49,6 +49,8 @@ class CubismExtrasExportTest {
 		assertEquals(0.3f, pose["FadeInTime"]!!.jsonPrimitive.content.toFloat())
 		val written = pose["Groups"]!!.jsonArray.map { g -> g.jsonArray.map { it.jsonObject["Id"]!!.jsonPrimitive.content } }
 		assertEquals(listOf(listOf(parts[1], parts[2])), written, "missing parts and one-part groups are dropped")
+		val link = pose["Groups"]!!.jsonArray[0].jsonArray[0].jsonObject["Link"]!!.jsonArray.map { it.jsonPrimitive.content }
+		assertEquals(listOf(parts[0]), link, "a member carries its linked parts")
 	}
 
 	/** The Inspector's 5.3 blend edits replay into the model; an export for Cubism 5.0 falls back and says so. */

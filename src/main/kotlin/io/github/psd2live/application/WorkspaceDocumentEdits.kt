@@ -117,7 +117,8 @@ internal object WorkspaceDocumentEdits {
                 operation.operation == "blend_limits_put" -> document.copy(rigEdits = document.rigEdits.copy(
                     blendLimits = io.github.psd2live.core.BlendLimits.put(document.rigEdits.blendLimits, request)))
                 operation.operation == "pose_put" -> io.github.psd2live.core.PoseGroups.put(request).let { (groups, fade) ->
-                    document.copy(rigEdits = document.rigEdits.copy(poseGroups = groups, poseFadeIn = fade)) }
+                    document.copy(rigEdits = document.rigEdits.copy(poseGroups = groups, poseFadeIn = fade,
+                        poseLinks = io.github.psd2live.core.PoseGroups.links(request, groups))) }
                 operation.operation.startsWith("expression_") -> document.copy(rigEdits = document.rigEdits.copy(expressions =
                     io.github.psd2live.core.Expressions.edit(document.rigEdits.expressions, operation.operation.removePrefix("expression_"), request)))
                 operation.operation == "motion_preset" -> WorkspaceSkeletonMotionEdits.preset(document, request)

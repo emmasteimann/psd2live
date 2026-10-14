@@ -29,7 +29,7 @@ class ExpressionsPanelTool {
 					renderPng(File(out, "$tag-empty.png"), 380, 300) { ExpressionsPanelView(vm, vm.state.value) }
 					val starters = Expressions.starters(preview.rig.puppet, emptyList())
 					val parts = preview.rig.puppet.parts.map { it.id.raw }
-					vm.setStateForTest(vm.state.value.copy(rigEdits = RigEditOverlay(expressions = starters, poseGroups = listOf(parts.drop(1).take(2), parts.take(1)),
+					vm.setStateForTest(vm.state.value.copy(rigEdits = RigEditOverlay(expressions = starters, poseGroups = listOf(parts.drop(1).take(2), parts.take(1)), poseLinks = mapOf(parts[1] to listOf(parts.last())),
 						hitAreas = listOf("Head" to preview.rig.puppet.drawables.first().id.raw))))
 					renderPng(File(out, "$tag-starters.png"), 380, 1300) { ExpressionsPanelView(vm, vm.state.value) }
 					renderPng(File(out, "$tag-parameters.png"), 380, 160) { io.github.psd2live.ui.views.ParametersListView(vm.state.value, vm) }

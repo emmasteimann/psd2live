@@ -179,8 +179,10 @@ private fun PoseGroupsSection(viewModel: PSD2LiveViewModel, state: PSD2LiveState
 	val fade = state.rigEdits.poseFadeIn
 	val parts = state.previewModel?.rig?.puppet?.parts.orEmpty()
 	val names = parts.associate { it.id.raw to it.name }
-	val used = groups.flatten().toSet()
-	fun save(next: List<List<String>>, nextFade: Float = fade) = viewModel.putPoseGroups(next.filter { it.isNotEmpty() }, nextFade)
+	val links = state.rigEdits.poseLinks
+	val used = groups.flatten().toSet() + links.values.flatten()
+	fun save(next: List<List<String>>, nextFade: Float = fade, nextLinks: Map<String, List<String>> = links) =
+		viewModel.putPoseGroups(next.filter { it.isNotEmpty() }, nextFade, nextLinks.filterKeys { k -> next.any { k in it } })
 	Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
 		CompactSectionHeader(tr("pose.title"))
 		Text(tr("pose.help"), color = colors.textMuted, style = typography.caption.copy(fontSize = 11.sp, lineHeight = 15.sp))
@@ -205,6 +207,22 @@ private fun PoseGroupsSection(viewModel: PSD2LiveViewModel, state: PSD2LiveState
 						CompactIconButton({ save(groups.mapIndexed { i, it -> if (i == g) it.filterIndexed { j, _ -> j != k } else it }) }, size = 18.dp, tooltip = tr("pose.removePart")) {
 							IconClose(tint = colors.textMuted, modifier = Modifier.size(8.dp))
 						}
+					}
+					// Linked parts switch with this member (pose3 Link), such as a sleeve with its arm.
+					for (linked in links[part].orEmpty()) {
+						Row(verticalAlignment = Alignment.CenterVertically) {
+							Text("↳ " + (names[linked] ?: tr("expressions.missing", linked)), color = colors.textMuted,
+								style = typography.caption.copy(fontSize = 10.5.sp), maxLines = 1, overflow = TextOverflow.Ellipsis,
+								modifier = Modifier.weight(1f).padding(start = 18.dp))
+							CompactIconButton({ save(groups, nextLinks = links + (part to links[part].orEmpty().filter { it != linked })) }, size = 18.dp,
+								tooltip = tr("pose.unlink")) { IconClose(tint = colors.textMuted, modifier = Modifier.size(8.dp)) }
+						}
+					}
+					val linkable = parts.filter { it.id.raw !in used }
+					if (linkable.isNotEmpty()) {
+						CompactDropdown(listOf("") + linkable.map { it.id.raw }, "", { id ->
+							if (id.isNotEmpty()) save(groups, nextLinks = links + (part to links[part].orEmpty() + id))
+						}, Modifier.fillMaxWidth().padding(start = 18.dp), height = 20.dp, itemLabel = { if (it.isEmpty()) tr("pose.link") else names[it] ?: it })
 					}
 				}
 				val addable = parts.filter { it.id.raw !in used }

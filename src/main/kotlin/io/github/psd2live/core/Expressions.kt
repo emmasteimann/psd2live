@@ -169,16 +169,31 @@ object PoseGroups {
 		return groups to fade
 	}
 
-	fun request(groups: List<List<String>>, fadeIn: Float): JsonObject = buildJsonObject {
-		putJsonArray("groups") { groups.forEach { g -> add(JsonArray(g.map(::JsonPrimitive))) } }
-		put("fade_in", fadeIn)
+	/**
+	 * `pose_put`'s `"links": {member part: [parts that switch with it]}` (Cubism's pose3 Link), for members of [groups];
+	 * a linked part is one no group or other link already has.
+	 */
+	fun links(request: JsonObject, groups: List<List<String>>): Map<String, List<String>> {
+		val members = groups.flatten().toSet()
+		val taken = HashSet(members)
+		return (request["links"] as? JsonObject).orEmpty().filterKeys { it in members }.mapValues { (_, v) ->
+			(v as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.takeIf { id -> id.isNotBlank() && taken.add(id) } }
+		}.filterValues { it.isNotEmpty() }
 	}
 
-	/** What the model exports: groups over the parts it has, each with two or more; null when none. */
-	fun forExport(groups: List<List<String>>, fadeIn: Float, model: PuppetModel): io.github.psd2live.format.model.PoseIR? {
+	fun request(groups: List<List<String>>, fadeIn: Float, links: Map<String, List<String>> = emptyMap()): JsonObject = buildJsonObject {
+		putJsonArray("groups") { groups.forEach { g -> add(JsonArray(g.map(::JsonPrimitive))) } }
+		put("fade_in", fadeIn)
+		if (links.isNotEmpty()) put("links", JsonObject(links.toSortedMap().mapValues { (_, l) -> JsonArray(l.map(::JsonPrimitive)) }))
+	}
+
+	/** What the model exports: groups over the parts it has, each with two or more, members carrying their links; null when none. */
+	fun forExport(groups: List<List<String>>, fadeIn: Float, model: PuppetModel, links: Map<String, List<String>> = emptyMap()): io.github.psd2live.format.model.PoseIR? {
 		val present = model.parts.mapTo(HashSet()) { it.id.raw }
 		val kept = groups.map { g -> g.filter { it in present } }.filter { it.size >= 2 }
-		return if (kept.isEmpty()) null else io.github.psd2live.format.model.PoseIR(fadeIn, kept.map { g -> g.map { io.github.psd2live.format.model.PoseEntry(it) } })
+		return if (kept.isEmpty()) null else io.github.psd2live.format.model.PoseIR(fadeIn, kept.map { g ->
+			g.map { io.github.psd2live.format.model.PoseEntry(it, links[it].orEmpty().filter { l -> l in present }) }
+		})
 	}
 }
 

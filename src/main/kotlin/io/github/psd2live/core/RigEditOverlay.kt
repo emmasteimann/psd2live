@@ -248,6 +248,8 @@ data class RigEditOverlay(
     /** Layerloom patch: pose groups (pose3), lists of part ids of which one shows at a time, and their fade. */
     val poseGroups: List<List<String>> = emptyList(),
     val poseFadeIn: Float = PoseGroups.DEFAULT_FADE,
+    /** Layerloom patch: parts that switch with a pose group member (pose3 Link), by member part id. */
+    val poseLinks: Map<String, List<String>> = emptyMap(),
     /** Layerloom patch: blend-shape weight limits by blend-shape parameter id ([BlendLimits]). */
     val blendLimits: Map<String, List<org.umamo.runtime.model.BlendWeightLimit>> = emptyMap(),
     /** Layerloom patch: hit areas (name, art mesh id); empty uses the generated Head and Body. */
@@ -262,6 +264,7 @@ data class RigEditOverlay(
 		append("RigEditOverlay(importedCmo3=$importedCmo3, importedLayerIds=$importedLayerIds, skeleton=$skeleton, parameterEdits=$parameterEdits, deletedParameterIds=$deletedParameterIds, keyformSetEdits=$keyformSetEdits, keyformDeleteEdits=$keyformDeleteEdits, keyformCopyEdits=$keyformCopyEdits, warpEdits=$warpEdits, physicsEdits=$physicsEdits, disabledPhysicsIds=$disabledPhysicsIds, physicsOrder=$physicsOrder, physicsFps=$physicsFps, swingEdits=$swingEdits, assetLayers=$assetLayers, calibrationLayerIds=$calibrationLayerIds, splitBaselineLayerIds=$splitBaselineLayerIds, splitDrawableIds=$splitDrawableIds, structureEdits=$structureEdits, authoringJournal=$authoringJournal, motionClips=$motionClips, motionPresets=$motionPresets, simEdits=$simEdits")
 		if (expressions.isNotEmpty()) append(", expressions=").append(expressions)
 		if (poseGroups.isNotEmpty() || poseFadeIn != PoseGroups.DEFAULT_FADE) append(", poseGroups=").append(poseGroups).append(", poseFadeIn=").append(poseFadeIn)
+		if (poseLinks.isNotEmpty()) append(", poseLinks=").append(poseLinks.toSortedMap())
 		if (blendLimits.isNotEmpty()) append(", blendLimits=").append(blendLimits.toSortedMap())
 		if (hitAreas.isNotEmpty()) append(", hitAreas=").append(hitAreas)
 		append(")")

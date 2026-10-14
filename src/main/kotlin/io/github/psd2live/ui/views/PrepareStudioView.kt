@@ -178,18 +178,30 @@ private class StudioPanel : javax.swing.JPanel() {
 		System.getenv("PSD2LIVE_PREPARE_SNAPSHOT")?.let { out -> runCatching { javax.imageio.ImageIO.write(image, "png", File(out)) } }
 	}
 
+	// Drawn at its own size (device pixels / scale), never stretched: while Chromium catches up with a resize the old
+	// frame shows unscaled with a margin instead of squashed.
 	override fun paintComponent(g: java.awt.Graphics) {
 		super.paintComponent(g)
-		frame?.let { g.drawImage(it, 0, 0, width, height, null) }
+		val image = frame ?: return
+		val s = scale()
+		if (s != lastScale) { lastScale = s; browser?.notifyScreenInfoChanged() }
+		g.drawImage(image, 0, 0, (image.width / s).toInt(), (image.height / s).toInt(), null)
+	}
+
+	private var lastScale = 0.0
+
+	// Every size change reaches Chromium. Compose's SwingPanel sizes this panel through setBounds, which doesn't
+	// always come with a componentResized event.
+	override fun setBounds(x: Int, y: Int, width: Int, height: Int) {
+		val resized = width != this.width || height != this.height
+		super.setBounds(x, y, width, height)
+		if (resized) browser?.wasResized(width, height)
 	}
 
 	fun attach(browser: org.cef.browser.CefBrowser) {
 		this.browser = browser
 		isFocusable = true
 		background = java.awt.Color(0x1e, 0x1e, 0x1e)
-		addComponentListener(object : java.awt.event.ComponentAdapter() {
-			override fun componentResized(e: java.awt.event.ComponentEvent) { browser.wasResized(width, height) }
-		})
 		val mouse = object : java.awt.event.MouseAdapter() {
 			override fun mousePressed(e: java.awt.event.MouseEvent) { requestFocusInWindow(); browser.setFocus(true); browser.sendMouseEvent(e) }
 			override fun mouseReleased(e: java.awt.event.MouseEvent) = browser.sendMouseEvent(e)

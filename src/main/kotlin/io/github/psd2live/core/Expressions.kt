@@ -182,3 +182,31 @@ object PoseGroups {
 	}
 }
 
+/**
+ * Layerloom patch: hit areas as the owner names them, each on one art mesh (Cubism's model3 HitAreas: what an app
+ * hit-tests for taps and clicks). With none set, the generated Head and Body are used.
+ */
+object HitAreas {
+	/** `hit_areas_put`: `{"areas": [{"name", "mesh"}]}` replaces them; blank names or meshes and repeated names are dropped. */
+	fun put(request: JsonObject): List<Pair<String, String>> {
+		val seen = HashSet<String>()
+		return (request["areas"] as? JsonArray).orEmpty().mapNotNull { a ->
+			val o = a as? JsonObject ?: return@mapNotNull null
+			val name = (o["name"] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() && seen.add(it.lowercase()) } ?: return@mapNotNull null
+			val mesh = (o["mesh"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+			name to mesh
+		}
+	}
+
+	fun request(areas: List<Pair<String, String>>): JsonObject = buildJsonObject {
+		putJsonArray("areas") { areas.forEach { (n, m) -> add(buildJsonObject { put("name", n); put("mesh", m) }) } }
+	}
+
+	/** The authored areas over meshes the model has, or [generated] when none are set. */
+	fun forExport(authored: List<Pair<String, String>>, generated: List<io.github.psd2live.format.model.HitAreaIR>, model: PuppetModel): List<io.github.psd2live.format.model.HitAreaIR> {
+		if (authored.isEmpty()) return generated
+		val meshes = model.drawables.mapTo(HashSet()) { it.id.raw }
+		return authored.filter { it.second in meshes }.map { (name, mesh) -> io.github.psd2live.format.model.HitAreaIR("HitArea$name".filter { it.isLetterOrDigit() }, name, listOf(mesh)) }
+	}
+}
+

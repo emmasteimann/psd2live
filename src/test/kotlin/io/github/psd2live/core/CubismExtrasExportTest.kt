@@ -95,4 +95,16 @@ class CubismExtrasExportTest {
 		val files = Moc3Target.bundle(ir, ExportOptions("quill")).files
 		assertTrue(files.any { it.name == "quill.moc3" && it.bytes.size > 0 }, "the moc exports with an offscreen part")
 	}
+
+	@Test
+	fun authoredHitAreasReplaceTheGeneratedOnes() {
+		val dir = System.getenv("LAYERLOOM_PARITY_DIR") ?: return
+		val base = PSD2LivePipeline().buildPreview(Path.of(dir, "quill.psd"))
+		val mesh = base.rig.puppet.drawables.first().id.raw
+		val model = PSD2LivePipeline().buildPreview(Path.of(dir, "quill.psd"),
+			base.config.copy(rigEdits = base.config.rigEdits.copy(hitAreas = listOf("Tap" to mesh, "Gone" to "NoSuchMesh"))))
+		val files = Moc3Target.bundle(RigIrCompiler.compile(model), ExportOptions("quill")).files.associate { it.name to it.bytes.decodeToString() }
+		val areas = Json.parseToJsonElement(files.getValue("quill.model3.json")).jsonObject["HitAreas"]!!.jsonArray.map { it.jsonObject }
+		assertEquals(listOf("Tap" to mesh), areas.map { it["Name"]!!.jsonPrimitive.content to it["Id"]!!.jsonPrimitive.content })
+	}
 }

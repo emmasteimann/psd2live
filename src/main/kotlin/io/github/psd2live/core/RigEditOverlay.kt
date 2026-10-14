@@ -250,6 +250,8 @@ data class RigEditOverlay(
     val poseFadeIn: Float = PoseGroups.DEFAULT_FADE,
     /** Layerloom patch: blend-shape weight limits by blend-shape parameter id ([BlendLimits]). */
     val blendLimits: Map<String, List<org.umamo.runtime.model.BlendWeightLimit>> = emptyMap(),
+    /** Layerloom patch: hit areas (name, art mesh id); empty uses the generated Head and Body. */
+    val hitAreas: List<Pair<String, String>> = emptyList(),
 ) {
 	/**
 	 * Layerloom patch: revisions hash this text (WorkspaceRevisions). It is the data class's own text for the
@@ -261,6 +263,7 @@ data class RigEditOverlay(
 		if (expressions.isNotEmpty()) append(", expressions=").append(expressions)
 		if (poseGroups.isNotEmpty() || poseFadeIn != PoseGroups.DEFAULT_FADE) append(", poseGroups=").append(poseGroups).append(", poseFadeIn=").append(poseFadeIn)
 		if (blendLimits.isNotEmpty()) append(", blendLimits=").append(blendLimits.toSortedMap())
+		if (hitAreas.isNotEmpty()) append(", hitAreas=").append(hitAreas)
 		append(")")
 	}
 

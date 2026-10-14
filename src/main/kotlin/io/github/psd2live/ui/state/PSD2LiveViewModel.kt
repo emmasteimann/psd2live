@@ -3681,6 +3681,13 @@ class PSD2LiveViewModel : AutoCloseable {
 		setParameterValues(parameters.associate { it.id to (applied[it.id.raw] ?: it.default) })
 	}
 
+	/** Layerloom patch: replaces the hit areas (one history step); empty goes back to the generated ones. */
+	fun putHitAreas(areas: List<Pair<String, String>>) {
+		val state = currentWorkspaceState() ?: return
+		saveDocumentEdits(state, "Edit hit areas", listOf(io.github.psd2live.application.WorkspaceDocumentOperation("hit_areas_put",
+			io.github.psd2live.core.HitAreas.request(areas)))) { failure -> if (failure != null) updateState { it.copy(statusText = failure) } }
+	}
+
 	/** Replaces the pose groups (one history step). */
 	fun putPoseGroups(groups: List<List<String>>, fadeIn: Float) {
 		val state = currentWorkspaceState() ?: return

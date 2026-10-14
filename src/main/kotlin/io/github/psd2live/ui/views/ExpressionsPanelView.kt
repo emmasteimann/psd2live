@@ -56,6 +56,7 @@ internal fun ExpressionsPanelView(viewModel: PSD2LiveViewModel, state: PSD2LiveS
 	Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
 		ExpressionsSection(viewModel, state)
 		if (state.previewModel != null) PoseGroupsSection(viewModel, state)
+		if (state.previewModel != null) HitAreasSection(viewModel, state)
 	}
 }
 
@@ -215,6 +216,40 @@ private fun PoseGroupsSection(viewModel: PSD2LiveViewModel, state: PSD2LiveState
 				}
 			}
 		}
+	}
+}
+
+/** Layerloom patch: hit areas, what an app hit-tests for taps and clicks; each a name on one art mesh. */
+@Composable
+private fun HitAreasSection(viewModel: PSD2LiveViewModel, state: PSD2LiveState) {
+	val colors = LocalToolColors.current
+	val typography = LocalToolTypography.current
+	val preview = state.previewModel ?: return
+	val areas = state.rigEdits.hitAreas
+	val meshes = preview.rig.puppet.drawables.filter { it.mesh != null }
+	val names = meshes.associate { it.id.raw to it.name }
+	Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+		CompactSectionHeader(tr("hitAreas.title"))
+		Text(tr(if (areas.isEmpty()) "hitAreas.generated" else "hitAreas.help"), color = colors.textMuted,
+			style = typography.caption.copy(fontSize = 11.sp, lineHeight = 15.sp))
+		areas.forEachIndexed { index, (name, mesh) ->
+			Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+				var text by remember(index, name) { mutableStateOf(name) }
+				CompactTextField(text, { text = it }, Modifier.width(96.dp), onCommit = {
+					val trimmed = text.trim()
+					if (trimmed.isNotEmpty() && trimmed != name) viewModel.putHitAreas(areas.toMutableList().also { it[index] = trimmed to mesh }) else text = name
+				})
+				CompactDropdown(meshes.map { it.id.raw }, mesh, { m -> viewModel.putHitAreas(areas.toMutableList().also { it[index] = name to m }) },
+					Modifier.weight(1f), height = 22.dp, itemLabel = { names[it] ?: tr("expressions.missing", it) })
+				CompactIconButton({ viewModel.putHitAreas(areas.filterIndexed { i, _ -> i != index }) }, size = 20.dp, tooltip = tr("hitAreas.remove")) {
+					IconClose(tint = colors.textMuted, modifier = Modifier.size(9.dp))
+				}
+			}
+		}
+		CompactButton(tr("hitAreas.add"), {
+			val base = if (areas.none { it.first.equals("Head", true) }) "Head" else if (areas.none { it.first.equals("Body", true) }) "Body" else "Area ${areas.size + 1}"
+			meshes.firstOrNull()?.let { viewModel.putHitAreas(areas + (base to it.id.raw)) }
+		}, enabled = meshes.isNotEmpty())
 	}
 }
 

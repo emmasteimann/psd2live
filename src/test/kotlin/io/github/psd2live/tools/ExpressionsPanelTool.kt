@@ -31,6 +31,7 @@ class ExpressionsPanelTool {
 					val parts = preview.rig.puppet.parts.map { it.id.raw }
 					vm.setStateForTest(vm.state.value.copy(rigEdits = RigEditOverlay(expressions = starters, poseGroups = listOf(parts.drop(1).take(2), parts.take(1)))))
 					renderPng(File(out, "$tag-starters.png"), 380, 1100) { ExpressionsPanelView(vm, vm.state.value) }
+					renderPng(File(out, "$tag-parameters.png"), 380, 160) { io.github.psd2live.ui.views.ParametersListView(vm.state.value, vm) }
 				}
 			}
 		}

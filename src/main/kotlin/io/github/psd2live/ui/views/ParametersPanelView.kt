@@ -626,6 +626,17 @@ internal fun ParametersListView(
 					IconLock(locked = false, modifier = Modifier.size(11.dp), tint = colors.textPrimary)
 				}
 			}
+			// Layerloom patch: Random Pose, as Cubism has it, to try a rig in poses nobody set up.
+			PanelIconButton(onClick = { viewModel.randomPose() }, enabled = allParameters.isNotEmpty(), tooltip = tr("parameters.randomPose")) {
+				val tint = colors.textPrimary
+				androidx.compose.foundation.Canvas(Modifier.size(11.dp)) {
+					val s = size.minDimension
+					drawRoundRect(tint, cornerRadius = androidx.compose.ui.geometry.CornerRadius(s * 0.2f, s * 0.2f),
+						style = androidx.compose.ui.graphics.drawscope.Stroke(width = s * 0.1f))
+					for ((x, y) in listOf(0.3f to 0.3f, 0.7f to 0.3f, 0.5f to 0.5f, 0.3f to 0.7f, 0.7f to 0.7f))
+						drawCircle(tint, radius = s * 0.08f, center = androidx.compose.ui.geometry.Offset(s * x, s * y))
+				}
+			}
 			PanelResetButton(onClick = { viewModel.resetAllParameters() }, enabled = allParameters.isNotEmpty(), tooltip = tr("parameters.resetAll"))
 		}
 

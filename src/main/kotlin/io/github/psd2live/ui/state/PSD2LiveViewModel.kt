@@ -6247,6 +6247,18 @@ class PSD2LiveViewModel : AutoCloseable {
         }
     }
 
+	/**
+	 * Layerloom patch: Cubism's Random Pose, to shake out a rig's weak poses: every unlocked parameter at a random
+	 * value in its range (blend shapes too). Applied like a slider move.
+	 */
+	fun randomPose(random: kotlin.random.Random = kotlin.random.Random.Default) {
+		val current = _state.value
+		val parameters = current.previewModel?.rig?.puppet?.parameters ?: return
+		val values = parameters.filter { it.id !in current.lockedParameters && it.max > it.min }
+			.associate { it.id to (it.min + random.nextFloat() * (it.max - it.min)) }
+		setParameterValues(values)
+	}
+
 	fun resetAllParameters() {
 		editPreviewSession(kotlinx.serialization.json.buildJsonObject { put("mode", "reset") })
 	}

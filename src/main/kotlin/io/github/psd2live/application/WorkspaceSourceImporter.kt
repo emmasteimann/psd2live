@@ -29,10 +29,17 @@ internal class WorkspaceSourceImporter(
                          initialConfig: PipelineConfig = PipelineConfig(),
                          sourceAuxiliary: JsonObject = JsonObject(emptyMap()),
                          project: (WorkspaceDocument, RigPreviewModel, String) -> Unit = { _, _, _ -> }): WorkspaceCommit<RigPreviewModel> {
-        return install(projectId, state, discardUnsaved, initialConfig, "Imported PSD ${path.fileName}",
+        // Layerloom patch: a rig job beside the PSD (NAME.layerloom.json) builds the rig Layerloom asked for: its build
+        // inputs go into the project settings, its toggles become layer overrides, and its skeleton and swings
+        // become rig edits after the first build (LayerloomJob).
+        val job = runCatching { LayerloomJob.besidePsd(path)?.let(LayerloomJob::read) }
+            .onFailure { System.err.println("Warning: Layerloom job beside ${path.fileName}: ${it.message}") }.getOrNull()
+            ?.takeUnless { it.isEmpty }
+        return install(projectId, state, discardUnsaved, job?.configure(initialConfig) ?: initialConfig, "Imported PSD ${path.fileName}",
             prepare = {
                 require(path.isAbsolute && Files.isRegularFile(path) && path.fileName.toString().endsWith(".psd", true)) { "Provide an absolute local PSD path" }
-                readPsd(path) to emptyMap()
+                val source = readPsd(path)
+                source to (job?.let { LayerloomJob.toggleOverrides(source, it.toggles) } ?: emptyMap())
             }, project = project, sourceAuxiliary = sourceAuxiliary)
     }
 
@@ -63,7 +70,8 @@ internal class WorkspaceSourceImporter(
         val document = WorkspaceDocument(source, emptyMap(), emptySet(), overrides, emptyMap(), RigEditOverlay.Empty,
             WorkspaceSettingsCodec.encode(config))
         progress(0.6f, "Rebuilding new source project")
-        val built = build(document)
+        val built = if (config.autoSkeleton == null && config.layerSwings.isEmpty()) build(document)
+            else LayerloomJob.setUp(build(document), config) { next -> build(document.copy(rigEdits = next.rigEdits)) }
         // A new project keeps its first layout: the atlas is arranged on request, not on every edit. The stored
         // arrangement is that layout exactly, so the model it builds is this one.
         val arrangement = AtlasLayout.frozen(built.atlas)

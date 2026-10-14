@@ -593,26 +593,11 @@ class PSD2LivePipeline {
 	 * any of them this is exactly [buildPreview].
 	 */
 	private fun layerloomPreview(source: SourceArt, requested: PipelineConfig, progress: ProgressListener): RigPreviewModel {
-		var config = if (requested.layerToggles.isEmpty()) requested else requested.copy(layerOverrides = requested.layerOverrides +
-			source.layers.mapNotNull { layer ->
-				val param = requested.layerToggles[layer.name] ?: return@mapNotNull null
-				val semantic = LayerClassifier.classify(layer.name)
-				layer.id.raw to LayerClassificationOverride(LayerType.TOGGLE, semantic.tag, semantic.side, param, 0)
-			})
-		var model = buildPreview(source, config, progress)
-		val skeletonMode = config.autoSkeleton
-		if (skeletonMode != null && config.rigEdits.skeleton == null) {
-			val spec = LayerSkeleton.propose(model.analysis, model.baseRig, skeletonMode, config.armJoints)
-			if (spec.bones.any { it.drawableIds.isNotEmpty() }) {
-				config = config.copy(rigEdits = config.rigEdits.copy(skeleton = spec))
-				model = buildPreview(source, config, progress)
-			} else System.err.println("Warning: skeleton: no limb layers to bind (arms need left/right handwear)")
-		}
-		if (config.layerSwings.isNotEmpty()) {
-			val swung = LayerSwings.apply(model.baseRig, config, model.analysis.layers)
-			if (swung != config) model = buildPreview(source, swung, progress)
-		}
-		return model
+		val config = if (requested.layerToggles.isEmpty()) requested
+			else requested.copy(layerOverrides = requested.layerOverrides + LayerloomJob.toggleOverrides(source, requested.layerToggles))
+		val model = buildPreview(source, config, progress)
+		if (config.autoSkeleton == null && config.layerSwings.isEmpty()) return model
+		return kotlinx.coroutines.runBlocking { LayerloomJob.setUp(model, config) { buildPreview(source, it, progress) } }
 	}
 
 	/** The build's own progress, in the part of an export before the model is written. */

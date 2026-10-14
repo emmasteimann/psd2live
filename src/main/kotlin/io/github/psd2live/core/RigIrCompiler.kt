@@ -117,7 +117,9 @@ internal object RigIrCompiler {
 			if (clip != null && clip.curves.any { it.parameter in parameterIds }) result += clip.copy(curves = clip.curves.filter { it.parameter in parameterIds })
 		}
 		fun authored(group: String, file: String, clip: MotionClip) = Clip(clip.id, clip.name, group, file, clip.duration, clip.fps, clip.loop,
-			clip.fadeIn, clip.fadeOut, clip.curves.map(MotionGenerator::curve))
+			clip.fadeIn, clip.fadeOut, clip.curves.map(MotionGenerator::curve),
+			// Layerloom patch: the motion's user-data events within its length.
+			events = clip.events.filter { it.time <= clip.duration }.map { io.github.psd2live.format.model.ClipEvent(it.time, it.value) })
 		fun builtin(group: String, name: String, exclude: Set<String> = emptySet()) {
 			val settings = config.rigEdits.motionPresets[name] ?: MotionPresetSettings()
 			if (settings.deleted) return

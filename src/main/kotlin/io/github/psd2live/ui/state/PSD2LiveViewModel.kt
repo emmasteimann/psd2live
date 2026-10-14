@@ -3721,6 +3721,14 @@ class PSD2LiveViewModel : AutoCloseable {
 		saveMotionOperation("put", kotlinx.serialization.json.buildJsonObject { put("clip", MotionClips.toJson(mirrored)) }) { openMotionInEditor(nextId) }
 	}
 
+	/** Layerloom patch: replaces a custom motion's user-data events (one history step). */
+	fun setMotionClipEvents(id: String, events: List<io.github.psd2live.core.MotionEvent>) {
+		val clip = motionClips.firstOrNull { it.id == id } ?: return
+		val next = clip.copy(events = events.sortedBy { it.time })
+		if (next == clip) return
+		saveMotionOperation("put", kotlinx.serialization.json.buildJsonObject { put("clip", MotionClips.toJson(next)) })
+	}
+
 	fun renameMotionClip(id: String, name: String) {
 		val trimmed = name.trim()
 		if (trimmed.isEmpty() || trimmed.any(Char::isISOControl)) return

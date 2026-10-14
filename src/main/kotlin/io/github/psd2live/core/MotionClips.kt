@@ -48,6 +48,11 @@ data class MotionCurve(val parameterId: String, val keys: List<MotionKey>) {
  * An authored motion. A [builtin] clip overrides the generated motion of that name (see
  * [MotionClips.BUILTIN_NAMES]); without it the clip is the user's own and exports under [name].
  */
+/** Layerloom patch: a motion user-data event: at [time] seconds the runtime reports [value]. */
+data class MotionEvent(val time: Float, val value: String) {
+	init { require(time.isFinite() && time >= 0f) { "An event needs a time" } }
+}
+
 data class MotionClip(
 	val id: String,
 	val name: String,
@@ -59,7 +64,13 @@ data class MotionClip(
 	val fadeOut: Float = 1f,
 	val enabled: Boolean = true,
 	val curves: List<MotionCurve> = emptyList(),
+	/** Layerloom patch: user-data events (Cubism's motion user data), each a time and a text, in time order. */
+	val events: List<MotionEvent> = emptyList(),
 ) {
+	/** Revisions hash this text: the data class's own for the upstream fields, events named only when there are any. */
+	override fun toString(): String = "MotionClip(id=$id, name=$name, builtin=$builtin, loop=$loop, duration=$duration, fps=$fps, " +
+		"fadeIn=$fadeIn, fadeOut=$fadeOut, enabled=$enabled, curves=$curves" + (if (events.isEmpty()) "" else ", events=$events") + ")"
+
 	init {
 		require(id.isNotBlank() && name.isNotBlank() && name.none(Char::isISOControl)) { "Motion needs an id and a name" }
 		require(duration.isFinite() && duration > 0f) { "Motion duration must be positive" }
@@ -263,6 +274,9 @@ object MotionClips {
 		put("fade_in", clip.fadeIn)
 		put("fade_out", clip.fadeOut)
 		put("enabled", clip.enabled)
+		if (clip.events.isNotEmpty()) putJsonArray("events") {
+			for (e in clip.events) add(buildJsonObject { put("time", e.time); put("value", e.value) })
+		}
 		putJsonArray("curves") {
 			for (curve in clip.curves) add(buildJsonObject {
 				put("parameter", curve.parameterId)
@@ -289,6 +303,11 @@ object MotionClips {
 		fadeIn = o["fade_in"]?.jsonPrimitive?.floatOrNull ?: 1f,
 		fadeOut = o["fade_out"]?.jsonPrimitive?.floatOrNull ?: 1f,
 		enabled = o["enabled"]?.jsonPrimitive?.booleanOrNull ?: true,
+		events = o["events"]?.jsonArray.orEmpty().mapNotNull { element ->
+			val e = element.jsonObject
+			val time = e["time"]?.jsonPrimitive?.floatOrNull ?: return@mapNotNull null
+			if (!time.isFinite() || time < 0f) null else MotionEvent(time, e["value"]?.jsonPrimitive?.contentOrNull.orEmpty())
+		}.sortedBy { it.time },
 		curves = o["curves"]?.jsonArray.orEmpty().map { element ->
 			val curve = element.jsonObject
 			MotionCurve(

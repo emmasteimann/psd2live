@@ -547,6 +547,38 @@ private fun ClipSettings(viewModel: PSD2LiveViewModel, clip: MotionClip) {
 			viewModel.updateMotionClipProperties(clip.id) { it.copy(fadeOut = value) }
 		}
 	}
+	if (clip.builtin == null) MotionEventsEditor(viewModel, clip)
+}
+
+/** Layerloom patch: a motion's user-data events (Cubism's motion user data), which apps receive as it plays past them. */
+@Composable
+private fun MotionEventsEditor(viewModel: PSD2LiveViewModel, clip: MotionClip) {
+	val colors = LocalToolColors.current
+	val typography = LocalToolTypography.current
+	fun save(events: List<io.github.psd2live.core.MotionEvent>) = viewModel.setMotionClipEvents(clip.id, events)
+	Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+		Row(verticalAlignment = Alignment.CenterVertically) {
+			Text(tr("animation.events"), style = typography.caption.copy(fontSize = 11.sp), color = colors.textMuted, modifier = Modifier.weight(1f))
+			io.github.psd2live.ui.components.CompactButton(tr("animation.addEvent"), {
+				save(clip.events + io.github.psd2live.core.MotionEvent(0f, tr("animation.newEvent")))
+			}, height = 20.dp)
+		}
+		clip.events.forEachIndexed { index, event ->
+			Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+				io.github.psd2live.ui.components.CompactNumberSpinner(event.time.toDouble(), { t ->
+					save(clip.events.toMutableList().also { it[index] = event.copy(time = t.toFloat().coerceIn(0f, clip.duration)) })
+				}, Modifier.width(76.dp), 0.0, clip.duration.toDouble(), 0.1, 2, "s")
+				var text by androidx.compose.runtime.remember(clip.id, index, event.value) { androidx.compose.runtime.mutableStateOf(event.value) }
+				io.github.psd2live.ui.components.CompactTextField(text, { text = it }, Modifier.weight(1f), onCommit = {
+					if (text != event.value) save(clip.events.toMutableList().also { it[index] = event.copy(value = text) })
+				})
+				io.github.psd2live.ui.components.CompactIconButton({ save(clip.events.filterIndexed { i, _ -> i != index }) }, size = 20.dp,
+					tooltip = tr("animation.removeEvent")) {
+					io.github.psd2live.ui.components.IconClose(tint = colors.textMuted, modifier = Modifier.size(9.dp))
+				}
+			}
+		}
+	}
 }
 
 @Composable

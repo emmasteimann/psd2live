@@ -272,6 +272,13 @@ enum class WorkspacePreset(
 	HISTORY(listOf(CanvasMode.EDIT), DEFAULT_DOCK_MODULES),
 
 	/**
+	 * Layerloom patch (ONE-APP-PLAN S3): preparing the art. Layerloom's studio (split, peel, generate and snap, fit)
+	 * fills the workspace; "Open in PSD2Live" there brings the rig into the other workspaces. Like [HISTORY] it
+	 * keeps one hidden edit canvas and the edit arrangement for panels shown later.
+	 */
+	PREPARE(listOf(CanvasMode.EDIT), DEFAULT_DOCK_MODULES),
+
+	/**
 	 * An empty dock to build up from the window menu. It keeps one hidden edit canvas, so a canvas
 	 * is always there to show, and the edit arrangement, so each panel shown lands where it usually sits.
 	 */

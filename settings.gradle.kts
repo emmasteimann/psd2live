@@ -11,6 +11,8 @@ dependencyResolutionManagement {
 	repositories {
 		mavenCentral()
 		google()
+		// Layerloom patch: KCEF (the Prepare workspace's embedded browser) pulls JOGL from JogAmp's repository.
+		maven("https://jogamp.org/deployment/maven")
 	}
 }
 

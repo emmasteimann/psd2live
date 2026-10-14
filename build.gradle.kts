@@ -90,6 +90,8 @@ dependencies {
 	implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
 	implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
 	implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.11.0")
+	// Layerloom patch: the Prepare workspace shows Layerloom's studio in an embedded Chromium (KCEF).
+	implementation("dev.datlag:kcef:2025.03.23")
 	implementation(compose.desktop.currentOs)
 	implementation("org.jetbrains.compose.runtime:runtime:1.11.1")
 	implementation("org.jetbrains.compose.foundation:foundation:1.11.1")
@@ -352,6 +354,9 @@ compose.desktop {
 		// Half the machine's memory rather than a fixed 8 GB: a fixed cap left no room for the canvas's native
 		// (GPU, Skia) memory on 8 and 16 GB machines, where the system killed the app instead of it running out of heap.
 		jvmArgs += listOf("-XX:MaxRAMPercentage=50", "-Dfile.encoding=UTF-8", "-Dsun.java2d.uiScale.enabled=true")
+		// Layerloom patch: KCEF (JCEF) reaches AWT internals to host the browser in a Swing panel.
+		jvmArgs += listOf("--add-opens", "java.desktop/sun.awt=ALL-UNNAMED", "--add-opens", "java.desktop/java.awt.peer=ALL-UNNAMED",
+			"--add-opens", "java.desktop/sun.lwawt=ALL-UNNAMED", "--add-opens", "java.desktop/sun.lwawt.macosx=ALL-UNNAMED")
 		nativeDistributions {
 			// ModelDownloader uses HttpClient. Compose's automatic
 			// runtime module scan can miss this API because it is only loaded when

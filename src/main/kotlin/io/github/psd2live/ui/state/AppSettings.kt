@@ -26,6 +26,14 @@ object AppSettings {
 	/** The window's size in dp and whether it was maximized when it last closed; 1280 x 820 the first time. */
 	val windowWidth: Float get() = runCatching { preferences.getFloat("window_width", 1280f) }.getOrDefault(1280f).let { if (it.isFinite()) it.coerceIn(640f, 8192f) else 1280f }
 	val windowHeight: Float get() = runCatching { preferences.getFloat("window_height", 820f) }.getOrDefault(820f).let { if (it.isFinite()) it.coerceIn(400f, 8192f) else 820f }
+	/**
+	 * Layerloom patch: whether the Prepare workspace (Layerloom inside the app) was added to an existing session's
+	 * tabs once. After that a deleted Prepare tab stays deleted.
+	 */
+	var preparePresetOffered: Boolean
+		get() = runCatching { preferences.getBoolean("layerloom_prepare_offered", false) }.getOrDefault(false)
+		set(value) { runCatching { preferences.putBoolean("layerloom_prepare_offered", value) } }
+
 	val windowMaximized: Boolean get() = runCatching { preferences.getBoolean("window_maximized", false) }.getOrDefault(false)
 
 	fun rememberWindow(width: Float, height: Float, maximized: Boolean) {

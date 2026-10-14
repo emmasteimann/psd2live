@@ -479,6 +479,7 @@ internal fun moduleTitle(id: String): String = when {
 		"hierarchy" -> "dock.hierarchy"
 		"skeleton" -> "dock.skeleton"
 		"history" -> "dock.history"
+		"prepare" -> "dock.prepare"
 		"log" -> "dock.log"
 		"animationEditor" -> "dock.animationEditor"
 		"settings" -> "dock.settings"

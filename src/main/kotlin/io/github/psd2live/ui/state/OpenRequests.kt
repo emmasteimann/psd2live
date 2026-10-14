@@ -42,5 +42,10 @@ internal object OpenRequests {
 	private fun open(viewModel: PSD2LiveViewModel, psd: Path) {
 		viewModel.setInputPath(psd.toString())
 		viewModel.analyze()
+		// From the Prepare workspace (Layerloom inside the app), go where the rig is.
+		val state = viewModel.state.value
+		if (state.activeWorkspace.preset == WorkspacePreset.PREPARE) {
+			state.workspaces.firstOrNull { it.preset != WorkspacePreset.PREPARE }?.let { viewModel.setActiveWorkspace(it.id) }
+		}
 	}
 }

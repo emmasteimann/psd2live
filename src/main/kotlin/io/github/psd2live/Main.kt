@@ -156,6 +156,10 @@ private fun runGui() {
 	viewModel.watchAgentMcp(agentMcp.status)
 	// Layerloom patch: "Open in PSD2Live" requests (ui/state/OpenRequests).
 	io.github.psd2live.ui.state.OpenRequests.watch(viewModel)
+	// Layerloom patch: PSD2LIVE_START_WORKSPACE=prepare (any preset name) opens on that workspace (checks, launchers).
+	System.getenv("PSD2LIVE_START_WORKSPACE")?.let { wanted ->
+		viewModel.state.value.workspaces.firstOrNull { it.preset.name.equals(wanted, true) }?.let { viewModel.setActiveWorkspace(it.id) }
+	}
 
 	// Both close() calls are idempotent, so the hook (Ctrl+C, SIGTERM, logoff) and the normal exit can race.
 	val shutdown = {

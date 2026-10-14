@@ -243,6 +243,7 @@ internal fun presetDockLayout(workspace: EditorWorkspace): DockNode {
             row(.64f, column(.80f, leaf(names[0]), leaf("log", "animationEditor")),
                 column(.60f, leaf("texture"), leaf("layers", "inspector", "tools", "mesh", "parameters", "settings", "animation", "physics", "simulation"))))
         WorkspacePreset.HISTORY -> row(.5f, leaf("history"), defaultDockLayout(names[0]))
+        WorkspacePreset.PREPARE -> row(.94f, leaf("prepare"), defaultDockLayout(names[0]))
     }
     return names.filterIndexed { index, _ -> slots[index] == null }
         .fold(layout) { node, placeholder -> node.remove(placeholder) ?: node }

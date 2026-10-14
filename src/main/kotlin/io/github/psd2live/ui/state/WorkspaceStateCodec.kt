@@ -300,7 +300,18 @@ internal object WorkspaceStateCodec {
         if (parsed.isEmpty()) return base.workspaces to base.activeWorkspaceId
         val requested = value["activeWorkspaceId"]?.jsonPrimitive?.contentOrNull
         val activeId = parsed.firstOrNull { it.id == requested }?.id ?: parsed.first().id
-        return parsed to activeId
+        return withPrepareOnce(parsed) to activeId
+    }
+
+    /**
+     * Layerloom patch (ONE-APP-PLAN S3): sessions saved before the Prepare workspace existed get it once, as the
+     * first tab (prepare the art, then rig it). Removing it later is respected.
+     */
+    private fun withPrepareOnce(workspaces: List<EditorWorkspace>): List<EditorWorkspace> {
+        if (workspaces.any { it.preset == WorkspacePreset.PREPARE } || AppSettings.preparePresetOffered) return workspaces
+        AppSettings.preparePresetOffered = true
+        val id = "$DEFAULT_WORKSPACE_ID:prepare"
+        return listOf(presetEditorWorkspace(id, WorkspacePreset.PREPARE, canvases = WorkspacePreset.PREPARE.canvases { index -> "canvas:$id:$index" })) + workspaces
     }
 
     /**

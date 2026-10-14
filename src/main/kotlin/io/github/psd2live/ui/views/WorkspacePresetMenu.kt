@@ -318,6 +318,12 @@ internal fun WorkspacePresetIcon(preset: WorkspacePreset, tint: Color, modifier:
 					outline(path { m(5.4f, 9f); q(13.2f, 9f, 13.2f, 4.4f) })
 					listOf(5.4f to 15f, 5.4f to 9f, 5.4f to 3f, 13.2f to 4.4f).forEach { (x, y) -> dot(x, y, 1.8f) }
 				}
+				// Layerloom patch: layers being prepared, a stack of three sheets.
+				WorkspacePreset.PREPARE -> {
+					box(6.4f, 2.2f, 9.4f, 9.4f, 1.2f, ICON_FINE)
+					box(4.3f, 4.3f, 9.4f, 9.4f, 1.2f, ICON_FINE)
+					fillBox(2.2f, 6.4f, 9.4f, 9.4f, 1.2f, soft)
+				}
 				// An empty dashed frame with a plus.
 				else -> {
 					box(2.2f, 2.2f, 13.6f, 13.6f, 2f, ICON_FINE, dash = floatArrayOf(1.6f, 2.4f))

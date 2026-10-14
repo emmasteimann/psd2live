@@ -160,6 +160,18 @@ private fun runGui() {
 	viewModel.watchAgentMcp(agentMcp.status)
 	// Layerloom patch: "Open in PSD2Live" requests (ui/state/OpenRequests).
 	io.github.psd2live.ui.state.OpenRequests.watch(viewModel)
+	// Layerloom patch (ONE-APP-PLAN S3): the Prepare workspace is offered once, as the first tab; removing it later is
+	// respected. Done here, not while decoding a session, so a saved session decodes to exactly what was saved.
+	if (!io.github.psd2live.ui.state.AppSettings.preparePresetOffered) {
+		io.github.psd2live.ui.state.AppSettings.preparePresetOffered = true
+		val current = viewModel.state.value
+		if (current.workspaces.none { it.preset == io.github.psd2live.ui.state.WorkspacePreset.PREPARE }) {
+			val active = current.activeWorkspace.id
+			val id = viewModel.addWorkspace(io.github.psd2live.ui.state.WorkspacePreset.PREPARE)
+			viewModel.moveWorkspace(id, 0)
+			viewModel.setActiveWorkspace(active)
+		}
+	}
 	// Layerloom patch: PSD2LIVE_START_WORKSPACE=prepare (any preset name) opens on that workspace (checks, launchers).
 	System.getenv("PSD2LIVE_START_WORKSPACE")?.let { wanted ->
 		viewModel.state.value.workspaces.firstOrNull { it.preset.name.equals(wanted, true) }?.let { viewModel.setActiveWorkspace(it.id) }

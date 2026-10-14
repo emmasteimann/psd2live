@@ -249,6 +249,18 @@ data class RigEditOverlay(
     val poseGroups: List<List<String>> = emptyList(),
     val poseFadeIn: Float = PoseGroups.DEFAULT_FADE,
 ) {
+	/**
+	 * Layerloom patch: revisions hash this text (WorkspaceRevisions). It is the data class's own text for the
+	 * upstream fields, and names the patch's fields only when they're set, so every existing project keeps its
+	 * revisions (adding fields to the generated text changed them all).
+	 */
+	override fun toString(): String = buildString {
+		append("RigEditOverlay(importedCmo3=$importedCmo3, importedLayerIds=$importedLayerIds, skeleton=$skeleton, parameterEdits=$parameterEdits, deletedParameterIds=$deletedParameterIds, keyformSetEdits=$keyformSetEdits, keyformDeleteEdits=$keyformDeleteEdits, keyformCopyEdits=$keyformCopyEdits, warpEdits=$warpEdits, physicsEdits=$physicsEdits, disabledPhysicsIds=$disabledPhysicsIds, physicsOrder=$physicsOrder, physicsFps=$physicsFps, swingEdits=$swingEdits, assetLayers=$assetLayers, calibrationLayerIds=$calibrationLayerIds, splitBaselineLayerIds=$splitBaselineLayerIds, splitDrawableIds=$splitDrawableIds, structureEdits=$structureEdits, authoringJournal=$authoringJournal, motionClips=$motionClips, motionPresets=$motionPresets, simEdits=$simEdits")
+		if (expressions.isNotEmpty()) append(", expressions=").append(expressions)
+		if (poseGroups.isNotEmpty() || poseFadeIn != PoseGroups.DEFAULT_FADE) append(", poseGroups=").append(poseGroups).append(", poseFadeIn=").append(poseFadeIn)
+		append(")")
+	}
+
 	init {
         require(expressions.map { it.id }.distinct().size == expressions.size) { "Duplicate expression IDs" }
         require(motionClips.map { it.id }.distinct().size == motionClips.size) { "Duplicate motion IDs" }

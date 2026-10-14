@@ -177,13 +177,57 @@ internal object WorkspaceSettingsCodec {
         put("exportIncludeUserData", config.exportIncludeUserData)
         put("exportIncludeDisplayInfo", config.exportIncludeDisplayInfo)
         put("exportPixelsPerUnit", config.exportPixelsPerUnit?.let(::JsonPrimitive) ?: JsonNull)
+        // Layerloom patch: written only when a project uses them, so other projects keep their settings text.
+        io.github.psd2live.core.LayerloomRigOptions.of(config).takeUnless { it.isEmpty }?.let { put(LAYERLOOM, encodeLayerloom(it)) }
+    }
+
+    /** Layerloom patch: the key of [io.github.psd2live.core.LayerloomRigOptions] in a settings object. */
+    const val LAYERLOOM = "layerloom"
+
+    fun encodeLayerloom(o: io.github.psd2live.core.LayerloomRigOptions): JsonObject = buildJsonObject {
+        if (o.hairAnchors.isNotEmpty()) putJsonObject("hairAnchors") { o.hairAnchors.toSortedMap().forEach { (name, a) ->
+            put(name, buildJsonObject { put("from", a.from); put("to", a.to); if (a.pinTop) put("pinTop", true) }) } }
+        if (o.layerGlues.isNotEmpty()) putJsonObject("glues") { o.layerGlues.toSortedMap().forEach { (name, g) ->
+            put(name, buildJsonObject { put("target", g.target); put("from", g.from); put("to", g.to); put("glueTop", g.glueTop)
+                if (g.horizontal) put("axis", "x") }) } }
+        if (o.hairTurnDepth != 0f) put("hairTurnDepth", o.hairTurnDepth)
+        if (o.hairTurnDepthY != 0f) put("hairTurnDepthY", o.hairTurnDepthY)
+        if (o.layerTurnDepths.isNotEmpty()) putJsonObject("turnDepths") { o.layerTurnDepths.toSortedMap().forEach { (k, v) -> put(k, v) } }
+        if (o.layerTurnDepthsY.isNotEmpty()) putJsonObject("turnDepthsY") { o.layerTurnDepthsY.toSortedMap().forEach { (k, v) -> put(k, v) } }
+    }
+
+    fun decodeLayerloom(value: JsonElement?): io.github.psd2live.core.LayerloomRigOptions {
+        val o = value as? JsonObject ?: return io.github.psd2live.core.LayerloomRigOptions()
+        fun f(obj: JsonObject, key: String) = obj[key]?.jsonPrimitive?.floatOrNull?.takeIf { it.isFinite() }
+        fun depths(key: String) = (o[key] as? JsonObject)?.mapNotNull { (k, v) -> v.jsonPrimitive.floatOrNull?.let { k to it.coerceIn(0f, 3f) } }?.toMap().orEmpty()
+        return io.github.psd2live.core.LayerloomRigOptions(
+            hairAnchors = (o["hairAnchors"] as? JsonObject)?.mapNotNull { (name, v) -> (v as? JsonObject)?.let { a ->
+                val from = f(a, "from") ?: return@let null; val to = f(a, "to") ?: return@let null
+                name to io.github.psd2live.core.HairAnchor(from.coerceIn(0f, 1f), to.coerceIn(0f, 1f), a["pinTop"]?.jsonPrimitive?.booleanOrNull ?: false)
+            } }?.toMap().orEmpty(),
+            layerGlues = (o["glues"] as? JsonObject)?.mapNotNull { (name, v) -> (v as? JsonObject)?.let { g ->
+                val target = g["target"]?.jsonPrimitive?.contentOrNull ?: return@let null
+                val from = f(g, "from") ?: return@let null; val to = f(g, "to") ?: return@let null
+                name to io.github.psd2live.core.LayerGlue(target, from.coerceIn(0f, 1f), to.coerceIn(0f, 1f),
+                    g["glueTop"]?.jsonPrimitive?.booleanOrNull ?: true, g["axis"]?.jsonPrimitive?.contentOrNull == "x")
+            } }?.toMap().orEmpty(),
+            hairTurnDepth = f(o, "hairTurnDepth")?.coerceIn(0f, 3f) ?: 0f,
+            hairTurnDepthY = f(o, "hairTurnDepthY")?.coerceIn(0f, 3f) ?: 0f,
+            layerTurnDepths = depths("turnDepths"),
+            layerTurnDepthsY = depths("turnDepthsY"),
+        )
     }
     /** A stored [io.github.psd2live.core.MeshSettings.wrap]: absent or invalid is no wrap. */
     fun decodeWrap(value: JsonElement?): Float = (value as? JsonPrimitive)?.floatOrNull
         ?.takeIf { it.isFinite() }?.coerceIn(io.github.psd2live.core.MeshWrap.range) ?: 0f
 
     /** Decode the existing v1 setting names without constructing UI state. */
-    fun decode(value: JsonObject, base: io.github.psd2live.core.PipelineConfig = io.github.psd2live.core.PipelineConfig()): io.github.psd2live.core.PipelineConfig = base.copy(
+    fun decode(value: JsonObject, base: io.github.psd2live.core.PipelineConfig = io.github.psd2live.core.PipelineConfig()): io.github.psd2live.core.PipelineConfig =
+        // Layerloom patch: a complete settings payload (it always has atlasSize) without the block uses none.
+        (if (LAYERLOOM in value) decodeLayerloom(value[LAYERLOOM]) else if ("atlasSize" in value) io.github.psd2live.core.LayerloomRigOptions()
+            else io.github.psd2live.core.LayerloomRigOptions.of(base)).appliedTo(decodeStandard(value, base))
+
+    private fun decodeStandard(value: JsonObject, base: io.github.psd2live.core.PipelineConfig): io.github.psd2live.core.PipelineConfig = base.copy(
         atlasSize = value["atlasSize"]?.jsonPrimitive?.intOrNull ?: base.atlasSize,
         textureUpscale = value["textureUpscale"]?.let { Json.decodeFromJsonElement<io.github.psd2live.core.TextureUpscaleConfig>(it) } ?: base.textureUpscale,
         drawOrderOverrides = value["drawOrderOverrides"]?.jsonObject?.mapValues { it.value.jsonPrimitive.float.coerceIn(0f, 1000f) } ?: base.drawOrderOverrides,

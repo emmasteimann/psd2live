@@ -201,6 +201,31 @@ data class LayerGlue(
 	val horizontal: Boolean = false,
 )
 
+/**
+ * Layerloom patch: the build inputs of Layerloom's per-layer options, as one value. These shape the generated
+ * deformers, so the editor saves them with the project and every build applies them (see [PipelineConfig] fields of
+ * the same names). The one-time setup options (toggles, auto skeleton and arm joints, swings) are not here: they
+ * become ordinary editor data (layer overrides, skeleton, swing edits) when a Layerloom rig enters the editor.
+ */
+data class LayerloomRigOptions(
+	val hairAnchors: Map<String, HairAnchor> = emptyMap(),
+	val layerGlues: Map<String, LayerGlue> = emptyMap(),
+	val hairTurnDepth: Float = 0f,
+	val hairTurnDepthY: Float = 0f,
+	val layerTurnDepths: Map<String, Float> = emptyMap(),
+	val layerTurnDepthsY: Map<String, Float> = emptyMap(),
+) {
+	val isEmpty: Boolean get() = this == LayerloomRigOptions()
+
+	fun appliedTo(config: PipelineConfig): PipelineConfig = config.copy(hairAnchors = hairAnchors, layerGlues = layerGlues,
+		hairTurnDepth = hairTurnDepth, hairTurnDepthY = hairTurnDepthY, layerTurnDepths = layerTurnDepths, layerTurnDepthsY = layerTurnDepthsY)
+
+	companion object {
+		fun of(config: PipelineConfig) = LayerloomRigOptions(config.hairAnchors, config.layerGlues, config.hairTurnDepth,
+			config.hairTurnDepthY, config.layerTurnDepths, config.layerTurnDepthsY)
+	}
+}
+
 data class PipelineConfig(
 	val atlasSize: Int = 4096,
 	val textureUpscale: TextureUpscaleConfig = TextureUpscaleConfig(),

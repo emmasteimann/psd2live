@@ -571,6 +571,9 @@ internal object WorkspaceStateCodec {
             else if ("atlasSize" in value) null else base.atlasBudget,
         atlasArrangement = if (io.github.psd2live.project.AtlasArrangementCodec.KEY in value) io.github.psd2live.project.AtlasArrangementCodec.decode(value)
             else if ("atlasSize" in value) null else base.atlasArrangement,
+        layerloomRig = if (io.github.psd2live.project.WorkspaceSettingsCodec.LAYERLOOM in value)
+            io.github.psd2live.project.WorkspaceSettingsCodec.decodeLayerloom(value[io.github.psd2live.project.WorkspaceSettingsCodec.LAYERLOOM])
+            else if ("atlasSize" in value) io.github.psd2live.core.LayerloomRigOptions() else base.layerloomRig,
         exportOptionsExpanded = value["exportOptionsExpanded"]?.jsonPrimitive?.boolean ?: base.exportOptionsExpanded,
         motionSubExpanded = value["motionSubExpanded"]?.jsonPrimitive?.boolean ?: base.motionSubExpanded,
         physicsSubExpanded = value["physicsSubExpanded"]?.jsonPrimitive?.boolean ?: base.physicsSubExpanded,

@@ -607,6 +607,8 @@ data class PSD2LiveState(
 	val focusCanvasRequest: Int = 0,
 	val deletedLayerIds: Set<String> = emptySet(),
 	val parentOverrides: Map<String, String?> = emptyMap(),
+	/** Layerloom patch: the project's Layerloom build options (hair anchors, glue, turn depth). */
+	val layerloomRig: io.github.psd2live.core.LayerloomRigOptions = io.github.psd2live.core.LayerloomRigOptions(),
 	val drawOrderOverrides: Map<String, Float> = emptyMap(),
 	/** Durable parameter/keyform edits replayed after each generated-rig rebuild. */
 	val rigEdits: RigEditOverlay = RigEditOverlay.Empty,
@@ -707,7 +709,7 @@ data class PSD2LiveState(
 	/** The settings as chosen, for a new document's raw settings. */
     fun rawConfig(): PipelineConfig = authoredConfig
     private val authoredConfig: PipelineConfig by lazy {
-        PipelineConfig(
+        layerloomRig.appliedTo(PipelineConfig(
 			atlasSize = atlasSize,
 			textureUpscale = textureUpscale,
 			texturePadding = texturePadding,
@@ -773,7 +775,7 @@ data class PSD2LiveState(
 			atlasBudget = atlasBudget,
 			textureOverrides = textureOverrides.filterValues { !it.isDefault },
 			atlasArrangement = atlasArrangement,
-		)
+		))
 	}
 
 	fun getEffectiveDrawOrder(drawableId: String, layerId: String?, defaultOrder: Float): Float {

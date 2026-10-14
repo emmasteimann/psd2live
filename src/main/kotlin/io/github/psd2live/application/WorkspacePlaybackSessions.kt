@@ -107,7 +107,9 @@ internal class WorkspacePlaybackSessions(private val runtime: WorkspaceRuntime<R
     @Synchronized fun pointer(workspaceId: String, pointer: Pair<Float, Float>?) {
         require(pointer == null || (pointer.first.isFinite() && pointer.second.isFinite() &&
             pointer.first in -1f..1f && pointer.second in -1f..1f)) { "Pointer must be normalized to -1..1" }
-        val capture = runtime.capture()
+        // A mouse crossing the empty canvas before anything is open has nothing to track. Throwing here took the
+        // whole app down from the pointer handler (Layerloom fix, 2026-10-14).
+        val capture = runtime.state.value.capture ?: return
         val generation = capture.state.substringBeforeLast(':')
         val session = sessions[workspaceId]?.takeIf { it.projectId == capture.projectId && it.generation == generation } ?: return
         if (session.tracking && session.pointer != pointer) sessions[workspaceId] = session.copy(pointer = pointer)

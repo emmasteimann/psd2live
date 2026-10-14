@@ -35,6 +35,14 @@ class FormPasteTest {
 	}
 
 	@Test
+	fun pasteSpecialBlendsAndKeepsUnselectedPoints() {
+		val current = floatArrayOf(0f, 0f, 10f, 0f, 20f, 0f)
+		val pasted = floatArrayOf(4f, 2f, 14f, 2f, 24f, 2f)
+		assertEquals(listOf(2f, 1f, 12f, 1f, 22f, 1f), FormPaste.special(current, pasted, 0.5f, null).toList())
+		assertEquals(listOf(0f, 0f, 14f, 2f, 20f, 0f), FormPaste.special(current, pasted, 1f, setOf(1)).toList())
+	}
+
+	@Test
 	fun invertedRotationTurnsTheOtherWay() {
 		val restRot = floatArrayOf(0f, 0f, 0f, -10f)
 		val turned = floatArrayOf(1f, 0f, 1f + 10f * kotlin.math.sin(0.3f), -10f * kotlin.math.cos(0.3f))

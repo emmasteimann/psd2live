@@ -1300,6 +1300,9 @@ internal class CanvasEditor(
     var sequentialCreate by mutableStateOf(false)
     /** Layerloom patch (S4.7): Deform edits of a mesh or warp land on every key of its grid ([io.github.psd2live.core.MultiKeyEdit]). */
     var editAllKeys by mutableStateOf(false)
+    /** Layerloom patch: Paste special, how much of a pasted form lands (1 = all of it) and whether only on selected points. */
+    var pasteStrength by mutableStateOf(1f)
+    var pasteSelectedOnly by mutableStateOf(false)
     /**
      * Mode to restore when a create session ends. Set when arming a creation tool; cleared on cancel
      * or after a successful create that leaves the session.
@@ -3172,6 +3175,11 @@ internal class CanvasEditor(
 		val axis = (state.previewModel?.config?.rigEdits ?: state.rigEdits).skeleton?.symmetryAxisX ?: (model.canvasWidth / 2f)
 		val points = io.github.psd2live.core.FormPaste.points(t.kind, form.points, form.rest, form.restWorld, rest,
 			if (inverted && t.kind != "rotation") t.mapping.localToWorld(rest) else rest, inverted, if (sameObject) null else axis)
+			// Paste special: strength, and only the selected points when asked.
+			.let { pasted ->
+				val selected = if (pasteSelectedOnly && t.kind != "rotation") vertices.takeIf { it.isNotEmpty() } else null
+				if (pasteStrength >= 0.999f && selected == null) pasted else io.github.psd2live.core.FormPaste.special(t.geometry.points, pasted, pasteStrength, selected)
+			}
 		clearHover(); gestureState = null
 		// Always a deformation of the current key, whatever the canvas mode: never the mesh's rest structure.
 		commit(canvasGeometryCommand(EditHierarchyMode.DEFORM, t.kind, t.id, coordinate(t), points))

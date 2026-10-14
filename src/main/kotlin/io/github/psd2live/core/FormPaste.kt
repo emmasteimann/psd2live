@@ -11,6 +11,18 @@ import kotlin.math.sin
  */
 object FormPaste {
 	/**
+	 * Paste special: [pasted] laid over [current] at [strength] (0..1), only on [selected] points when given (others keep
+	 * [current]). A rotation blends as a whole.
+	 */
+	fun special(current: FloatArray, pasted: FloatArray, strength: Float, selected: Set<Int>?): FloatArray {
+		require(current.size == pasted.size) { "Paste special needs the same number of points" }
+		val s = strength.coerceIn(0f, 1f)
+		return FloatArray(current.size) { k ->
+			if (selected != null && (k / 2) !in selected) current[k] else current[k] + (pasted[k] - current[k]) * s
+		}
+	}
+
+	/**
 	 * The destination's new local points.
 	 * - [sourcePoints] / [sourceRest]: the copied form and its rest, local; [sourceRestWorld]: that rest in canvas space.
 	 * - [rest] / [restWorld]: the destination's rest, local and in canvas space.

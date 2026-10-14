@@ -307,6 +307,11 @@ private fun MutableList<ToolOption>.addFormActions() {
     add(ActionOption("form.copy", "editor.form.copy", { it.target() != null }, { it.copyForm() }, place = OptionPlace.MENU))
     add(ActionOption("form.paste", "editor.form.paste", { it.canPasteForm(false) }, { it.pasteForm(false) }, place = OptionPlace.MENU))
     add(ActionOption("form.pasteInverted", "editor.form.pasteInverted", { it.canPasteForm(true) }, { it.pasteForm(true) }, place = OptionPlace.MENU))
+    // Paste special: both pastes use these.
+    add(SliderOption("form.pasteStrength", "editor.form.pasteStrength", OptionUnit.PERCENT, { 0.05f..1f }, { it.pasteStrength },
+        { e, v -> e.pasteStrength = v }, place = OptionPlace.MENU))
+    add(ToggleOption("form.pasteSelected", "editor.form.pasteSelected", { it.pasteSelectedOnly }, { e, on -> e.pasteSelectedOnly = on },
+        place = OptionPlace.MENU))
 }
 
 /** The tree's place-then-confirm create on the mesh in hand, the same entry as the hierarchy tree's Add menu. */

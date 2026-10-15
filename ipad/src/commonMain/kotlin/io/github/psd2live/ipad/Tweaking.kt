@@ -37,6 +37,16 @@ class RigTweaking(val outcome: RigOutcome) {
 	/** Warp [id]'s lattice as shown now (the stroke in progress included) at [pose]. */
 	fun lattice(pose: Map<String, Float>, id: String): PoseTweaks.Lattice? = PoseTweaks.lattices(shown, pose).firstOrNull { it.id == id }
 
+	/** Every mesh's vertices as shown now at [pose], canvas pixels, for picking points. */
+	fun vertices(pose: Map<String, Float>): List<Pair<String, FloatArray>> = PoseTweaks.vertices(shown, pose)
+
+	/** Starts moving [selection] (vertex indices by mesh) rigidly with the pencil from canvas ([x], [y]). */
+	fun beginPoints(pose: Map<String, Float>, selection: Map<String, Set<Int>>, x: Float, y: Float): Boolean {
+		if (selection.values.all { it.isEmpty() }) return false
+		session = PoseTweaks.beginPoints(model.rig.puppet, pose, selection, x, y)
+		return true
+	}
+
 	/** The warp a Warp-mode press at ([x], [y]) would push, for the overlay. */
 	fun warpAt(pose: Map<String, Float>, x: Float, y: Float): PoseTweaks.Lattice? = PoseTweaks.warpUnder(shown, pose, x, y)
 

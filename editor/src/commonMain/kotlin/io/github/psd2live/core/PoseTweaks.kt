@@ -78,6 +78,38 @@ object PoseTweaks {
 		return CanvasDeformStroke.begin(model, request, CanvasDeformStroke.Sample(CanvasBrushPoint(x, y)))
 	}
 
+	/** Every mesh's vertices at [pose] in canvas pixels (x, y per vertex, in the mesh's own order), front-most first. */
+	fun vertices(model: PuppetModel, pose: Map<String, Float>): List<Pair<String, FloatArray>> {
+		val defaults = model.parameters.associate { it.id to it.default }
+		val worlds = buildDeformerWorlds(model.deformers, { pose[it.raw] ?: defaults[it] ?: 0f }, { defaults[it] ?: 0f })
+		return model.drawables.withIndex().sortedByDescending { (index, d) -> d.drawOrder * 10_000 + index }.mapNotNull { (_, drawable) ->
+			if (drawable.mesh == null) return@mapNotNull null
+			val geometry = runCatching { RigGeometryTools.geometry(model, "mesh", drawable.id.raw, pose) }.getOrNull() ?: return@mapNotNull null
+			val world = DrawableSpaceMapping(geometry.parent?.let { worlds[DeformerId(it)] ?: return@let null }).localToWorld(geometry.points)
+			for (i in 1 until world.size step 2) world[i] = -world[i]
+			drawable.id.raw to world
+		}
+	}
+
+	/**
+	 * Moving [selection] (vertex indices by mesh id) exactly with the pencil from ([x], [y]) at [pose]: a push whose
+	 * reach covers the whole canvas at full strength, limited to the selected vertices, so they move as one rigid
+	 * group and nothing else moves. Same keyform edits as a brush stroke.
+	 */
+	fun beginPoints(model: PuppetModel, pose: Map<String, Float>, selection: Map<String, Set<Int>>, x: Float, y: Float): CanvasDeformStroke.Session {
+		val defaults = model.parameters.associate { it.id.raw to it.default }
+		val posed = pose.filter { (id, value) -> defaults[id]?.let { kotlin.math.abs(value - it) > 1e-4f } == true }.keys.toList()
+		val targets = selection.filterValues { it.isNotEmpty() }.map { (id, vertices) ->
+			val geometry = RigGeometryTools.geometry(model, "mesh", id, pose)
+			CanvasDeformStroke.Target("mesh", id, canvasDeformationCoordinate(model, geometry.axes, pose, posed), vertices)
+		}
+		require(targets.isNotEmpty()) { "Select some points first" }
+		val reach = maxOf(model.canvasWidth, model.canvasHeight) * 2f
+		val tip = CanvasBrushTip(reach.coerceIn(0.5f, 4096f), 0.95f, CanvasBrushShape.CIRCLE, 0f, 1f, CanvasBrushFalloff.CONSTANT)
+		val request = CanvasDeformStroke.Request(CanvasDeformStroke.Action.BRUSH, CanvasDeformStroke.Mode.DEFORM, targets, pose, tip, 1f, false)
+		return CanvasDeformStroke.begin(model, request, CanvasDeformStroke.Sample(CanvasBrushPoint(x, y)))
+	}
+
 	/** Each mesh's triangle edges at [pose] as canvas-pixel segments (x0, y0, x1, y1, ...), front-most first. */
 	fun wireframes(model: PuppetModel, pose: Map<String, Float>, only: Set<String>? = null): List<Pair<String, FloatArray>> {
 		val defaults = model.parameters.associate { it.id to it.default }

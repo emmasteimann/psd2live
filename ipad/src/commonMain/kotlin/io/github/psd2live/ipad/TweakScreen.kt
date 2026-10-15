@@ -75,6 +75,17 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 	var warpMode by remember { mutableStateOf(false) }
 	val warpOn by rememberUpdatedState(warpMode)
 	var lattice by remember { mutableStateOf<io.github.psd2live.core.PoseTweaks.Lattice?>(null) }
+	// Points mode: pick vertices (tap or box), then drag one of them to move the group exactly.
+	var pointsMode by remember { mutableStateOf(false) }
+	val pointsOn by rememberUpdatedState(pointsMode)
+	var selection by remember { mutableStateOf<Map<String, Set<Int>>>(emptyMap()) }
+	val selectionNow by rememberUpdatedState(selection)
+	var verts by remember { mutableStateOf<List<Pair<String, FloatArray>>>(emptyList()) }
+	val vertsNow by rememberUpdatedState(verts)
+	var boxRect by remember { mutableStateOf<Pair<Offset, Offset>?>(null) }
+	// A box takes one part (the mesh with the most points in it) unless asked for every part it touches.
+	var boxEveryPart by remember { mutableStateOf(false) }
+	val boxEveryPartNow by rememberUpdatedState(boxEveryPart)
 	val mirrorOn by rememberUpdatedState(mirror)
 	var wires by remember { mutableStateOf<List<FloatArray>>(emptyList()) }
 	var tick by remember { mutableStateOf(0L) }
@@ -96,7 +107,7 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 	LaunchedEffect(tweaking) {
 		// Draws only what is on screen, so zooming in stays sharp: a quick draft (~0.35 MP) while the pencil or a slider
 		// moves, the full-resolution frame (~2.2 MP) once things rest for a moment. A newer change drops both.
-		snapshotFlow { listOf(tick, pose, view, box, showMesh, warpMode) }.collectLatest {
+		snapshotFlow { listOf(tick, pose, view, box, showMesh, warpMode, pointsMode) }.collectLatest {
 			val (w, h) = box
 			if (w < 2f || h < 2f) return@collectLatest
 			val l = layout(w, h, view)
@@ -112,7 +123,8 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 				val raster = tweaking.frame(shownPose, x0, y0, x1 - x0, y1 - y0, outW, outH)
 				raster.toImageBitmap() to floatArrayOf(left + x0 * scale, top + y0 * scale, (x1 - x0) * scale, (y1 - y0) * scale)
 			}
-			wires = if (showMesh) withContext(Dispatchers.Default) { tweaking.wires(shownPose) } else emptyList()
+			verts = if (pointsMode) withContext(Dispatchers.Default) { tweaking.vertices(shownPose) } else emptyList()
+			wires = if (showMesh || pointsMode) withContext(Dispatchers.Default) { tweaking.wires(shownPose) } else emptyList()
 			lattice?.takeIf { warpMode }?.let { held -> lattice = withContext(Dispatchers.Default) { tweaking.lattice(shownPose, held.id) } }
 			image = draw(350_000f)
 			delay(180)
@@ -136,8 +148,31 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 					object : CanvasTouch {
 						private var stroking = false
 						private fun toCanvas(o: Offset): Offset { val l = layout(w, h, viewNow()); return Offset((o.x - l[1]) / l[0], (o.y - l[2]) / l[0]) }
+						private var picking: Offset? = null
+						/** The vertex nearest [at] (screen px) within [slop] px, as mesh id and index. */
+						private fun nearest(at: Offset, slop: Float, only: Map<String, Set<Int>>? = null): Pair<String, Int>? {
+							val l = layout(w, h, viewNow()); var best: Pair<String, Int>? = null; var bestD = slop
+							for ((id, pts) in vertsNow) {
+								val allowed = only?.get(id) ?: if (only != null) continue else null
+								var i = 0
+								while (i < pts.size / 2) {
+									if (allowed == null || i in allowed) {
+										val d = kotlin.math.hypot(l[1] + pts[i * 2] * l[0] - at.x, l[2] + pts[i * 2 + 1] * l[0] - at.y)
+										if (d < bestD) { bestD = d; best = id to i }
+									}
+									i++
+								}
+							}
+							return best
+						}
 						override fun start(at: Offset, pressure: Float) {
 							if (saving != null) return
+							if (pointsOn) {
+								val p = toCanvas(at); val p0 = currentPose; val sel = selectionNow
+								if (nearest(at, 28f, sel) != null) scope.launch(worker) { stroking = tweaking.beginPoints(p0, sel, p.x, p.y) }
+								else { picking = at; boxRect = at to at }
+								return
+							}
 							val (r, s, sm) = settings
 							val p = toCanvas(at); val p0 = currentPose
 							cursor = at
@@ -146,11 +181,43 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 								if (warpOn) { val l = tweaking.warpAt(p0, p.x, p.y); scope.launch(Dispatchers.Main) { lattice = l } } }
 						}
 						override fun move(at: Offset, pressure: Float) {
-							val p = toCanvas(at); cursor = at
+							picking?.let { from -> boxRect = from to at; return }
+							val p = toCanvas(at); if (!pointsOn) cursor = at
 							scope.launch(worker) { if (stroking) { tweaking.step(p.x, p.y); bump() } }
 						}
-						override fun end() { cursor = null; scope.launch(worker) { if (stroking) { stroking = false; tweaking.end(mirrorOn); bump() } } }
-						override fun cancel() { cursor = null; scope.launch(worker) { stroking = false; tweaking.cancel(); bump() } }
+						override fun end() {
+							cursor = null
+							val from = picking
+							if (from != null) {
+								picking = null
+								val to = boxRect?.second ?: from; boxRect = null
+								if (kotlin.math.hypot(to.x - from.x, to.y - from.y) < 10f) {
+									// A tap: the nearest point toggles; a tap on nothing clears the selection.
+									val hit = nearest(from, 28f)
+									selection = if (hit == null) emptyMap() else {
+										val set = selection[hit.first].orEmpty()
+										selection + (hit.first to (if (hit.second in set) set - hit.second else set + hit.second))
+									}
+								} else {
+									// A box: every point inside it joins the selection.
+									val l = layout(w, h, viewNow())
+									val x0 = minOf(from.x, to.x); val x1 = maxOf(from.x, to.x); val y0 = minOf(from.y, to.y); val y1 = maxOf(from.y, to.y)
+									val added = vertsNow.associate { (id, pts) ->
+										id to (0 until pts.size / 2).filter { i ->
+											val sx = l[1] + pts[i * 2] * l[0]; val sy = l[2] + pts[i * 2 + 1] * l[0]
+											sx in x0..x1 && sy in y0..y1
+										}.toSet()
+									}.filterValues { it.isNotEmpty() }.let { all ->
+										if (boxEveryPartNow) all else all.maxByOrNull { it.value.size }?.let { mapOf(it.key to it.value) } ?: emptyMap()
+									}
+									selection = (selection.keys + added.keys).associateWith { selection[it].orEmpty() + added[it].orEmpty() }
+								}
+								return
+							}
+							// Mirror needs a brush to reflect, not a picked set: points moves stay on one side.
+							scope.launch(worker) { if (stroking) { stroking = false; tweaking.end(mirrorOn && !pointsOn); bump() } }
+						}
+						override fun cancel() { cursor = null; picking = null; boxRect = null; scope.launch(worker) { stroking = false; tweaking.cancel(); bump() } }
 						override fun undo() { scope.launch(worker) { tweaking.undo(); bump() } }
 						override fun redo() { scope.launch(worker) { tweaking.redo(); bump() } }
 						override fun view() = viewNow()
@@ -181,6 +248,16 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 						for (wire in wires) { var i = 0; while (i + 1 < wire.size) { points += Offset(l[1] + wire[i] * l[0], l[2] + wire[i + 1] * l[0]); i += 2 } }
 						drawPoints(points, androidx.compose.ui.graphics.PointMode.Lines, Color(0xFF7FE0FF).copy(alpha = 0.55f), strokeWidth = 1f)
 					}
+					if (pointsMode) {
+						val l = layout(w, h, view)
+						val chosen = ArrayList<Offset>()
+						for ((id, pts) in verts) selection[id]?.forEach { i -> if (i * 2 + 1 < pts.size) chosen += Offset(l[1] + pts[i * 2] * l[0], l[2] + pts[i * 2 + 1] * l[0]) }
+						drawPoints(chosen, androidx.compose.ui.graphics.PointMode.Points, Color(0xFFFFB347), strokeWidth = 9f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+						boxRect?.let { (a, b) ->
+							drawRect(Color(0xFFFFB347).copy(alpha = 0.15f), Offset(minOf(a.x, b.x), minOf(a.y, b.y)),
+								androidx.compose.ui.geometry.Size(kotlin.math.abs(b.x - a.x), kotlin.math.abs(b.y - a.y)))
+						}
+					}
 					cursor?.let { c ->
 						val l = layout(w, h, view)
 						drawCircle(Color.White.copy(alpha = 0.8f), radius * l[0], c, style = Stroke(1.5f))
@@ -192,8 +269,19 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 			Column(Modifier.width(330.dp).height(820.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
 				@Suppress("UNUSED_VARIABLE") val changes = tick
 				Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-					Chip("Meshes", !warpMode) { warpMode = false; lattice = null }
-					Chip("Warp", warpMode) { warpMode = true }
+					Chip("Meshes", !warpMode && !pointsMode) { warpMode = false; pointsMode = false; lattice = null }
+					Chip("Warp", warpMode) { warpMode = true; pointsMode = false }
+					Chip("Points", pointsMode) { pointsMode = true; warpMode = false; lattice = null }
+				}
+				if (pointsMode) {
+					val count = selection.values.sumOf { it.size }
+					Text(if (count == 0) "Tap points or drag a box round them; then drag a selected point to move them all, exactly."
+						else "$count point${if (count == 1) "" else "s"} selected. Drag one to move them; tap to add or remove; tap empty space to clear.",
+						color = Muted, fontSize = 12.sp)
+					Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+						Chip("Clear selection", false, enabled = count > 0) { selection = emptyMap() }
+						Chip(if (boxEveryPart) "A box takes: every part" else "A box takes: one part", boxEveryPart) { boxEveryPart = !boxEveryPart }
+					}
 				}
 				Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
 					Chip("Push", !smooth) { smooth = false }

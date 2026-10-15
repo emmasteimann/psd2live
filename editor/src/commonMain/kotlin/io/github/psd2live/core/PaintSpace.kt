@@ -5,8 +5,6 @@ import org.umamo.format.art.LayerBounds
 import org.umamo.format.art.LayerRaster
 import org.umamo.format.art.SourceLayer
 import org.umamo.format.art.isFullyTransparent
-import java.awt.Rectangle
-import java.awt.image.BufferedImage
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.sqrt
@@ -95,8 +93,8 @@ class PaintSpace(
 	fun layerArea(): Rectangle = raster?.intersection(Rectangle(0, 0, width, height)) ?: Rectangle()
 
 	/** A new image of this space holding [source]'s raster (the layer this space was made for). */
-	fun image(source: SourceLayer, checkpoint: () -> Unit = {}): BufferedImage {
-		val image = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
+	fun image(source: SourceLayer, checkpoint: () -> Unit = {}): RigImage {
+		val image = newRigImage(width, height)
 		val at = raster ?: return image
 		val area = layerArea()
 		if (area.isEmpty) return image
@@ -111,7 +109,7 @@ class PaintSpace(
 				row[x] = ((pixels.rgba[i + 3].toInt() and 255) shl 24) or ((pixels.rgba[i].toInt() and 255) shl 16) or
 					((pixels.rgba[i + 1].toInt() and 255) shl 8) or (pixels.rgba[i + 2].toInt() and 255)
 			}
-			image.setRGB(area.x, y, area.width, 1, row, 0, area.width)
+			image.writeArgb(area.x, y, area.width, 1, row, 0, area.width)
 		}
 		return image
 	}
@@ -144,7 +142,7 @@ class PaintSpace(
 		val cropW = maxX - minX + 1; val cropH = maxY - minY + 1
 		val cropped = if (cropW == pixels.width && cropH == pixels.height) pixels else {
 			val out = ByteArray(cropW * cropH * 4)
-			for (y in 0 until cropH) System.arraycopy(rgba, ((minY + y) * pixels.width + minX) * 4, out, y * cropW * 4, cropW * 4)
+			for (y in 0 until cropH) rgba.copyInto(out, y * cropW * 4, ((minY + y) * pixels.width + minX) * 4, ((minY + y) * pixels.width + minX) * 4 + cropW * 4)
 			LayerRaster(cropW, cropH, out)
 		}
 		return placed(minX + at.x, minY + at.y, cropW, cropH, cropped)
@@ -155,7 +153,7 @@ class PaintSpace(
 	 * cropped to their bounding box at the layer's own density. The rectangle is measured from the layer's own,
 	 * so an untouched edge keeps exactly its old coordinate and density never drifts by cropping.
 	 */
-	fun crop(image: BufferedImage, region: Rectangle? = null, checkpoint: () -> Unit = {}): PaintedLayer {
+	fun crop(image: RigImage, region: Rectangle? = null, checkpoint: () -> Unit = {}): PaintedLayer {
 		require(image.width == width && image.height == height) { "Paint image does not match its space" }
 		val area = (region ?: Rectangle(0, 0, width, height)).intersection(Rectangle(0, 0, width, height))
 		if (area.isEmpty) return PaintedLayer.EMPTY
@@ -163,7 +161,7 @@ class PaintSpace(
 		val row = IntArray(area.width)
 		for (y in area.y until area.y + area.height) {
 			checkpoint()
-			image.getRGB(area.x, y, area.width, 1, row, 0, area.width)
+			image.readArgbInto(area.x, y, area.width, 1, row, 0, area.width)
 			var first = -1; var last = -1
 			for (x in 0 until area.width) if (row[x] ushr 24 != 0) { if (first < 0) first = x; last = x }
 			if (first < 0) continue
@@ -175,7 +173,7 @@ class PaintSpace(
 		if (maxX < minX || maxY < minY) return PaintedLayer.EMPTY
 		val cropW = maxX - minX + 1; val cropH = maxY - minY + 1
 		val pixels = IntArray(cropW * cropH)
-		image.getRGB(minX, minY, cropW, cropH, pixels, 0, cropW)
+		image.readArgbInto(minX, minY, cropW, cropH, pixels, 0, cropW)
 		val rgba = ByteArray(cropW * cropH * 4)
 		for (i in pixels.indices) {
 			if (i % cropW == 0) checkpoint()
@@ -283,7 +281,7 @@ class PaintSpace(
 			val cropW = maxX - minX + 1; val cropH = maxY - minY + 1
 			val cropped = if (cropW == raster.width && cropH == raster.height) raster else {
 				val out = ByteArray(cropW * cropH * 4)
-				for (y in 0 until cropH) System.arraycopy(rgba, ((minY + y) * raster.width + minX) * 4, out, y * cropW * 4, cropW * 4)
+				for (y in 0 until cropH) rgba.copyInto(out, y * cropW * 4, ((minY + y) * raster.width + minX) * 4, ((minY + y) * raster.width + minX) * 4 + cropW * 4)
 				LayerRaster(cropW, cropH, out)
 			}
 			return placedOn(space, minX, minY, cropW, cropH, cropped)
@@ -312,7 +310,7 @@ class PaintSpace(
 					val fx = floor(from.canvasToRasterX(cx)).toInt()
 					val index = (y * raster.width + x) * 4
 					if (fx in 0 until from.rasterWidth && fy in 0 until from.rasterHeight) {
-						System.arraycopy(fromRgba, (fy * from.rasterWidth + fx) * 4, rgba, index, 4)
+						fromRgba.copyInto(rgba, index, (fy * from.rasterWidth + fx) * 4, (fy * from.rasterWidth + fx) * 4 + 4)
 					} else {
 						rgba[index] = 0; rgba[index + 1] = 0; rgba[index + 2] = 0; rgba[index + 3] = 0
 					}

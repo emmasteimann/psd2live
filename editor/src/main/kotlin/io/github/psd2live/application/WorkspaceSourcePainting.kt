@@ -1,4 +1,5 @@
 package io.github.psd2live.application
+import io.github.psd2live.core.*
 
 import io.github.psd2live.project.WorkspaceSourceArt
 import io.github.psd2live.project.WorkspaceSourceLayer
@@ -11,7 +12,6 @@ import io.github.psd2live.core.RasterPaintShape
 import kotlinx.serialization.json.*
 import org.umamo.format.art.LayerBounds
 import org.umamo.format.art.LayerRaster
-import java.awt.image.BufferedImage
 import kotlin.math.floor
 
 /** Layer-local eyedropper in source canvas coordinates; sampling never creates an edit. */
@@ -29,36 +29,31 @@ fun WorkspaceDocument.sampleSourceColor(layerId: String, x: Int, y: Int): List<I
 }
 
 /** Seeds a canvas-sized paint image from the layer's saved raster and placement. */
-fun WorkspaceDocument.sourceLayerImage(id: String, checkpoint: () -> Unit = {}): BufferedImage {
+fun WorkspaceDocument.sourceLayerImage(id: String, checkpoint: () -> Unit = {}): RigImage {
     checkpoint()
     val layer = source.layers.singleOrNull { it.id.raw == id && id !in deletedLayerIds }
         ?: throw IllegalArgumentException("Source layer not found: $id")
     require(source.widthPx.toLong() * source.heightPx <= 16_777_216) { "Painting requires a canvas of at most 16 megapixels" }
     val width = source.widthPx
     val height = source.heightPx
-    val image = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
-    val raster = BufferedImage(layer.raster.width, layer.raster.height, BufferedImage.TYPE_INT_ARGB)
+    val image = newRigImage(width, height)
+    val raster = newRigImage(layer.raster.width, layer.raster.height)
     val original = layer.raster.rgba
     for (i in 0 until layer.raster.width * layer.raster.height) {
         if (i % layer.raster.width == 0) checkpoint()
         val at = i * 4
-        raster.setRGB(i % layer.raster.width, i / layer.raster.width,
+        raster.setArgbAt(i % layer.raster.width, i / layer.raster.width,
             ((original[at + 3].toInt() and 255) shl 24) or
                 ((original[at].toInt() and 255) shl 16) or
                 ((original[at + 1].toInt() and 255) shl 8) or
                 (original[at + 2].toInt() and 255))
     }
-    val graphics = image.createGraphics()
-    try {
-        graphics.composite = java.awt.AlphaComposite.Src
-        graphics.drawImage(raster, layer.bounds.left, layer.bounds.top,
-            layer.bounds.width, layer.bounds.height, null)
-    } finally { graphics.dispose() }
+    image.copyPixelsScaled(raster, layer.bounds.left, layer.bounds.top, layer.bounds.width, layer.bounds.height)
     return image
 }
 
 fun WorkspaceDocument.paintSourceImage(arguments: JsonObject,
-    work: WorkspaceRasterWork = WorkspaceRasterWork.Direct): BufferedImage {
+    work: WorkspaceRasterWork = WorkspaceRasterWork.Direct): RigImage {
     work.progress(0f, "Preparing source pixels")
     val image = sourceLayerImage(arguments.getValue("layer_id").jsonPrimitive.content, work::checkpoint)
     paintRasterGesture(image, arguments, work)
@@ -69,7 +64,7 @@ fun WorkspaceDocument.paintSourceImage(arguments: JsonObject,
  * A layer's pixels ready to paint on: [image] in [space], the layer's own raster grid over the canvas (the
  * canvas itself for a layer at one pixel per canvas unit).
  */
-class LayerPaintImage(val space: PaintSpace, val image: BufferedImage)
+class LayerPaintImage(val space: PaintSpace, val image: RigImage)
 
 /** Seeds a paint image of layer [id] in its own raster space ([PaintSpace.of]). */
 fun WorkspaceDocument.layerPaintImage(id: String, checkpoint: () -> Unit = {}): LayerPaintImage {
@@ -82,11 +77,11 @@ fun WorkspaceDocument.layerPaintImage(id: String, checkpoint: () -> Unit = {}): 
 
 /** One gesture painted on layer `layer_id`'s pixels in its own raster space, with the area it touched. */
 fun WorkspaceDocument.paintLayerImage(arguments: JsonObject,
-    work: WorkspaceRasterWork = WorkspaceRasterWork.Direct): Pair<LayerPaintImage, java.awt.Rectangle?> {
+    work: WorkspaceRasterWork = WorkspaceRasterWork.Direct): Pair<LayerPaintImage, Rectangle?> {
     work.progress(0f, "Preparing source pixels")
     val painting = layerPaintImage(arguments.getValue("layer_id").jsonPrimitive.content, work::checkpoint)
-    var touched: java.awt.Rectangle? = null
-    paintRasterGesture(painting.image, arguments, work, before = { touched = touched?.union(it) ?: java.awt.Rectangle(it) },
+    var touched: Rectangle? = null
+    paintRasterGesture(painting.image, arguments, work, before = { touched = touched?.union(it) ?: Rectangle(it) },
         space = painting.space)
     return painting to touched
 }
@@ -95,8 +90,8 @@ fun WorkspaceDocument.paintLayerImage(arguments: JsonObject,
  * A private session and a durable single gesture use the same raster processor. Gesture coordinates, radii and
  * widths are canvas units; [space] maps them onto [image]'s pixels, so a dense layer paints at its own density.
  */
-fun paintRasterGesture(image: BufferedImage, arguments: JsonObject,
-    work: WorkspaceRasterWork = WorkspaceRasterWork.Direct, before: (java.awt.Rectangle) -> Unit = {},
+fun paintRasterGesture(image: RigImage, arguments: JsonObject,
+    work: WorkspaceRasterWork = WorkspaceRasterWork.Direct, before: (Rectangle) -> Unit = {},
     space: PaintSpace = PaintSpace.canvas(image.width, image.height)) {
     val width = image.width; val height = image.height
     work.progress(0.05f, "Rasterizing paint gesture")
@@ -112,7 +107,7 @@ fun paintRasterGesture(image: BufferedImage, arguments: JsonObject,
         return space.canvasToImageX(numbers[0]) to space.canvasToImageY(numbers[1])
     }
     when (mode) {
-        "clear" -> { before(java.awt.Rectangle(0, 0, width, height)); RasterPaintEngine.clear(image) }
+        "clear" -> { before(Rectangle(0, 0, width, height)); RasterPaintEngine.clear(image) }
         "brush", "pencil", "eraser" -> {
             val points = arguments.getValue("points").jsonArray.map(::point)
             require(points.size in 1..512) { "Use 1..512 stroke points" }
@@ -140,7 +135,7 @@ fun paintRasterGesture(image: BufferedImage, arguments: JsonObject,
             require(strokeWidth.isFinite() && strokeWidth in 1f..512f)
             val imageWidth = space.imageLength(strokeWidth)
             before(RasterPaintEngine.shapeArea(x0.toInt(), y0.toInt(), x1.toInt(), y1.toInt(), imageWidth,
-                java.awt.Rectangle(0, 0, width, height)))
+                Rectangle(0, 0, width, height)))
             RasterPaintEngine.drawShape(image, x0.toInt(), y0.toInt(), x1.toInt(), y1.toInt(),
                 shape, color, opacity, imageWidth, arguments["filled"]?.jsonPrimitive?.boolean ?: false)
         }
@@ -156,7 +151,7 @@ fun WorkspaceDocument.paintSource(arguments: JsonObject): WorkspaceDocument {
     val width = source.widthPx; val height = source.heightPx
     val image = paintSourceImage(arguments)
     var left = width; var top = height; var right = 0; var bottom = 0
-    for (y in 0 until height) for (x in 0 until width) if (image.getRGB(x, y) ushr 24 != 0) {
+    for (y in 0 until height) for (x in 0 until width) if (image.argbAt(x, y) ushr 24 != 0) {
         left = minOf(left, x); top = minOf(top, y); right = maxOf(right, x + 1); bottom = maxOf(bottom, y + 1)
     }
     if (right <= left || bottom <= top) {
@@ -164,7 +159,7 @@ fun WorkspaceDocument.paintSource(arguments: JsonObject): WorkspaceDocument {
     }
     val output = ByteArray((right - left) * (bottom - top) * 4)
     for (y in top until bottom) for (x in left until right) {
-        val pixel = image.getRGB(x, y)
+        val pixel = image.argbAt(x, y)
         val at = ((y - top) * (right - left) + x - left) * 4
         output[at] = (pixel ushr 16).toByte(); output[at + 1] = (pixel ushr 8).toByte()
         output[at + 2] = pixel.toByte(); output[at + 3] = (pixel ushr 24).toByte()

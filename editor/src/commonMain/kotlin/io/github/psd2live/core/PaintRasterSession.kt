@@ -1,8 +1,5 @@
 package io.github.psd2live.core
 
-import java.awt.AlphaComposite
-import java.awt.Rectangle
-import java.awt.image.BufferedImage
 import kotlin.math.min
 
 /**
@@ -18,16 +15,16 @@ class PaintPixelPatch {
 
     val isEmpty: Boolean get() = tiles.isEmpty()
 
-    fun hasChanges(image: BufferedImage): Boolean = tiles.any { (key, pixels) ->
+    fun hasChanges(image: RigImage): Boolean = tiles.any { (key, pixels) ->
         val x = (key ushr 32).toInt() * TILE
         val y = (key and 0xFFFFFFFFL).toInt() * TILE
         val width = min(TILE, image.width - x); val height = min(TILE, image.height - y)
-        !pixels.contentEquals(image.getRGB(x, y, width, height, null, 0, width))
+        !pixels.contentEquals(image.readArgb(x, y, width, height))
     }
 
     /** Remembers the pixels [rect] is about to lose. Tiles already kept are left as they are: they were
      *  captured before the gesture touched anything in them, which is exactly the state to go back to. */
-    fun capture(image: BufferedImage, rect: Rectangle?) {
+    fun capture(image: RigImage, rect: Rectangle?) {
         val area = rect?.intersection(Rectangle(0, 0, image.width, image.height)) ?: return
         if (area.isEmpty) return
         for (tileY in area.y / TILE until (area.y + area.height + TILE - 1) / TILE) {
@@ -39,7 +36,7 @@ class PaintPixelPatch {
                 val width = min(TILE, image.width - x)
                 val height = min(TILE, image.height - y)
                 if (width <= 0 || height <= 0) continue
-                tiles[key] = image.getRGB(x, y, width, height, null, 0, width)
+                tiles[key] = image.readArgb(x, y, width, height)
             }
         }
     }
@@ -50,7 +47,7 @@ class PaintPixelPatch {
      *
      * @return What was put back, one rectangle per tile, which is what the preview has to repaint.
      */
-    fun restore(image: BufferedImage, region: Rectangle? = null): List<Rectangle> {
+    fun restore(image: RigImage, region: Rectangle? = null): List<Rectangle> {
         if (tiles.isEmpty()) return emptyList()
         val area = region?.intersection(Rectangle(0, 0, image.width, image.height))
             ?: Rectangle(0, 0, image.width, image.height)
@@ -68,9 +65,9 @@ class PaintPixelPatch {
             val part = IntArray(overlap.width * overlap.height)
             for (row in 0 until overlap.height) {
                 val from = (overlap.y - y + row) * width + (overlap.x - x)
-                System.arraycopy(pixels, from, part, row * overlap.width, overlap.width)
+                pixels.copyInto(part, row * overlap.width, from, from + overlap.width)
             }
-            image.setRGB(overlap.x, overlap.y, overlap.width, overlap.height, part, 0, overlap.width)
+            image.writeArgb(overlap.x, overlap.y, overlap.width, overlap.height, part, 0, overlap.width)
             restored += overlap
         }
         return restored
@@ -83,7 +80,7 @@ class PaintPixelPatch {
      *
      * @return What changed, one rectangle per tile.
      */
-    fun swap(image: BufferedImage): List<Rectangle> {
+    fun swap(image: RigImage): List<Rectangle> {
         if (tiles.isEmpty()) return emptyList()
         val changed = ArrayList<Rectangle>(tiles.size)
         for ((key, pixels) in tiles) {
@@ -94,8 +91,8 @@ class PaintPixelPatch {
             val width = min(TILE, image.width - x)
             val height = min(TILE, image.height - y)
             if (width <= 0 || height <= 0) continue
-            val current = image.getRGB(x, y, width, height, null, 0, width)
-            image.setRGB(x, y, width, height, pixels, 0, width)
+            val current = image.readArgb(x, y, width, height)
+            image.writeArgb(x, y, width, height, pixels, 0, width)
             tiles[key] = current
             changed += Rectangle(x, y, width, height)
         }
@@ -139,9 +136,9 @@ class PaintRasterSession(
      * Writes have to go through [edit], or be announced with [willWrite] first: the session can only
      * undo, redo or give back an edit whose pixels it watched being replaced.
      */
-    val workingImage: BufferedImage,
+    val workingImage: RigImage,
     /** The raster the session started from, restored by [discard]. */
-    val originalImageCopy: BufferedImage,
+    val originalImageCopy: RigImage,
 ) {
     val docWidth: Int get() = workingImage.width
     val docHeight: Int get() = workingImage.height
@@ -208,7 +205,7 @@ class PaintRasterSession(
      * Runs one raster edit over [rect], remembering the pixels it replaces so it can be taken back,
      * undone and redone as one action.
      */
-    fun edit(rect: Rectangle?, block: (BufferedImage) -> Unit) {
+    fun edit(rect: Rectangle?, block: (RigImage) -> Unit) {
         willWrite(rect)
         block(workingImage)
     }
@@ -246,7 +243,7 @@ class PaintRasterSession(
     fun canUndo(): Boolean = currentStrokeIndex > 0
     fun canRedo(): Boolean = currentStrokeIndex < strokeRecords.lastIndex
 
-    fun undo(): BufferedImage? {
+    fun undo(): RigImage? {
         if (!canUndo()) return null
         markDirty(strokeRecords[currentStrokeIndex].patch.swap(workingImage))
         currentStrokeIndex--
@@ -255,7 +252,7 @@ class PaintRasterSession(
         return workingImage
     }
 
-    fun redo(): BufferedImage? {
+    fun redo(): RigImage? {
         if (!canRedo()) return null
         currentStrokeIndex++
         markDirty(strokeRecords[currentStrokeIndex].patch.swap(workingImage))
@@ -264,7 +261,7 @@ class PaintRasterSession(
         return workingImage
     }
 
-    fun jumpToStroke(index: Int): BufferedImage? {
+    fun jumpToStroke(index: Int): RigImage? {
         if (index !in strokeRecords.indices) return null
         while (currentStrokeIndex > index) {
             markDirty(strokeRecords[currentStrokeIndex].patch.swap(workingImage))
@@ -279,7 +276,7 @@ class PaintRasterSession(
         return workingImage
     }
 
-    fun discard(): BufferedImage {
+    fun discard(): RigImage {
         pending = PaintPixelPatch()
         liveStroke?.reset()
         restoreImage(originalImageCopy)
@@ -293,14 +290,8 @@ class PaintRasterSession(
         return workingImage
     }
 
-    private fun restoreImage(source: BufferedImage) {
-        val g = workingImage.createGraphics()
-        try {
-            g.composite = AlphaComposite.Src
-            g.drawImage(source, 0, 0, null)
-        } finally {
-            g.dispose()
-        }
+    private fun restoreImage(source: RigImage) {
+        workingImage.copyPixelsFrom(source)
     }
 
 }

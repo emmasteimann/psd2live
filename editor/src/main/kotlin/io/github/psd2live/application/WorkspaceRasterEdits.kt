@@ -5,7 +5,6 @@ import io.github.psd2live.core.*
 import io.github.psd2live.project.*
 import kotlinx.serialization.json.*
 import org.umamo.format.art.LayerRaster
-import java.awt.image.BufferedImage
 
 /**
  * Captured layer pixels, rather than a live paint session or a mutable preview: [raster] stretched over the canvas
@@ -27,7 +26,7 @@ data class WorkspacePaintRaster(val layerId: String, val raster: LayerRaster,
          * [image] of [space] cropped to its non-transparent pixels within [region] (all of it when null) at the
          * layer's own density: only the area that can hold the layer is read, never a copy of the whole canvas.
          */
-        fun capture(layerId: String, image: BufferedImage, space: PaintSpace, region: java.awt.Rectangle?,
+        fun capture(layerId: String, image: RigImage, space: PaintSpace, region: Rectangle?,
                              rebuildMesh: Boolean, preserveSourceRaster: Boolean = false,
                              checkpoint: () -> Unit = {}): WorkspacePaintRaster {
             val painted = space.crop(image, region, checkpoint)
@@ -36,14 +35,14 @@ data class WorkspacePaintRaster(val layerId: String, val raster: LayerRaster,
         }
 
         /** The whole canvas-sized [image], one pixel per canvas unit. */
-        fun capture(layerId: String, image: BufferedImage, rebuildMesh: Boolean, preserveSourceRaster: Boolean = false,
+        fun capture(layerId: String, image: RigImage, rebuildMesh: Boolean, preserveSourceRaster: Boolean = false,
                     checkpoint: () -> Unit = {}): WorkspacePaintRaster {
             require(image.width.toLong() * image.height <= 16_777_216) { "Painting requires a canvas of at most 16 megapixels" }
             val rgba = ByteArray(Math.multiplyExact(Math.multiplyExact(image.width, image.height), 4))
             val row = IntArray(image.width)
             for (y in 0 until image.height) {
                 checkpoint()
-                image.getRGB(0, y, image.width, 1, row, 0, image.width)
+                image.readArgbInto(0, y, image.width, 1, row, 0, image.width)
                 for (x in 0 until image.width) {
                     val pixel = row[x]; val index = (y * image.width + x) * 4
                     rgba[index] = (pixel ushr 16).toByte(); rgba[index + 1] = (pixel ushr 8).toByte()
@@ -127,7 +126,7 @@ object WorkspaceRasterEdits {
             work.progress(1f, "Prepared painted document")
             return document.copy(source = repainted.source, generationSource = generation)
         }
-        val working = if (document.rigEdits.importedCmo3 == null) model else Cmo3ModelImport.paintingPreview(pipeline, document.source,
+        val working = if (document.rigEdits.importedCmo3 == null) model else ImportedCmo3.paintingPreview(pipeline, document.source,
             document.config().copy(generationSource = document.generationSource ?: document.source))
         val prepared = RasterPaintCommit.prepare(pipeline, working, id, pixels, rebuild,
             request.preserveSourceRaster || samePixels, work::checkpoint,

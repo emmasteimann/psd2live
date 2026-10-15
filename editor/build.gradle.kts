@@ -85,5 +85,8 @@ kotlin {
 				api("org.jetbrains.compose.material:material:1.11.1")
 			}
 		}
+		val commonTest by getting {
+			dependencies { implementation(kotlin("test")) }
+		}
 	}
 }

@@ -20,7 +20,7 @@ class Rectangle(var x: Int = 0, var y: Int = 0, var width: Int = 0, var height: 
 	fun setBounds(r: Rectangle) = reshape(r.x, r.y, r.width, r.height)
 	private fun reshape(x: Int, y: Int, width: Int, height: Int) { this.x = x; this.y = y; this.width = width; this.height = height }
 
-	fun isEmpty(): Boolean = width <= 0 || height <= 0
+	val isEmpty: Boolean get() = width <= 0 || height <= 0
 
 	fun contains(x: Int, y: Int): Boolean = inside(x, y)
 

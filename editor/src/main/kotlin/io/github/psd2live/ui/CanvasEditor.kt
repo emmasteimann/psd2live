@@ -5643,7 +5643,7 @@ class CanvasEditor(
             val vp = viewport
 
             if (session != null && vp != null) {
-                val clip = java.awt.Rectangle(0, 0, session.docWidth, session.docHeight)
+                val clip = io.github.psd2live.core.Rectangle(0, 0, session.docWidth, session.docHeight)
                 when {
                     isSampling -> Unit // a pick draws nothing, so there is no stroke to record
                     tool in PAINT_BRUSH_TOOLS -> {

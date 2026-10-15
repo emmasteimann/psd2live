@@ -7,9 +7,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.*
 import java.io.IOException
 
-class WorkspaceUnsavedChanges : IllegalStateException("Current workspace has unsaved changes; save first or explicitly discard them")
-class WorkspaceBusy : IllegalStateException("Workspace is busy")
-class WorkspaceCheckTimeout : IllegalStateException("Disconnected mesh check timed out")
 class WorkspaceOutputContractFailure(val operation: String, val validation: WorkspaceValidationException) :
     IllegalStateException("Operation $operation returned an invalid result: ${validation.message}", validation)
 

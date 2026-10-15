@@ -1,12 +1,5 @@
 package io.github.psd2live.core
 
-import java.awt.AlphaComposite
-import java.awt.BasicStroke
-import java.awt.Rectangle
-import java.awt.RenderingHints
-import java.awt.image.BufferedImage
-import java.util.ArrayDeque
-import java.util.Arrays
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -77,7 +70,7 @@ object RasterPaintEngine {
             val top = region.y.coerceIn(0, height)
             val bottom = (region.y + region.height).coerceIn(0, height)
             for (y in top until bottom) {
-                Arrays.fill(coverage, y * width + left, y * width + right, 0)
+                coverage.fill(0, y * width + left, y * width + right)
             }
             bounds = null
         }
@@ -155,7 +148,7 @@ object RasterPaintEngine {
          * layer as landing the finished stroke in one go.
          */
         fun land(
-            target: BufferedImage,
+            target: RigImage,
             color: Int,
             opacity: Float,
             erase: Boolean,
@@ -174,7 +167,7 @@ object RasterPaintEngine {
             val red = (argb ushr 16) and 0xFF
             val green = (argb ushr 8) and 0xFF
             val blue = argb and 0xFF
-            val pixels = target.getRGB(area.x, area.y, area.width, area.height, null, 0, area.width)
+            val pixels = target.readArgb(area.x, area.y, area.width, area.height)
 
             for (row in 0 until area.height) {
                 checkpoint()
@@ -202,12 +195,12 @@ object RasterPaintEngine {
                     pixels[at] = ((outAlpha * 255f + 0.5f).toInt().coerceIn(0, 255) shl 24) or (r shl 16) or (g shl 8) or b
                 }
             }
-            target.setRGB(area.x, area.y, area.width, area.height, pixels, 0, area.width)
+            target.writeArgb(area.x, area.y, area.width, area.height, pixels, 0, area.width)
         }
     }
 
     fun floodFill(
-        image: BufferedImage,
+        image: RigImage,
         startX: Int,
         startY: Int,
         fillColor: Int,
@@ -221,7 +214,7 @@ object RasterPaintEngine {
         if (startX !in 0 until image.width || startY !in 0 until image.height) return null
         if (clipRect != null && !clipRect.contains(startX, startY)) return null
 
-        val targetRgb = image.getRGB(startX, startY)
+        val targetRgb = image.argbAt(startX, startY)
         val cover = (((fillColor ushr 24) and 0xFF) * opacity.coerceIn(0f, 1f)).toInt().coerceIn(0, 255)
         val fillArgb = (cover shl 24) or (fillColor and 0x00FFFFFF)
         if (targetRgb == fillArgb) return null
@@ -274,7 +267,7 @@ object RasterPaintEngine {
                     val idx = (ny - minY) * stride + (nx - minX)
                     if (!visited.get(idx)) {
                         visited.set(idx)
-                        if (matches(image.getRGB(nx, ny))) {
+                        if (matches(image.argbAt(nx, ny))) {
                             queue.add(nx to ny)
                         }
                     }
@@ -288,8 +281,8 @@ object RasterPaintEngine {
             checkpoint()
             val row = (y - minY) * stride
             for (x in left..right) {
-                if (visited.get(row + (x - minX)) && matches(image.getRGB(x, y))) {
-                    image.setRGB(x, y, fillArgb)
+                if (visited.get(row + (x - minX)) && matches(image.argbAt(x, y))) {
+                    image.setArgbAt(x, y, fillArgb)
                 }
             }
         }
@@ -319,7 +312,7 @@ object RasterPaintEngine {
      * @return The area the shape can have written to, which is what has to be remembered to undo it.
      */
     fun drawShape(
-        image: BufferedImage,
+        image: RigImage,
         x0: Int, y0: Int,
         x1: Int, y1: Int,
         shape: RasterPaintShape,
@@ -333,41 +326,12 @@ object RasterPaintEngine {
         val top = min(y0, y1)
         val width = max(1, abs(x1 - x0))
         val height = max(1, abs(y1 - y0))
-        val g = image.createGraphics()
-        try {
-            if (clipRect != null) g.clip = clipRect
-            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-            val argb = color
-            val alpha = (((argb ushr 24) and 0xFF) * opacity.coerceIn(0f, 1f)).toInt().coerceIn(0, 255)
-            g.color = java.awt.Color((alpha shl 24) or (argb and 0xFFFFFF), true)
-            g.stroke = BasicStroke(max(1f, strokeWidth), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
-
-            when (shape) {
-                RasterPaintShape.LINE -> g.drawLine(x0, y0, x1, y1)
-                RasterPaintShape.RECTANGLE -> {
-                    if (filled) g.fillRect(left, top, width, height)
-                    else g.drawRect(left, top, width, height)
-                }
-                RasterPaintShape.ELLIPSE -> {
-                    if (filled) g.fillOval(left, top, width, height)
-                    else g.drawOval(left, top, width, height)
-                }
-            }
-        } finally {
-            g.dispose()
-        }
+        val alpha = (((color ushr 24) and 0xFF) * opacity.coerceIn(0f, 1f)).toInt().coerceIn(0, 255)
+        image.paintShape(shape, x0, y0, x1, y1, left, top, width, height,
+            (alpha shl 24) or (color and 0xFFFFFF), max(1f, strokeWidth), filled, clipRect)
         return shapeArea(x0, y0, x1, y1, strokeWidth, clipRect)
     }
 
-    fun clear(image: BufferedImage) {
-        val g = image.createGraphics()
-        try {
-            g.composite = AlphaComposite.Clear
-            g.fillRect(0, 0, image.width, image.height)
-        } finally {
-            g.dispose()
-        }
-    }
+    fun clear(image: RigImage) = image.clearPixels()
 }
 
-enum class RasterPaintShape { LINE, RECTANGLE, ELLIPSE }

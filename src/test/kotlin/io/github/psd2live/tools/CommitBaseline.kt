@@ -176,7 +176,7 @@ internal class CommitBaseline(private val sample: Sample, private val out: File,
 			fun paint(document: WorkspaceDocument, round: Int): WorkspacePaintRaster {
 				val painting = document.layerPaintImage(small.id.raw)
 				val cx = small.bounds.left + small.bounds.width / 2; val cy = small.bounds.top + small.bounds.height / 2
-				val stroke = java.awt.Rectangle(cx - 3, cy - 3, 6, 6)
+				val stroke = io.github.psd2live.core.Rectangle(cx - 3, cy - 3, 6, 6)
 				for (y in stroke.y until stroke.y + stroke.height) for (x in stroke.x until stroke.x + stroke.width)
 					painting.image.setRGB(x, y, 0xff3366aa.toInt() + round * 0x10)
 				return WorkspacePaintRaster.capture(small.id.raw, painting.image, painting.space,

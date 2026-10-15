@@ -25,7 +25,7 @@ class RectangleParityTest {
 			assertEquals(a.contains(c), b.contains(d), "contains $a $c")
 			val px = value(); val py = value()
 			assertEquals(a.contains(px, py), b.contains(px, py), "contains point")
-			assertEquals(a.isEmpty, b.isEmpty(), "isEmpty $a")
+			assertEquals(a.isEmpty, b.isEmpty, "isEmpty $a")
 			assertEquals(a.hashCode(), b.hashCode(), "hashCode $a")
 			assertEquals(a.toString(), b.toString())
 			assertEquals(a.maxX, b.maxX); assertEquals(a.minY, b.minY)

@@ -11,7 +11,6 @@ import org.umamo.format.art.LayerBounds
 import org.umamo.format.art.LayerRaster
 import org.umamo.format.art.SourceLayer
 import org.umamo.runtime.model.*
-import java.awt.image.BufferedImage
 import kotlin.math.abs
 
 /**
@@ -33,19 +32,19 @@ object RasterPaintCommit {
     class Painted(val bounds: LayerBounds, val rect: LayerCanvasRect?, val raster: LayerRaster, val source: WorkspaceSourceArt)
 
     /** [image] (the whole canvas, one pixel per canvas unit) as painted pixels, cropped to what it holds. */
-    fun canvasPixels(image: BufferedImage, checkpoint: () -> Unit = {}): PaintPixels {
+    fun canvasPixels(image: RigImage, checkpoint: () -> Unit = {}): PaintPixels {
         val cropped = PaintSpace.canvas(image.width, image.height).crop(image, checkpoint = checkpoint)
         return PaintPixels(cropped.raster, cropped.rect ?: LayerCanvasRect.of(cropped.bounds))
     }
 
     /** Canvas-image form of [paintedSource]. */
-    fun paintedSource(currentPreview: RigPreviewModel, layerId: String, image: BufferedImage,
+    fun paintedSource(currentPreview: RigPreviewModel, layerId: String, image: RigImage,
                       preserveSourceRaster: Boolean = false, checkpoint: () -> Unit = {}): Painted {
         requireCanvas(currentPreview, image)
         return paintedSource(currentPreview, layerId, canvasPixels(image, checkpoint), preserveSourceRaster, checkpoint)
     }
 
-    private fun requireCanvas(preview: RigPreviewModel, image: BufferedImage) =
+    private fun requireCanvas(preview: RigPreviewModel, image: RigImage) =
         require(image.width == preview.analysis.source.widthPx && image.height == preview.analysis.source.heightPx) {
             "Paint image dimensions must match the source canvas"
         }
@@ -106,7 +105,7 @@ object RasterPaintCommit {
 
     /** Canvas-image form of [prepare]. */
     fun prepare(pipeline: PSD2LivePipeline, currentPreview: RigPreviewModel, layerId: String,
-                image: BufferedImage, rebuildMesh: Boolean, preserveSourceRaster: Boolean = false,
+                image: RigImage, rebuildMesh: Boolean, preserveSourceRaster: Boolean = false,
                 checkpoint: () -> Unit = {}, progress: ProgressListener = ProgressListener { _, _ -> },
                 runtimeBundle: Boolean = true): RigPreviewModel {
         requireCanvas(currentPreview, image)
@@ -393,7 +392,7 @@ object RasterPaintCommit {
         }
         val (repackedPuppetAtlas, repackedSources) = PuppetSourceAtlas.build(effectiveAnalysis, newAtlas,
             sourceIdRaw = if (currentPreview.config.rigEdits.importedCmo3 == null) PuppetSourceAtlas.SOURCE_ID_RAW
-                else Cmo3ModelImport.PAINT_SOURCE_ID)
+                else CMO3_PAINT_SOURCE_ID)
         val updatedPuppet = currentPreview.rig.puppet
             .let { puppet -> if (droppedDrawables.isEmpty()) puppet else puppet.withDrawablesDeleted(droppedDrawables) }
             .copy(

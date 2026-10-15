@@ -6,7 +6,6 @@ import org.umamo.format.art.LayerId
 import org.umamo.format.art.LayerRaster
 import org.umamo.format.art.SourceLayer
 import org.umamo.runtime.model.DrawableMesh
-import java.awt.image.BufferedImage
 import kotlin.math.roundToInt
 
 /** Partitions source pixels by the connected triangle islands of the mesh currently on screen. */
@@ -21,9 +20,9 @@ object MeshComponentSplit {
         val ownerByVertex: IntArray = IntArray(0),
     ) {
         /** Small transparent thumbnails, prepared with the split plan so the dialog stays responsive. */
-        val previewImages: List<BufferedImage> = buildPreviewImages(checkpoint)
+        val previewImages: List<RigImage> = buildPreviewImages(checkpoint)
 
-        private fun buildPreviewImages(checkpoint: () -> Unit): List<BufferedImage> {
+        private fun buildPreviewImages(checkpoint: () -> Unit): List<RigImage> {
             val raster = source.raster
             val boxes = Array(components.size) { intArrayOf(raster.width, raster.height, -1, -1) }
             for (pixel in ownerByPixel.indices) {
@@ -44,7 +43,7 @@ object MeshComponentSplit {
                 val scale = minOf(1f, 96f / width, 64f / height)
                 val previewWidth = (width * scale).roundToInt().coerceAtLeast(1)
                 val previewHeight = (height * scale).roundToInt().coerceAtLeast(1)
-                BufferedImage(previewWidth, previewHeight, BufferedImage.TYPE_INT_ARGB)
+                newRigImage(previewWidth, previewHeight)
             }
             for (pixel in ownerByPixel.indices) {
                 if (pixel % 1024 == 0) checkpoint()
@@ -62,7 +61,7 @@ object MeshComponentSplit {
                 val preview = images[component]
                 val x = ((pixel % raster.width - box[0]) * preview.width / width).coerceIn(0, preview.width - 1)
                 val y = ((pixel / raster.width - box[1]) * preview.height / height).coerceIn(0, preview.height - 1)
-                preview.setRGB(x, y, color)
+                preview.setArgbAt(x, y, color)
             }
             return images
         }

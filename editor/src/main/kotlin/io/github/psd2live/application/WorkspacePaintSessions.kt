@@ -9,8 +9,6 @@ import io.github.psd2live.project.*
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.json.*
-import java.awt.Rectangle
-import java.awt.image.BufferedImage
 
 data class WorkspacePaintStroke(val id: String, val name: String)
 
@@ -23,7 +21,7 @@ data class WorkspacePaintStroke(val id: String, val name: String)
  */
 class WorkspacePaintSession constructor(
     val id: String, val projectId: String, val workspaceState: String,
-    val layerId: String, val layerName: String, image: BufferedImage,
+    val layerId: String, val layerName: String, image: RigImage,
     val space: PaintSpace = PaintSpace.canvas(image.width, image.height),
     /** The document canvas, in canvas units. */
     val canvasWidth: Int = image.width, val canvasHeight: Int = image.height,
@@ -59,10 +57,10 @@ class WorkspacePaintSession constructor(
         synchronized(lock) { observers += observer }
         return { synchronized(lock) { observers -= observer } }
     }
-    fun image(): BufferedImage = synchronized(lock) { copy(buffer.workingImage) }
-    fun tile(x: Int, y: Int, width: Int, height: Int): BufferedImage = synchronized(lock) {
-        BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB).also {
-            it.setRGB(0, 0, width, height, buffer.workingImage.getRGB(x, y, width, height, null, 0, width), 0, width)
+    fun image(): RigImage = synchronized(lock) { copy(buffer.workingImage) }
+    fun tile(x: Int, y: Int, width: Int, height: Int): RigImage = synchronized(lock) {
+        newRigImage(width, height).also {
+            it.writeArgb(0, 0, width, height, buffer.workingImage.readArgb(x, y, width, height), 0, width)
         }
     }
     /** Canvas units of the raster's left and top edges, and raster pixels per canvas unit. */
@@ -75,7 +73,7 @@ class WorkspacePaintSession constructor(
     fun sample(x: Int, y: Int): Int = synchronized(lock) {
         require(x in 0 until canvasWidth && y in 0 until canvasHeight) { "Sample point is outside the canvas" }
         val (px, py) = space.imagePixel(x, y) ?: return 0
-        buffer.workingImage.getRGB(px, py)
+        buffer.workingImage.argbAt(px, py)
     }
     fun canUndo(): Boolean = synchronized(lock) { !closed && !active && buffer.canUndo() }
     fun canRedo(): Boolean = synchronized(lock) { !closed && !active && buffer.canRedo() }
@@ -164,8 +162,8 @@ class WorkspacePaintSession constructor(
         } }
     } }
     companion object {
-        private fun copy(image: BufferedImage) = BufferedImage(image.width, image.height, BufferedImage.TYPE_INT_ARGB).also {
-            it.setRGB(0, 0, image.width, image.height, image.getRGB(0, 0, image.width, image.height, null, 0, image.width), 0, image.width)
+        private fun copy(image: RigImage) = newRigImage(image.width, image.height).also {
+            it.writeArgb(0, 0, image.width, image.height, image.readArgb(0, 0, image.width, image.height), 0, image.width)
         }
     }
 }
@@ -181,7 +179,7 @@ class WorkspacePaintSessions(private val runtime: WorkspaceRuntime<RigPreviewMod
             ?: throw IllegalArgumentException("Paint layer not found: $layerId")
         val painting = captured.document.layerPaintImage(layer.id.raw)
         require(sessions.values.count { !it.finished } < 32) { "Close a paint session before opening another" }
-        sessions.entries.removeIf { it.value.finished }
+        sessions.entries.removeAll { it.value.finished }
         val session = WorkspacePaintSession(kotlin.uuid.Uuid.random().toString(), captured.projectId, state,
             layerId, layer.name, painting.image, painting.space,
             captured.document.source.widthPx, captured.document.source.heightPx) {

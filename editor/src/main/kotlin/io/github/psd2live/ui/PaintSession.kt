@@ -1,4 +1,5 @@
 package io.github.psd2live.ui
+import io.github.psd2live.core.*
 import io.github.psd2live.core.synchronized
 
 import io.github.psd2live.ui.utils.toImageBitmapFast
@@ -13,8 +14,6 @@ import io.github.psd2live.application.WorkspacePaintSession
 import io.github.psd2live.core.RasterPaintEngine
 import io.github.psd2live.i18n.tr
 import kotlinx.serialization.json.*
-import java.awt.Rectangle
-import java.awt.image.BufferedImage
 import kotlin.math.min
 
 data class PaintStrokeRecord(val id: String, val name: String)
@@ -52,7 +51,7 @@ class PaintSession(val handle: WorkspacePaintSession) {
     /** A canvas point in the layer's frame, where the session paints and samples. */
     fun toFrame(x: Float, y: Float): Pair<Float, Float> = frame.inverse().let { it.x(x, y) to it.y(x, y) }
     /** Detached observation; writes must use the shared session gestures. */
-    val workingImage: BufferedImage get() = handle.image()
+    val workingImage: RigImage get() = handle.image()
     var isDirty by mutableStateOf(false)
         private set
     val strokeRecords = mutableStateListOf<PaintStrokeRecord>()
@@ -102,7 +101,7 @@ class PaintSession(val handle: WorkspacePaintSession) {
             area
         }
         if (area.isEmpty) return null
-        val argb = handle.tile(area.x, area.y, area.width, area.height).getRGB(0, 0, area.width, area.height, null, 0, area.width)
+        val argb = handle.tile(area.x, area.y, area.width, area.height).readArgb(0, 0, area.width, area.height)
         val bytes = ByteArray(argb.size * 4)
         for (i in argb.indices) {
             val c = argb[i]

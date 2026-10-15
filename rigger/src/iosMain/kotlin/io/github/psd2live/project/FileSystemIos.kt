@@ -172,3 +172,11 @@ actual fun copyWithSha256(source: Path, target: Path): String {
 	} }
 	return io.github.psd2live.core.hex(digest.digest())
 }
+
+actual class StoreLogger actual constructor(private val name: String) {
+	actual fun warning(message: String, failure: Throwable?) = println("$name: $message${failure?.let { " ($it)" } ?: ""}")
+	actual fun debug(message: String) {}
+}
+
+actual fun writePsd(source: org.umamo.format.art.SourceArt): ByteArray =
+	throw UnsupportedOperationException("Saving a project without its original PSD needs the desktop's PSD writer for now")

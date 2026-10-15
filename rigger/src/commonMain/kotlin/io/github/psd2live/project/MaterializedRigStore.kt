@@ -32,7 +32,7 @@ object MaterializedRigStore {
 	private const val LIVE_CAPACITY = 48
 	private val SAFE_NAME = Regex("[A-Za-z0-9._-]+")
 
-	private val logger = System.getLogger("io.github.psd2live.project.MaterializedRigStore")
+	private val logger = StoreLogger("io.github.psd2live.project.MaterializedRigStore")
 	private val json = Json { ignoreUnknownKeys = true }
 
 	/** Off with `-Dpsd2live.materializedRigs=false`: builds neither use nor record authored rigs, saves write none. */
@@ -76,7 +76,7 @@ object MaterializedRigStore {
 			val decoded = MaterializedRigCodec.fromIndex(entry.index)
 			Entry(decoded.authored, decoded.bindingKey).also { entry.decoded = SoftReference(it) }
 		} catch (failure: Exception) {
-			logger.log(System.Logger.Level.WARNING, "Stored authored rig of $revision not used", failure)
+			logger.warning("Stored authored rig of $revision not used", failure)
 			synchronized(stored) { stored.remove(revision) }
 			null
 		}
@@ -97,7 +97,7 @@ object MaterializedRigStore {
 				}
 			}
 		} catch (failure: Exception) {
-			logger.log(System.Logger.Level.WARNING, "Stored authored rigs not read", failure)
+			logger.warning("Stored authored rigs not read", failure)
 		}
 	}
 
@@ -121,7 +121,7 @@ object MaterializedRigStore {
 				Files.createDirectories(root.resolve("$FOLDER/revisions"))
 				Files.writeString(root.resolve("$FOLDER/revisions/$revision.json"), index.toString())
 			} catch (failure: Exception) {
-				logger.log(System.Logger.Level.WARNING, "Authored rig of $revision not saved", failure)
+				logger.warning("Authored rig of $revision not saved", failure)
 			}
 		}
 	}

@@ -41,7 +41,7 @@ object ProjectHeadCache {
 	/** Off with `-Dpsd2live.headCache=false`: saves write no cache and opens ignore one. */
 	val enabled: Boolean get() = systemProperty("psd2live.headCache")?.equals("false", ignoreCase = true) != true
 
-	private val logger = System.getLogger("io.github.psd2live.project.ProjectHeadCache")
+	private val logger = StoreLogger("io.github.psd2live.project.ProjectHeadCache")
 	private val json = Json { ignoreUnknownKeys = true }
 
 	/** What the cache is valid for. */
@@ -63,7 +63,7 @@ object ProjectHeadCache {
 			true
 		}
 	} catch (failure: Exception) {
-		logger.log(System.Logger.Level.WARNING, "Project head cache not written", failure)
+		logger.warning("Project head cache not written", failure)
 		deleteTree(root.resolve("cache"))
 		false
 	}
@@ -87,7 +87,7 @@ object ProjectHeadCache {
 				else -> null
 			}
 			if (stale != null) {
-				logger.log(System.Logger.Level.DEBUG, "Project head cache ignored: $stale differs")
+				logger.debug("Project head cache ignored: $stale differs")
 				return emptyList()
 			}
 			val seeded = ArrayList<String>()
@@ -101,7 +101,7 @@ object ProjectHeadCache {
 			}
 			return seeded
 		} catch (failure: Exception) {
-			logger.log(System.Logger.Level.WARNING, "Project head cache discarded", failure)
+			logger.warning("Project head cache discarded", failure)
 			return emptyList()
 		} finally {
 			runCatching { deleteTree(root.resolve("cache")) }
@@ -110,7 +110,7 @@ object ProjectHeadCache {
 
 	private fun entry(root: Path, kind: String, file: String, bytes: ByteArray): JsonObject {
 		val path = root.resolve("$FOLDER/$file")
-		Files.createDirectories(path.parent)
+		Files.createDirectories(path.parent!!)
 		Files.write(path, bytes)
 		return buildJsonObject { put("kind", kind); put("file", file); put("sha256", sha256(bytes)); put("bytes", bytes.size) }
 	}

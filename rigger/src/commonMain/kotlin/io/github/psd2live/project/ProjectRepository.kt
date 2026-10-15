@@ -1,4 +1,5 @@
 package io.github.psd2live.project
+import kotlinx.coroutines.IO
 import io.github.psd2live.core.hex
 import io.github.psd2live.core.base64Decode
 import io.github.psd2live.core.base64Encode
@@ -45,7 +46,7 @@ class ProjectRepository(
                         // Generated artwork has no file-backed origin. The root source, not the edited
                         // preview, becomes the portable v1 source; history still retains every revision.
                         val source = capture.history.selections.single { it.node.parentId == null }.snapshot.source
-                        Files.write(root.resolve("source/original.psd"), org.umamo.format.psd.PsdWriter.write(source))
+                        Files.write(root.resolve("source/original.psd"), writePsd(source))
                     } else {
                         require(Files.isRegularFile(original)) { "Original source is unavailable: $original" }
                         val sourceName = if (original.fileName.toString().endsWith(".cmo3", true)) "original.cmo3" else "original.psd"

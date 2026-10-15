@@ -197,3 +197,13 @@ actual fun copyWithSha256(source: Path, target: Path): String {
 	} }
 	return io.github.psd2live.core.hex(digest.digest())
 }
+
+actual class StoreLogger actual constructor(name: String) {
+	private val logger = System.getLogger(name)
+	actual fun warning(message: String, failure: Throwable?) {
+		if (failure == null) logger.log(System.Logger.Level.WARNING, message) else logger.log(System.Logger.Level.WARNING, message, failure)
+	}
+	actual fun debug(message: String) = logger.log(System.Logger.Level.DEBUG, message)
+}
+
+actual fun writePsd(source: org.umamo.format.art.SourceArt): ByteArray = org.umamo.format.psd.PsdWriter.write(source)

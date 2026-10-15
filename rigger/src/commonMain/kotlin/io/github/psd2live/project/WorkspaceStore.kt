@@ -1,6 +1,7 @@
 @file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
 
 package io.github.psd2live.project
+import io.github.psd2live.core.synchronized
 import io.github.psd2live.core.processorCount
 import io.github.psd2live.core.systemProperty
 import io.github.psd2live.core.addFolder
@@ -86,9 +87,8 @@ class WorkspaceStore(
      * rendered: nothing reads them back, and a long session left hundreds in each saved project, so saving leaves
      * them out. The views' spatial references stay, since assets placed from a view name it.
      */
-    @Synchronized
     fun copyAuxiliary(projectId: String, target: Path, catalog: WorkspaceAssetCatalog? = null, targetProjectId: String = projectId,
-                               viewImages: Boolean = true) {
+                               viewImages: Boolean = true): Unit = synchronized(this) {
         val source = projectRoot(projectId)
         for (folder in listOf("assets", "views", "view-images", "workflow", "layerloom")) {
             if (folder == "view-images" && !viewImages) continue
@@ -98,7 +98,7 @@ class WorkspaceStore(
                 if (folder == "assets" && catalog != null && readJson(file).requiredString("id") !in catalog.assets) return@forEach
                 if (folder == "workflow" && catalog != null && readJson(file).requiredString("id") !in catalog.workflow) return@forEach
                 val destination = target.resolve(source.relativize(file))
-                Files.createDirectories(destination.parent)
+                Files.createDirectories(destination.parent!!)
                 if (folder == "workflow" && targetProjectId != projectId) {
                     ProjectArchive.writeJson(destination, JsonObject(readJson(file) + ("project_id" to JsonPrimitive(targetProjectId))))
                 } else ProjectArchive.copyKeepingTime(file, destination, StandardCopyOption.REPLACE_EXISTING)
@@ -118,8 +118,7 @@ class WorkspaceStore(
         } }
     }
 
-	@Synchronized
-	fun loadHistory(projectId: String): WorkspaceHistoryTree<WorkspaceDocument>? {
+	fun loadHistory(projectId: String): WorkspaceHistoryTree<WorkspaceDocument>? = synchronized(this) {
 		val project = projectRoot(projectId)
 		val headFile = project.resolve("HEAD.json")
 		val nodesDirectory = project.resolve("history/nodes")
@@ -163,8 +162,7 @@ class WorkspaceStore(
 	}
 
     /** Legacy v1 projects have no index; capture their existing immutable IDs once. */
-    @Synchronized
-    fun existingAssetCatalog(projectId: String): WorkspaceAssetCatalog {
+    fun existingAssetCatalog(projectId: String): WorkspaceAssetCatalog = synchronized(this) {
         fun ids(folder: String): Set<String> {
             val directory = projectRoot(projectId).resolve(folder)
             if (!Files.isDirectory(directory)) return emptySet()
@@ -178,8 +176,7 @@ class WorkspaceStore(
      * Checks the catalog's references from the stored metadata. Rasters are not decoded here: the archive's
      * manifest has checked every file of an opened project, and [loadAsset] checks the pixels against their digest.
      */
-    @Synchronized
-    fun validateAssetCatalog(projectId: String, catalog: WorkspaceAssetCatalog) {
+    fun validateAssetCatalog(projectId: String, catalog: WorkspaceAssetCatalog): Unit = synchronized(this) {
         val project = projectRoot(projectId)
         for (id in catalog.assets) {
             val asset = requireNotNull(storedAsset(project, id)) { "Catalog asset is missing: $id" }
@@ -234,8 +231,7 @@ class WorkspaceStore(
     }
 
     /** Publish immutable files together, or remove only the files created by this attempt. */
-    @Synchronized
-    fun publishAssetStage(stage: WorkspaceAssetStage, projectId: String, checkCancelled: () -> Unit, beforePublished: () -> Unit) {
+    fun publishAssetStage(stage: WorkspaceAssetStage, projectId: String, checkCancelled: () -> Unit, beforePublished: () -> Unit): Unit = synchronized(this) {
         val destinationRoot = projectRoot(projectId).toAbsolutePath().normalize()
         val created = mutableListOf<Path>()
         try {
@@ -243,7 +239,7 @@ class WorkspaceStore(
                 checkCancelled()
                 val target = destinationRoot.resolve(stage.source.relativize(file)).normalize()
                 check(target.startsWith(destinationRoot)) { "Asset candidate escaped its project" }
-                Files.createDirectories(target.parent)
+                Files.createDirectories(target.parent!!)
                 if (Files.exists(target)) {
                     // Raster names address RGBA/dimensions; keep the existing PNG encoder output.
                     val same = target.parent == destinationRoot.resolve("blobs") ||
@@ -266,13 +262,12 @@ class WorkspaceStore(
         }
     }
 
-	@Synchronized
-	fun persistHistory(projectId: String, state: WorkspaceHistoryState<WorkspaceDocument>) {
+	fun persistHistory(projectId: String, state: WorkspaceHistoryState<WorkspaceDocument>): Unit = synchronized(this) {
 		val project = projectRoot(projectId)
 		// The rig objects checkpoints name are part of the document: on disk before the snapshot that names them.
 		val rigObjects = project.resolve(ProjectFormatV2.WORKING_RIG_OBJECTS)
 		// A history removed behind the store's back is written again in full.
-		if (!Files.isDirectory(project.resolve("history"))) stored.removeIf { it.startsWith(project) }
+		if (!Files.isDirectory(project.resolve("history"))) stored.removeAll { it.startsWith(project) }
 		for (selection in state.selections) {
 			val nodePath = project.resolve("history/nodes/${fileKey(selection.node.id)}.json")
 			// A node is written after its snapshot, so a stored node has its snapshot too.
@@ -297,28 +292,24 @@ class WorkspaceStore(
 		)
 	}
 
-	@Synchronized
-    override fun persistWorkflow(projectId: String, id: String, value: JsonObject) {
+    override fun persistWorkflow(projectId: String, id: String, value: JsonObject): Unit = synchronized(this) {
         writeImmutable(projectRoot(projectId).resolve("workflow/${fileKey(id)}.json"), value.toString().encodeToByteArray())
     }
 
-    @Synchronized
-    override fun loadWorkflow(projectId: String, id: String): JsonObject {
+    override fun loadWorkflow(projectId: String, id: String): JsonObject = synchronized(this) {
         val path = projectRoot(projectId).resolve("workflow/${fileKey(id)}.json")
         require(Files.isRegularFile(path)) { "Workflow record not found: $id" }
         return readJson(path).also { require(it.requiredString("id") == id) }
     }
 
-    @Synchronized
-    override fun registrationsForAsset(projectId: String, assetId: String): List<JsonObject> {
+    override fun registrationsForAsset(projectId: String, assetId: String): List<JsonObject> = synchronized(this) {
         val directory=projectRoot(projectId).resolve("workflow")
         if (!Files.isDirectory(directory)) return emptyList()
         return Files.list(directory).use { paths -> paths.filter(Files::isRegularFile).sorted().map { readJson(it) }
             .filter { it.optionalString("kind")=="registration" && it.optionalString("asset_id")==assetId }.toList() }
     }
 
-    @Synchronized
-	override fun persistAsset(projectId: String, asset: WorkspacePngAsset) {
+	override fun persistAsset(projectId: String, asset: WorkspacePngAsset): Unit = synchronized(this) {
 		val project = projectRoot(projectId)
 		val blobHash = persistRaster(project, asset.rgba, asset.public.pixelWidth, asset.public.pixelHeight)
 		val value = asset.public
@@ -338,8 +329,7 @@ class WorkspaceStore(
 		writeImmutable(project.resolve("assets/${fileKey(value.id)}.json"), metadata.toString().encodeToByteArray())
 	}
 
-	@Synchronized
-	override fun loadAsset(projectId: String, assetId: String): WorkspacePngAsset? {
+	override fun loadAsset(projectId: String, assetId: String): WorkspacePngAsset? = synchronized(this) {
 		val project = projectRoot(projectId)
 		val (objectValue, public) = assetMetadata(project, assetId) ?: return null
 		return WorkspacePngAsset(
@@ -372,8 +362,7 @@ class WorkspaceStore(
 			objectValue["details"] as? JsonObject ?: JsonObject(emptyMap()))
 	}
 
-	@Synchronized
-	fun persistView(projectId: String, view: WorkspaceRenderedView) {
+	fun persistView(projectId: String, view: WorkspaceRenderedView): Unit = synchronized(this) {
         persistSpatial(projectId, view.viewId, view.spatial)
         val project = projectRoot(projectId)
         val hash = sha256(view.png)
@@ -387,8 +376,7 @@ class WorkspaceStore(
         }.toString().encodeToByteArray())
     }
 
-    @Synchronized
-    override fun persistSpatial(projectId: String, viewId: String, spatial: WorkspaceViewSpatialMetadata) {
+    override fun persistSpatial(projectId: String, viewId: String, spatial: WorkspaceViewSpatialMetadata): Unit = synchronized(this) {
 		val project = projectRoot(projectId)
 		val metadata = buildJsonObject {
 			put("version", STORE_VERSION)
@@ -409,8 +397,7 @@ class WorkspaceStore(
 		writeImmutable(project.resolve("views/${fileKey(viewId)}.json"), metadata.toString().encodeToByteArray())
 	}
 
-	@Synchronized
-	override fun loadSpatial(projectId: String, viewId: String): WorkspaceViewSpatialMetadata? {
+	override fun loadSpatial(projectId: String, viewId: String): WorkspaceViewSpatialMetadata? = synchronized(this) {
 		val file = projectRoot(projectId).resolve("views/${fileKey(viewId)}.json")
 		if (!Files.isRegularFile(file)) return null
 		val metadata = readJson(file)
@@ -440,8 +427,7 @@ class WorkspaceStore(
 		)
 	}
 
-	@Synchronized
-	fun persistTasks(projectId: String, tasks: List<WorkspaceTaskSnapshot>) {
+	fun persistTasks(projectId: String, tasks: List<WorkspaceTaskSnapshot>): Unit = synchronized(this) {
 		val project = projectRoot(projectId)
 		writeAtomic(project.resolve("tasks.json"), buildJsonObject {
 			put("version", STORE_VERSION)
@@ -449,17 +435,15 @@ class WorkspaceStore(
 		}.toString().encodeToByteArray())
 	}
 
-	@Synchronized
-	fun loadTasks(projectId: String): List<WorkspaceTaskSnapshot> {
+	fun loadTasks(projectId: String): List<WorkspaceTaskSnapshot> = synchronized(this) {
 		val file = projectRoot(projectId).resolve("tasks.json")
 		if (!Files.isRegularFile(file)) return emptyList()
 		return readJson(file).optionalArray("tasks").map(::decodeTask)
 	}
 
     /** Publish the checkpoint only after every historical node it references is on disk. */
-    @Synchronized
     fun persistRecoveryCheckpoint(projectId: String, history: WorkspaceHistoryState<WorkspaceDocument>,
-                                           checkpoint: WorkspaceRecoveryCheckpoint) {
+                                           checkpoint: WorkspaceRecoveryCheckpoint): Unit = synchronized(this) {
         require(history.headNodeId == checkpoint.historyHead) { "Recovery checkpoint belongs to another history HEAD" }
         persistHistory(projectId, history)
         writeAtomic(projectRoot(projectId).resolve("recovery.json"), buildJsonObject {
@@ -473,8 +457,7 @@ class WorkspaceStore(
         }.toString().encodeToByteArray())
     }
 
-    @Synchronized
-    fun loadRecoveryCheckpoint(projectId: String): WorkspaceRecoveryCheckpoint? {
+    fun loadRecoveryCheckpoint(projectId: String): WorkspaceRecoveryCheckpoint? = synchronized(this) {
         val file = projectRoot(projectId).resolve("recovery.json")
         if (!Files.isRegularFile(file)) return null // Histories from before complete checkpoints remain readable.
         val value = readJson(file)
@@ -1028,7 +1011,7 @@ class WorkspaceStore(
 	private fun linkRaster(source: Path, target: Path): Boolean {
 		if (Files.isRegularFile(target)) return true
 		if (!Files.isRegularFile(source)) return false
-		Files.createDirectories(target.parent)
+		Files.createDirectories(target.parent!!)
 		try { Files.createLink(target, source) }
 		catch (_: FileAlreadyExistsException) {}
 		catch (_: Exception) {
@@ -1136,8 +1119,8 @@ class WorkspaceStore(
 	}
 
 	private fun writeAtomic(path: Path, bytes: ByteArray, replace: Boolean = true, pretty: Boolean = true) {
-		Files.createDirectories(path.parent)
-		val temporary = path.parent.resolve(".${path.fileName}.${kotlin.uuid.Uuid.random()}.tmp")
+		Files.createDirectories(path.parent!!)
+		val temporary = path.parent!!.resolve(".${path.fileName}.${kotlin.uuid.Uuid.random()}.tmp")
 		try {
 			val output = if (pretty && path.fileName.toString().endsWith(".json")) json.encodeToString(JsonElement.serializer(), json.parseToJsonElement(bytes.decodeToString())).encodeToByteArray() else bytes
             Files.write(temporary, output, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
@@ -1169,8 +1152,7 @@ class WorkspaceStore(
 
 	private fun fileKey(value: String): String = sha256(value.encodeToByteArray())
 
-	private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
-		.digest(bytes).joinToString("") { "%02x".format(it.toInt() and 0xff) }
+	private fun sha256(bytes: ByteArray): String = io.github.psd2live.core.hex(MessageDigest.getInstance("SHA-256").digest(bytes))
 
 	private fun kotlinx.serialization.json.JsonObjectBuilder.putBounds(
 		name: String,

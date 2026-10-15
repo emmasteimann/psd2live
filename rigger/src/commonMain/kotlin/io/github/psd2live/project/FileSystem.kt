@@ -108,3 +108,12 @@ expect fun sleepMillis(millis: Long)
 
 /** Copies [source] to [target] (created or replaced), returning the copied bytes' SHA-256 in hex. */
 expect fun copyWithSha256(source: Path, target: Path): String
+
+/** A storage log (java.lang.System.Logger on the desktop, the console on the iPad). */
+expect class StoreLogger(name: String) {
+	fun warning(message: String, failure: Throwable? = null)
+	fun debug(message: String)
+}
+
+/** [source] as a layered PSD, for a project saved without its original file (umamo's PsdWriter, the desktop's for now). */
+expect fun writePsd(source: org.umamo.format.art.SourceArt): ByteArray

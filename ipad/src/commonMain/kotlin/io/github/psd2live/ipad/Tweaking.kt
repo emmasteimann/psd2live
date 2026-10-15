@@ -67,6 +67,20 @@ class RigTweaking(val outcome: RigOutcome) {
 		return true
 	}
 
+	/** The mesh drawn on top at canvas ([x], [y]), and its look at [pose]. */
+	fun meshAt(pose: Map<String, Float>, x: Float, y: Float): String? = PoseTweaks.meshAt(shown, pose, x, y)
+	fun look(meshId: String, pose: Map<String, Float>): PoseTweaks.Look = PoseTweaks.look(shown, meshId, pose)
+	fun meshName(meshId: String): String = shown.drawables.firstOrNull { it.id.raw == meshId }?.name ?: meshId
+
+	/** Sets [meshId]'s look at [pose]: one undoable edit. */
+	fun setLook(meshId: String, pose: Map<String, Float>, look: PoseTweaks.Look) {
+		val config = PoseTweaks.withLook(model, meshId, pose, look) ?: return
+		undos.addLast(model); if (undos.size > 60) undos.removeFirst()
+		redos.clear()
+		model = PoseTweaks.rebuilt(pipeline, model, config)
+		shown = model.rig.puppet
+	}
+
 	/** The warp a Warp-mode press at ([x], [y]) would push, for the overlay. */
 	fun warpAt(pose: Map<String, Float>, x: Float, y: Float): PoseTweaks.Lattice? = PoseTweaks.warpUnder(shown, pose, x, y)
 

@@ -5,6 +5,8 @@ import org.umamo.render.eval.buildDeformerWorlds
 import org.umamo.runtime.model.DeformerId
 import org.umamo.runtime.model.PuppetModel
 import kotlin.math.hypot
+import org.umamo.runtime.eval.scalarAt
+import org.umamo.runtime.eval.colorAt
 
 /**
  * Tweaking a rig by hand at a pose, the way a deform brush in the editor does, for touch and pencil front ends: the
@@ -108,6 +110,78 @@ object PoseTweaks {
 		val tip = CanvasBrushTip(reach.coerceIn(0.5f, 4096f), 0.95f, CanvasBrushShape.CIRCLE, 0f, 1f, CanvasBrushFalloff.CONSTANT)
 		val request = CanvasDeformStroke.Request(CanvasDeformStroke.Action.BRUSH, CanvasDeformStroke.Mode.DEFORM, targets, pose, tip, 1f, false)
 		return CanvasDeformStroke.begin(model, request, CanvasDeformStroke.Sample(CanvasBrushPoint(x, y)))
+	}
+
+	/** A mesh's look at a pose: opacity 0..1, draw order (Cubism's 0..1000, 500 by default), multiply and screen RGB 0..1. */
+	data class Look(val opacity: Float, val drawOrder: Float, val multiply: List<Float>, val screen: List<Float>)
+
+	/** [meshId]'s look at [pose], as the runtime blends its keyed channels (or its statics where it has none). */
+	fun look(model: PuppetModel, meshId: String, pose: Map<String, Float>): Look {
+		val d = model.drawables.single { it.id.raw == meshId }
+		val defaults = model.parameters.associate { it.id to it.default }
+		val value = { id: org.umamo.runtime.model.ParameterId -> pose[id.raw] ?: defaults[id] ?: 0f }
+		val g = d.channelGrids
+		fun rgb(c: org.umamo.runtime.model.ColorRgb) = listOf(c.red, c.green, c.blue)
+		return Look(
+			g.scalarAt(org.umamo.runtime.model.FormChannel.OPACITY, d.opacity, value),
+			g.scalarAt(org.umamo.runtime.model.FormChannel.DRAW_ORDER, d.drawOrder, value),
+			rgb(g.colorAt(org.umamo.runtime.model.FormChannel.MULTIPLY_COLOR, d.multiplyColor, value)),
+			rgb(g.colorAt(org.umamo.runtime.model.FormChannel.SCREEN_COLOR, d.screenColor, value)))
+	}
+
+	/**
+	 * [current]'s config with [meshId]'s look at [pose] set to [look]: a keyform channel edit at the pose's
+	 * coordinate (keys on the posed parameters, as a deform tweak gets), journaled like a stroke, so it replays over
+	 * re-rigs. At rest on a mesh with no keys it sets the mesh's own look everywhere. Null when nothing changes.
+	 */
+	fun withLook(current: RigPreviewModel, meshId: String, pose: Map<String, Float>, look: Look): PipelineConfig? {
+		val model = current.rig.puppet
+		val now = look(model, meshId, pose)
+		if (now == look) return null
+		val defaults = model.parameters.associate { it.id.raw to it.default }
+		val posed = pose.filter { (id, v) -> defaults[id]?.let { kotlin.math.abs(v - it) > 1e-4f } == true }.keys.toList()
+		val axes = runCatching { RigGeometryTools.geometry(model, "mesh", meshId, pose).axes }.getOrDefault(emptyList())
+		val key = canvasDeformationCoordinate(model, axes, pose, posed)
+		val channels = kotlinx.serialization.json.buildJsonObject {
+			if (now.opacity != look.opacity) put("opacity", kotlinx.serialization.json.JsonPrimitive(look.opacity.coerceIn(0f, 1f)))
+			if (now.drawOrder != look.drawOrder) put("drawOrder", kotlinx.serialization.json.JsonPrimitive(look.drawOrder.coerceIn(0f, 1000f)))
+			if (now.multiply != look.multiply) put("multiplyColor", kotlinx.serialization.json.JsonArray(look.multiply.map { kotlinx.serialization.json.JsonPrimitive(it.coerceIn(0f, 1f)) }))
+			if (now.screen != look.screen) put("screenColor", kotlinx.serialization.json.JsonArray(look.screen.map { kotlinx.serialization.json.JsonPrimitive(it.coerceIn(0f, 1f)) }))
+		}
+		// No key to set it at (rest, and a mesh with no keys): it is the mesh's own look, the desktop Inspector's static edit.
+		val command = if (key.isEmpty()) kotlinx.serialization.json.buildJsonObject {
+			put("op", kotlinx.serialization.json.JsonPrimitive("structure"))
+			put("edits", kotlinx.serialization.json.JsonArray(listOf(kotlinx.serialization.json.buildJsonObject {
+				put("action", kotlinx.serialization.json.JsonPrimitive("static")); put("kind", kotlinx.serialization.json.JsonPrimitive("mesh"))
+				put("id", kotlinx.serialization.json.JsonPrimitive(meshId))
+				channels["opacity"]?.let { put("opacity", it) }; channels["drawOrder"]?.let { put("draw_order", it) }
+				channels["multiplyColor"]?.let { put("multiply_color", it) }; channels["screenColor"]?.let { put("screen_color", it) }
+			})))
+		} else kotlinx.serialization.json.buildJsonObject {
+			put("op", kotlinx.serialization.json.JsonPrimitive("set")); put("target", kotlinx.serialization.json.JsonPrimitive("art_mesh:$meshId"))
+			put("key", kotlinx.serialization.json.JsonObject(key.mapValues { kotlinx.serialization.json.JsonPrimitive(it.value) }))
+			put("channels", channels)
+		}
+		val overlay = current.config.rigEdits
+		val journal = JournalRecording.record(model, current.authored.rig.puppet, overlay, kotlinx.serialization.json.JsonArray(listOf(command)), current.primitiveSkins)
+		if (journal.isEmpty()) return null
+		return current.config.copy(rigEdits = overlay.copy(authoringJournal = overlay.authoringJournal + journal))
+	}
+
+	/** The mesh drawn on top at canvas ([x], [y]) at [pose]: the front-most whose triangles hold the point. */
+	fun meshAt(model: PuppetModel, pose: Map<String, Float>, x: Float, y: Float): String? {
+		val verts = vertices(model, pose).toMap()
+		for ((_, d) in model.drawables.withIndex().sortedByDescending { (i, d) -> d.drawOrder * 10_000 + i }) {
+			val mesh = d.mesh ?: continue; val p = verts[d.id.raw] ?: continue
+			val idx = mesh.indices; var t = 0
+			while (t + 2 < idx.size) {
+				val ax = p[idx[t] * 2]; val ay = p[idx[t] * 2 + 1]; val bx = p[idx[t + 1] * 2]; val by = p[idx[t + 1] * 2 + 1]; val cx = p[idx[t + 2] * 2]; val cy = p[idx[t + 2] * 2 + 1]
+				val d1 = (x - bx) * (ay - by) - (ax - bx) * (y - by); val d2 = (x - cx) * (by - cy) - (bx - cx) * (y - cy); val d3 = (x - ax) * (cy - ay) - (cx - ax) * (y - ay)
+				if (!((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0))) return d.id.raw
+				t += 3
+			}
+		}
+		return null
 	}
 
 	/** Each mesh's triangle edges at [pose] as canvas-pixel segments (x0, y0, x1, y1, ...), front-most first. */

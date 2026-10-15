@@ -65,6 +65,9 @@ private val Danger = Color(0xFFFF9A9A)
 fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () -> Unit) {
 	val tweaking = remember(outcome) { RigTweaking(outcome) }
 	val worker = remember { Dispatchers.Default.limitedParallelism(1) }
+	// A failed edit says so instead of closing the app.
+	var workError by remember { mutableStateOf<String?>(null) }
+	val safe = remember { kotlinx.coroutines.CoroutineExceptionHandler { _, e -> workError = e.message ?: e::class.simpleName } }
 	var pose by remember(outcome) { mutableStateOf(tweaking.parameters.associate { it.id to it.default }) }
 	var radius by remember { mutableStateOf(40f) }
 	var strength by remember { mutableStateOf(0.6f) }
@@ -82,6 +85,12 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 	val selectionNow by rememberUpdatedState(selection)
 	var verts by remember { mutableStateOf<List<Pair<String, FloatArray>>>(emptyList()) }
 	val vertsNow by rememberUpdatedState(verts)
+	// Look mode: tap a mesh, then set its opacity, draw order and colours at the pose.
+	var lookMode by remember { mutableStateOf(false) }
+	val lookOn by rememberUpdatedState(lookMode)
+	var lookMesh by remember { mutableStateOf<String?>(null) }
+	var lookShown by remember { mutableStateOf<io.github.psd2live.core.PoseTweaks.Look?>(null) }
+	var lookError by remember { mutableStateOf<String?>(null) }
 	var newParam by remember { mutableStateOf<String?>(null) }
 	var newRange by remember { mutableStateOf(-1f to 1f) }
 	var boxRect by remember { mutableStateOf<Pair<Offset, Offset>?>(null) }
@@ -141,6 +150,7 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 		}
 		Text("Pose her with the sliders, then push what's under the pencil into place. The tweak belongs to that pose " +
 			"and blends back toward rest. Two fingers move and zoom.", color = Muted, fontSize = 13.sp)
+		workError?.let { Text("Something went wrong: $it", color = Danger, fontSize = 13.sp) }
 		Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
 			BoxWithConstraints(Modifier.weight(1f).height(820.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF101017))) {
 				val density = LocalDensity.current
@@ -169,9 +179,18 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 						}
 						override fun start(at: Offset, pressure: Float) {
 							if (saving != null) return
+							if (lookOn) {
+								val p = toCanvas(at); val p0 = currentPose
+								scope.launch(worker + safe) {
+									val id = tweaking.meshAt(p0, p.x, p.y)
+									val l = id?.let { tweaking.look(it, p0) }
+									scope.launch(Dispatchers.Main) { lookMesh = id; lookShown = l }
+								}
+								return
+							}
 							if (pointsOn) {
 								val p = toCanvas(at); val p0 = currentPose; val sel = selectionNow
-								if (nearest(at, 28f, sel) != null) scope.launch(worker) { stroking = tweaking.beginPoints(p0, sel, p.x, p.y) }
+								if (nearest(at, 28f, sel) != null) scope.launch(worker + safe) { stroking = tweaking.beginPoints(p0, sel, p.x, p.y) }
 								else { picking = at; boxRect = at to at }
 								return
 							}
@@ -179,13 +198,13 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 							val p = toCanvas(at); val p0 = currentPose
 							cursor = at
 							// The Pencil's pressure scales how hard this stroke pushes.
-							scope.launch(worker) { stroking = tweaking.begin(p0, p.x, p.y, r, 0.5f, (s * pressure).coerceIn(0.02f, 1f), sm, warpOn)
+							scope.launch(worker + safe) { stroking = tweaking.begin(p0, p.x, p.y, r, 0.5f, (s * pressure).coerceIn(0.02f, 1f), sm, warpOn)
 								if (warpOn) { val l = tweaking.warpAt(p0, p.x, p.y); scope.launch(Dispatchers.Main) { lattice = l } } }
 						}
 						override fun move(at: Offset, pressure: Float) {
 							picking?.let { from -> boxRect = from to at; return }
 							val p = toCanvas(at); if (!pointsOn) cursor = at
-							scope.launch(worker) { if (stroking) { tweaking.step(p.x, p.y); bump() } }
+							scope.launch(worker + safe) { if (stroking) { tweaking.step(p.x, p.y); bump() } }
 						}
 						override fun end() {
 							cursor = null
@@ -217,11 +236,11 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 								return
 							}
 							// Mirror needs a brush to reflect, not a picked set: points moves stay on one side.
-							scope.launch(worker) { if (stroking) { stroking = false; tweaking.end(mirrorOn && !pointsOn); bump() } }
+							scope.launch(worker + safe) { if (stroking) { stroking = false; tweaking.end(mirrorOn && !pointsOn); bump() } }
 						}
-						override fun cancel() { cursor = null; picking = null; boxRect = null; scope.launch(worker) { stroking = false; tweaking.cancel(); bump() } }
-						override fun undo() { scope.launch(worker) { tweaking.undo(); bump() } }
-						override fun redo() { scope.launch(worker) { tweaking.redo(); bump() } }
+						override fun cancel() { cursor = null; picking = null; boxRect = null; scope.launch(worker + safe) { stroking = false; tweaking.cancel(); bump() } }
+						override fun undo() { scope.launch(worker + safe) { tweaking.undo(); bump() } }
+						override fun redo() { scope.launch(worker + safe) { tweaking.redo(); bump() } }
 						override fun view() = viewNow()
 						override fun setView(view: CanvasView) = setViewNow(view)
 						override fun layout(view: CanvasView) = view.layout(w, h, tweaking.canvasWidth, tweaking.canvasHeight)
@@ -271,9 +290,42 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 			Column(Modifier.width(330.dp).height(820.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
 				@Suppress("UNUSED_VARIABLE") val changes = tick
 				Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-					Chip("Meshes", !warpMode && !pointsMode) { warpMode = false; pointsMode = false; lattice = null }
+					Chip("Meshes", !warpMode && !pointsMode && !lookMode) { warpMode = false; pointsMode = false; lookMode = false; lattice = null }
 					Chip("Warp", warpMode) { warpMode = true; pointsMode = false }
-					Chip("Points", pointsMode) { pointsMode = true; warpMode = false; lattice = null }
+					Chip("Points", pointsMode) { pointsMode = true; warpMode = false; lookMode = false; lattice = null }
+					Chip("Look", lookMode) { lookMode = true; pointsMode = false; warpMode = false; lattice = null }
+				}
+				if (lookMode) {
+					val id = lookMesh; val l = lookShown
+					if (id == null || l == null) Text("Tap a part to set how it looks at this pose: opacity, draw order and colours. " +
+						"Like a push, the change belongs to the pose and blends back toward rest.", color = Muted, fontSize = 12.sp)
+					else {
+						Text(tweaking.meshName(id), color = Text1, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+						lookError?.let { Text("Couldn't change it: $it", color = Danger, fontSize = 12.sp) }
+						fun commit(next: io.github.psd2live.core.PoseTweaks.Look) {
+							val p0 = pose
+							scope.launch(worker + safe) {
+								val error = runCatching { tweaking.setLook(id, p0, next) }.exceptionOrNull()
+								val fresh = tweaking.look(id, p0)
+								scope.launch(Dispatchers.Main) { lookShown = fresh; lookError = error?.let { it.message ?: it::class.simpleName }; tick++ }
+							}
+						}
+						Text("Opacity  ${(l.opacity * 100).roundToInt()}%", color = Muted, fontSize = 12.sp)
+						Slider(l.opacity, { lookShown = l.copy(opacity = it) }, onValueChangeFinished = { lookShown?.let(::commit) },
+							valueRange = 0f..1f, colors = sliderColors(), modifier = Modifier.height(28.dp))
+						Text("Draw order  ${l.drawOrder.roundToInt()} (higher draws on top)", color = Muted, fontSize = 12.sp)
+						Slider(l.drawOrder, { lookShown = l.copy(drawOrder = it.roundToInt().toFloat()) }, onValueChangeFinished = { lookShown?.let(::commit) },
+							valueRange = 0f..1000f, colors = sliderColors(), modifier = Modifier.height(28.dp))
+						for ((label, isMultiply) in listOf("Multiply colour (tint)" to true, "Screen colour (glow)" to false)) {
+							val c = if (isMultiply) l.multiply else l.screen
+							Text(label, color = Muted, fontSize = 12.sp)
+							for ((i, ch) in listOf("R", "G", "B").withIndex()) Row(verticalAlignment = Alignment.CenterVertically) {
+								Text(ch, color = Muted, fontSize = 12.sp, modifier = Modifier.width(16.dp))
+								Slider(c[i], { v -> val nc = c.toMutableList().also { it[i] = v }; lookShown = if (isMultiply) l.copy(multiply = nc) else l.copy(screen = nc) },
+									onValueChangeFinished = { lookShown?.let(::commit) }, valueRange = 0f..1f, colors = sliderColors(), modifier = Modifier.weight(1f).height(26.dp))
+							}
+						}
+					}
 				}
 				if (pointsMode) {
 					val count = selection.values.sumOf { it.size }
@@ -300,8 +352,8 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 				Text("Strength  ${(strength * 100).roundToInt()}%", color = Muted, fontSize = 12.sp)
 				Slider(strength, { strength = it }, valueRange = 0.05f..1f, colors = sliderColors(), modifier = Modifier.height(30.dp))
 				Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-					Chip("Undo", false, enabled = tweaking.canUndo) { scope.launch(worker) { tweaking.undo(); bump() } }
-					Chip("Redo", false, enabled = tweaking.canRedo) { scope.launch(worker) { tweaking.redo(); bump() } }
+					Chip("Undo", false, enabled = tweaking.canUndo) { scope.launch(worker + safe) { tweaking.undo(); bump() } }
+					Chip("Redo", false, enabled = tweaking.canRedo) { scope.launch(worker + safe) { tweaking.redo(); bump() } }
 					Text("${tweaking.edits} tweaks", color = Muted, fontSize = 13.sp, modifier = Modifier.align(Alignment.CenterVertically))
 				}
 				Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -323,7 +375,7 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 						}
 						Chip("Create", true, enabled = text.isNotBlank()) {
 							val (lo, hi) = newRange; val name = text
-							scope.launch(worker) {
+							scope.launch(worker + safe) {
 								val id = tweaking.addParameter(name, lo, hi, if (lo < 0f) 0f else lo)
 								scope.launch(Dispatchers.Main) { pose = pose + (id to (if (lo < 0f) 0f else lo)); newParam = null; tick++ }
 							}

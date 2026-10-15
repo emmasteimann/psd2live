@@ -132,4 +132,35 @@ class PoseTweaksTest {
 		val restAfter = PoseTweaks.vertices(PoseTweaks.rebuilt(pipeline, model, config).rig.puppet, emptyMap()).toMap().getValue(mesh)
 		assertTrue(rest.indices.all { kotlin.math.abs(rest[it] - restAfter[it]) < 1e-3f }, "rest is untouched")
 	}
+
+	@Test fun aMeshsLookChangesAtItsPoseAndSurvivesAReRig() {
+		val psd = System.getenv("LAYERLOOM_PSD") ?: return
+		val source = PsdReader.read(java.nio.file.Files.readAllBytes(java.nio.file.Path.of(psd)))
+		val pipeline = PSD2LivePipeline()
+		val model = pipeline.buildPreview(source, PipelineConfig(exportCmo3 = false))
+		val pose = mapOf("ParamAngleX" to 30f)
+		val puppet = model.rig.puppet
+		val mesh = requireNotNull(PoseTweaks.meshAt(puppet, pose, puppet.canvasWidth / 2f, puppet.canvasHeight * 0.3f))
+		val before = PoseTweaks.look(puppet, mesh, pose)
+		val config = requireNotNull(PoseTweaks.withLook(model, mesh, pose, before.copy(opacity = 0.4f, multiply = listOf(1f, 0.6f, 0.6f))))
+		val tweaked = PoseTweaks.rebuilt(pipeline, model, config)
+		val after = PoseTweaks.look(tweaked.rig.puppet, mesh, pose)
+		assertTrue(kotlin.math.abs(after.opacity - 0.4f) < 1e-3f, "opacity at the pose (${after.opacity})")
+		assertTrue(kotlin.math.abs(after.multiply[1] - 0.6f) < 1e-3f, "multiply at the pose")
+		assertEquals(PoseTweaks.look(puppet, mesh, emptyMap()), PoseTweaks.look(tweaked.rig.puppet, mesh, emptyMap()), "rest unchanged")
+		assertEquals(0, diff(frame(tweaked, pose), frame(pipeline.buildPreview(source, config), pose)), "a full re-rig keeps it")
+	}
+
+	@Test fun aMeshsOwnLookAtRestIsAStaticEditThatSurvivesAReRig() {
+		val psd = System.getenv("LAYERLOOM_PSD") ?: return
+		val source = PsdReader.read(java.nio.file.Files.readAllBytes(java.nio.file.Path.of(psd)))
+		val pipeline = PSD2LivePipeline()
+		val model = pipeline.buildPreview(source, PipelineConfig(exportCmo3 = false))
+		val puppet = model.rig.puppet
+		// A mesh with no keys of its own: at rest its look has no keyform to go in.
+		val mesh = puppet.drawables.first { d -> d.mesh != null && RigGeometryTools.geometry(puppet, "mesh", d.id.raw, emptyMap()).axes.isEmpty() }.id.raw
+		val config = requireNotNull(PoseTweaks.withLook(model, mesh, emptyMap(), PoseTweaks.look(puppet, mesh, emptyMap()).copy(opacity = 0.3f)))
+		val rerig = pipeline.buildPreview(source, config)
+		assertTrue(kotlin.math.abs(PoseTweaks.look(rerig.rig.puppet, mesh, emptyMap()).opacity - 0.3f) < 1e-3f, "the look holds after a full re-rig")
+	}
 }

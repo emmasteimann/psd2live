@@ -125,6 +125,9 @@ private fun LayerPaintView(painting: LayerPainting, onApplied: (RigOutcome) -> U
 	var failure by remember { mutableStateOf<String?>(null) }
 	val scope = rememberCoroutineScope()
 	val worker = remember { Dispatchers.Default.limitedParallelism(1) }
+	// A failed edit says so instead of closing the app.
+	var workError by remember { mutableStateOf<String?>(null) }
+	val safe = remember { kotlinx.coroutines.CoroutineExceptionHandler { _, e -> workError = e.message ?: e::class.simpleName } }
 	val current by rememberUpdatedState(PaintSettings(tool, radius, hardness, opacity, color))
 	val pressureOn by rememberUpdatedState(pressureSize)
 	val rest = remember(painting) { painting.outcome.preview.parameters.associate { it.id to it.default } }
@@ -166,6 +169,7 @@ private fun LayerPaintView(painting: LayerPainting, onApplied: (RigOutcome) -> U
 			modifier = Modifier.clickable { if (applying == null) onBack() })
 	}
 	Text("Pencil or a finger paints; two fingers move and zoom; tap two fingers to undo, three to redo.", color = Muted, fontSize = 13.sp)
+	workError?.let { Text("Something went wrong: $it", color = Danger, fontSize = 13.sp) }
 	Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
 		BoxWithConstraints(Modifier.weight(1f).height(860.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF101017))) {
 			val density = LocalDensity.current
@@ -180,16 +184,16 @@ private fun LayerPaintView(painting: LayerPainting, onApplied: (RigOutcome) -> U
 						if (applying != null) return
 						val s = current; val p = toCanvas(at)
 						when (s.tool) {
-							PaintTool.SHAPE -> { last = p; scope.launch(worker) { painting.shapeBegin(p.x, p.y) } }
+							PaintTool.SHAPE -> { last = p; scope.launch(worker + safe) { painting.shapeBegin(p.x, p.y) } }
 							PaintTool.MASK -> when (maskModeNow) {
-								MaskMode.COLOUR -> scope.launch(worker) { painting.maskByColour(p.x, p.y, 24); bump() }
+								MaskMode.COLOUR -> scope.launch(worker + safe) { painting.maskByColour(p.x, p.y, 24); bump() }
 								else -> {
 									val r = size(pressure, s); last = p; cursor = at to r
-									scope.launch(worker) { painting.maskSegment(p.x, p.y, p.x, p.y, r, s.hardness, maskModeNow == MaskMode.UNMASK); bump() }
+									scope.launch(worker + safe) { painting.maskSegment(p.x, p.y, p.x, p.y, r, s.hardness, maskModeNow == MaskMode.UNMASK); bump() }
 								}
 							}
-							PaintTool.FILL -> { rememberColourUse(s.color); scope.launch(worker) { painting.fill(p.x, p.y, s.color, s.opacity, 24); bump() } }
-							PaintTool.PICK -> scope.launch(worker) {
+							PaintTool.FILL -> { rememberColourUse(s.color); scope.launch(worker + safe) { painting.fill(p.x, p.y, s.color, s.opacity, 24); bump() } }
+							PaintTool.PICK -> scope.launch(worker + safe) {
 								// The layer's own colour where it has one, else what the character shows there.
 								val own = painting.pixelAt(p.x, p.y)
 								val picked = if ((own ushr 24) > 16) own else painting.outcome.preview.render(rest, p.x, p.y, 1f, 1f, 1, 1).argb[0]
@@ -197,7 +201,7 @@ private fun LayerPaintView(painting: LayerPainting, onApplied: (RigOutcome) -> U
 							}
 							else -> {
 								val r = size(pressure, s); last = p; cursor = at to r
-								scope.launch(worker) {
+								scope.launch(worker + safe) {
 									painting.beginStroke()
 									painting.segment(p.x, p.y, p.x, p.y, r, s.hardness, s.color, s.opacity, s.tool == PaintTool.ERASER); bump()
 								}
@@ -208,31 +212,31 @@ private fun LayerPaintView(painting: LayerPainting, onApplied: (RigOutcome) -> U
 						val s = current; val from = last ?: return; val p = toCanvas(at); val r = size(pressure, s)
 						if (s.tool == PaintTool.SHAPE) {
 							val (kind, filled, width) = shapeNow
-							scope.launch(worker) { painting.shapeTo(p.x, p.y, kind, s.color, s.opacity, width, filled); bump() }
+							scope.launch(worker + safe) { painting.shapeTo(p.x, p.y, kind, s.color, s.opacity, width, filled); bump() }
 							return
 						}
 						if (s.tool == PaintTool.MASK) {
 							last = p; cursor = at to r
-							scope.launch(worker) { painting.maskSegment(from.x, from.y, p.x, p.y, r, s.hardness, maskModeNow == MaskMode.UNMASK); bump() }
+							scope.launch(worker + safe) { painting.maskSegment(from.x, from.y, p.x, p.y, r, s.hardness, maskModeNow == MaskMode.UNMASK); bump() }
 							return
 						}
 						last = p; cursor = at to r
-						scope.launch(worker) { painting.segment(from.x, from.y, p.x, p.y, r, s.hardness, s.color, s.opacity, s.tool == PaintTool.ERASER); bump() }
+						scope.launch(worker + safe) { painting.segment(from.x, from.y, p.x, p.y, r, s.hardness, s.color, s.opacity, s.tool == PaintTool.ERASER); bump() }
 					}
 					override fun end() {
 						val s = current; cursor = null
 						if (last != null) {
 							last = null
-							scope.launch(worker) {
+							scope.launch(worker + safe) {
 								when (s.tool) { PaintTool.SHAPE -> painting.shapeEnd(); PaintTool.MASK -> painting.maskEnd(); else -> painting.endStroke(s.tool.label) }
 								if (s.tool == PaintTool.BRUSH || s.tool == PaintTool.SHAPE) scope.launch(Dispatchers.Main) { rememberColourUse(s.color) }
 								bump()
 							}
 						}
 					}
-					override fun cancel() { cursor = null; last = null; scope.launch(worker) { painting.cancelStroke(); painting.maskCancel(); bump() } }
-					override fun undo() { scope.launch(worker) { if (current.tool == PaintTool.MASK) painting.undoMask() else painting.undo(); bump() } }
-					override fun redo() { scope.launch(worker) { if (current.tool == PaintTool.MASK) painting.redoMask() else painting.redo(); bump() } }
+					override fun cancel() { cursor = null; last = null; scope.launch(worker + safe) { painting.cancelStroke(); painting.maskCancel(); bump() } }
+					override fun undo() { scope.launch(worker + safe) { if (current.tool == PaintTool.MASK) painting.undoMask() else painting.undo(); bump() } }
+					override fun redo() { scope.launch(worker + safe) { if (current.tool == PaintTool.MASK) painting.redoMask() else painting.redo(); bump() } }
 					override fun view() = view
 					override fun setView(view: CanvasView) { setPaintView(view) }
 					override fun layout(view: CanvasView) = layout(w, h, view)
@@ -293,9 +297,9 @@ private fun LayerPaintView(painting: LayerPainting, onApplied: (RigOutcome) -> U
 					Slider(1f - hardness, { hardness = 1f - it }, valueRange = 0f..1f, colors = sliderColors(), modifier = Modifier.height(32.dp))
 				} else Text("Tap a colour region of the layer to add it to the mask.", color = Muted, fontSize = 12.sp)
 				Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-					Chip("Undo", false, enabled = painting.canUndoMask) { scope.launch(worker) { painting.undoMask(); bump() } }
-					Chip("Redo", false, enabled = painting.canRedoMask) { scope.launch(worker) { painting.redoMask(); bump() } }
-					Chip("Clear mask", false, enabled = painting.hasMask) { scope.launch(worker) { painting.clearMask(); bump() } }
+					Chip("Undo", false, enabled = painting.canUndoMask) { scope.launch(worker + safe) { painting.undoMask(); bump() } }
+					Chip("Redo", false, enabled = painting.canRedoMask) { scope.launch(worker + safe) { painting.redoMask(); bump() } }
+					Chip("Clear mask", false, enabled = painting.hasMask) { scope.launch(worker + safe) { painting.clearMask(); bump() } }
 				}
 				Text("New layer's name", color = Muted, fontSize = 12.sp)
 				androidx.compose.foundation.text.BasicTextField(pieceName, { pieceName = it }, singleLine = true,
@@ -313,7 +317,7 @@ private fun LayerPaintView(painting: LayerPainting, onApplied: (RigOutcome) -> U
 							} catch (error: Throwable) { applying = null; failure = error.message ?: error::class.simpleName }
 						}
 					}
-					Chip("Erase the masked part", false, enabled = painting.hasMask) { scope.launch(worker) { painting.eraseMasked(); bump() } }
+					Chip("Erase the masked part", false, enabled = painting.hasMask) { scope.launch(worker + safe) { painting.eraseMasked(); bump() } }
 				}
 			}
 			if (tool == PaintTool.BRUSH || tool == PaintTool.ERASER) {
@@ -335,8 +339,8 @@ private fun LayerPaintView(painting: LayerPainting, onApplied: (RigOutcome) -> U
 				}
 			}
 			Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-				Chip("Undo", false, enabled = painting.canUndo) { scope.launch(worker) { painting.undo(); bump() } }
-				Chip("Redo", false, enabled = painting.canRedo) { scope.launch(worker) { painting.redo(); bump() } }
+				Chip("Undo", false, enabled = painting.canUndo) { scope.launch(worker + safe) { painting.undo(); bump() } }
+				Chip("Redo", false, enabled = painting.canRedo) { scope.launch(worker + safe) { painting.redo(); bump() } }
 				Chip(if (ghost) "Hide the rest" else "Show the rest", false) { ghost = !ghost }
 			}
 			Chip("Fit view", false) { view = CanvasView() }

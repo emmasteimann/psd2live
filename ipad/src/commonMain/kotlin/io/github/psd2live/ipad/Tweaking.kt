@@ -27,12 +27,32 @@ class RigTweaking(val outcome: RigOutcome) {
 	@kotlin.concurrent.Volatile var shown: PuppetModel = model.rig.puppet
 		private set
 
-	val parameters: List<PreviewParameter> = model.rig.puppet.parameters.map { PreviewParameter(it.id.raw, it.name, it.min, it.max, it.default) }
+	val parameters: List<PreviewParameter> get() = model.rig.puppet.parameters.map { PreviewParameter(it.id.raw, it.name, it.min, it.max, it.default) }
+
+	/**
+	 * A new parameter (for a custom sway, a prop toggle...) named [name] with range [min]..[max]: it shows among the
+	 * pose sliders, tweaks at its values become its keys, and physics or an expression can drive it. Undoable.
+	 * Returns its id.
+	 */
+	fun addParameter(name: String, min: Float, max: Float, default: Float): String {
+		val taken = model.rig.puppet.parameters.mapTo(HashSet()) { it.id.raw }
+		val stem = "Param" + name.split(Regex("[^A-Za-z0-9]+")).filter { it.isNotEmpty() }.joinToString("") { it.replaceFirstChar(Char::uppercase) }.ifEmpty { "Custom" }
+		val id = generateSequence(1) { it + 1 }.map { if (it == 1) stem else "$stem$it" }.first { it !in taken }
+		val edit = io.github.psd2live.core.RigParameterEdit(id, name.trim().ifEmpty { id }, min, max, default.coerceIn(min, max), created = true)
+		val overlay = model.config.rigEdits
+		undos.addLast(model); if (undos.size > 60) undos.removeFirst()
+		redos.clear()
+		model = pipeline.updateRigEdits(model, model.config.copy(rigEdits = overlay.copy(parameterEdits = overlay.parameterEdits + edit)))
+		shown = model.rig.puppet
+		return id
+	}
 	val canvasWidth: Float get() = model.rig.puppet.canvasWidth
 	val canvasHeight: Float get() = model.rig.puppet.canvasHeight
 	val canUndo get() = undos.isNotEmpty() && session == null
 	val canRedo get() = redos.isNotEmpty() && session == null
-	val edits get() = model.config.rigEdits.authoringJournal.size - outcome.model.config.rigEdits.authoringJournal.size
+	/** Hand tweaks and new parameters since the screen opened. */
+	val edits get() = model.config.rigEdits.authoringJournal.size - outcome.model.config.rigEdits.authoringJournal.size +
+		model.config.rigEdits.parameterEdits.size - outcome.model.config.rigEdits.parameterEdits.size
 
 	/** Warp [id]'s lattice as shown now (the stroke in progress included) at [pose]. */
 	fun lattice(pose: Map<String, Float>, id: String): PoseTweaks.Lattice? = PoseTweaks.lattices(shown, pose).firstOrNull { it.id == id }

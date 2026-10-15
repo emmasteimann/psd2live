@@ -82,6 +82,8 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 	val selectionNow by rememberUpdatedState(selection)
 	var verts by remember { mutableStateOf<List<Pair<String, FloatArray>>>(emptyList()) }
 	val vertsNow by rememberUpdatedState(verts)
+	var newParam by remember { mutableStateOf<String?>(null) }
+	var newRange by remember { mutableStateOf(-1f to 1f) }
 	var boxRect by remember { mutableStateOf<Pair<Offset, Offset>?>(null) }
 	// A box takes one part (the mesh with the most points in it) unless asked for every part it touches.
 	var boxEveryPart by remember { mutableStateOf(false) }
@@ -304,9 +306,30 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 				}
 				Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
 					Text("Pose", color = Text1, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-					Text("Rest pose", color = Accent, fontSize = 14.sp, modifier = Modifier.clickable { pose = tweaking.parameters.associate { it.id to it.default } })
+					Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+						Text("New parameter…", color = Accent, fontSize = 14.sp, modifier = Modifier.clickable { newParam = if (newParam == null) "" else null })
+						Text("Rest pose", color = Accent, fontSize = 14.sp, modifier = Modifier.clickable { pose = tweaking.parameters.associate { it.id to it.default } })
+					}
 				}
 				Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+					newParam?.let { text ->
+						Text("A parameter of your own: set it to a value, push things into place, and that becomes its key. " +
+							"Physics or an expression can then drive it.", color = Muted, fontSize = 12.sp)
+						androidx.compose.foundation.text.BasicTextField(text, { newParam = it }, singleLine = true,
+							textStyle = androidx.compose.ui.text.TextStyle(color = Text1, fontSize = 15.sp), cursorBrush = androidx.compose.ui.graphics.SolidColor(Accent),
+							modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(Color(0xFF2B283C)).padding(10.dp))
+						Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+							for (range in listOf(-1f to 1f, 0f to 1f, -30f to 30f)) Chip("${range.first.roundToInt()} to ${range.second.roundToInt()}", newRange == range) { newRange = range }
+						}
+						Chip("Create", true, enabled = text.isNotBlank()) {
+							val (lo, hi) = newRange; val name = text
+							scope.launch(worker) {
+								val id = tweaking.addParameter(name, lo, hi, if (lo < 0f) 0f else lo)
+								scope.launch(Dispatchers.Main) { pose = pose + (id to (if (lo < 0f) 0f else lo)); newParam = null; tick++ }
+							}
+						}
+					}
+					@Suppress("UNUSED_VARIABLE") val changesForParams = tick
 					for (p in tweaking.parameters) {
 						val value = pose[p.id] ?: p.default
 						Text("${p.name}  ${(value * 100).roundToInt() / 100.0}", color = Muted, fontSize = 12.sp)

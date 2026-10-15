@@ -78,6 +78,7 @@ fun PhysicsScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onCancel
 	var image by remember { mutableStateOf<ImageBitmap?>(null) }
 	var open by remember { mutableStateOf<String?>(null) }
 	var addingInput by remember { mutableStateOf(false) }
+	var addingOutput by remember { mutableStateOf(false) }
 	val paramNames = remember(outcome) { outcome.model.rig.puppet.parameters.associate { it.id.raw to it.name } }
 	var applying by remember { mutableStateOf<Pair<String, Double>?>(null) }
 	var failure by remember { mutableStateOf<String?>(null) }
@@ -213,6 +214,12 @@ fun PhysicsScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onCancel
 							if (g.segments.size > 1) ValueRow("Driven by part", output.vertex.toFloat(), 1f..g.segments.size.toFloat()) { v ->
 								edit(g) { it.copy(outputs = it.outputs.map { o -> if (o === output) o.copy(vertex = v.roundToInt().coerceIn(1, g.segments.size)) else o }) } }
 							ValueRow("Scale", output.scale, 0f..10f) { v -> edit(g) { it.copy(outputs = it.outputs.map { o -> if (o === output) o.copy(scale = v) else o }) } }
+						}
+						Chip(if (addingOutput) "Close the list" else "Add what it moves", addingOutput) { addingOutput = !addingOutput }
+						if (addingOutput) for ((pid, pname) in paramNames.filterKeys { k -> g.outputs.none { it.parameter == k } && g.inputs.none { it.parameter == k } }) {
+							Text(pname, color = Accent, fontSize = 13.sp, modifier = Modifier.fillMaxWidth().clickable {
+								edit(g) { it.copy(outputs = it.outputs + io.github.psd2live.core.PhysicsOutput(pid, it.segments.size, 1f)) }; addingOutput = false
+							}.padding(vertical = 4.dp))
 						}
 						Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
 							Text("Pendulum parts: ${g.segments.size}", color = Text1, fontSize = 13.sp, fontWeight = FontWeight.Bold)

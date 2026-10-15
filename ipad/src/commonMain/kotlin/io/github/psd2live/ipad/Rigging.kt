@@ -147,3 +147,11 @@ expect object RigFiles {
 
 /** A rendered frame as an image Compose can draw. */
 expect fun RasterImage.toImageBitmap(): androidx.compose.ui.graphics.ImageBitmap
+
+/** Files in and out of the app: the system document picker and share sheet. */
+expect object Exchange {
+	/** Lets the user pick PSDs and projects anywhere in Files; they are copied into the app's folder. Calls back with their names. */
+	fun pick(onPicked: (List<String>) -> Unit)
+	/** The share sheet for [paths] (files or folders): VTube Studio, AirDrop, Save to Files... */
+	fun share(paths: List<String>)
+}

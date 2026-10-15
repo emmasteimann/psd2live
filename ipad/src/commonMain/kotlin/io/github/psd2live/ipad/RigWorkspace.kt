@@ -129,6 +129,7 @@ fun RigWorkspace(modifier: Modifier = Modifier) {
 				"app; its moc3 runtime files go to the Rigs folder there.", color = Muted, fontSize = 14.sp)
 			Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
 				Button("Refresh the list") { refresh() }
+				Button("Import from Files") { Exchange.pick { names -> if (names.isNotEmpty()) { refresh(); autosave = "Imported ${names.joinToString()}" } } }
 			}
 			if (projects.isNotEmpty()) {
 				Text("Projects", color = Text1, fontSize = 17.sp, fontWeight = FontWeight.Bold)
@@ -202,6 +203,12 @@ private fun RigResult(o: RigOutcome, onPaint: () -> Unit, onTweak: () -> Unit, o
 			color = Text1, fontSize = 14.sp)
 		Text("Saved to Rigs/${o.folder.substringAfterLast('/')}: ${o.files.joinToString()}", color = Muted, fontSize = 13.sp)
 		for (w in o.warnings) Text("• $w", color = Muted, fontSize = 13.sp)
+		// Editing first, then the files: two rows, so nothing is squeezed on a portrait iPad.
+		Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+			Button("Tweak by hand", onTweak)
+			Button("Paint a layer", onPaint)
+			Button("Rig settings", onSettings)
+		}
 		Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
 			Button("Save as a PSD2Live project") {
 				if (saveStatus == "Saving…") return@Button
@@ -213,9 +220,8 @@ private fun RigResult(o: RigOutcome, onPaint: () -> Unit, onTweak: () -> Unit, o
 					} catch (failure: Throwable) { "Couldn't save: ${failure.message ?: failure::class.simpleName}" }
 				}
 			}
-			Button("Paint a layer", onPaint)
-			Button("Tweak by hand", onTweak)
-			Button("Rig settings", onSettings)
+			Button("Share the rig") { Exchange.share(listOf(o.folder)) }
+			Button("Share the project") { Exchange.share(listOf(RigFiles.projectPath(o.name))) }
 			saveStatus?.let { Text(it, color = Muted, fontSize = 13.sp) }
 		}
 		Spacer(Modifier.height(8.dp))

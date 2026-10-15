@@ -1,7 +1,10 @@
 package io.github.psd2live.project
+import io.github.psd2live.core.base64Decode
+import io.github.psd2live.core.base64Encode
+import io.github.psd2live.core.bitSetOf
+import io.github.psd2live.core.BitSet
 
 import kotlinx.serialization.json.*
-import java.util.BitSet
 
 /**
  * Where a layer's meshes lie on its texture raster: square cells of [cell] raster pixels, [columns] x [rows]
@@ -73,7 +76,7 @@ object AtlasArrangementCodec {
 				if (tile.rotation != 0f) put("rotation", tile.rotation)
 				tile.footprint?.let { footprint -> putJsonObject("footprint") {
 					put("cell", footprint.cell); put("columns", footprint.columns); put("rows", footprint.rows)
-					put("bits", java.util.Base64.getEncoder().encodeToString(footprint.bits.toByteArray()))
+					put("bits", base64Encode(footprint.bits.toByteArray()))
 				} }
 			}
 		}
@@ -86,7 +89,7 @@ object AtlasArrangementCodec {
 			val tile = entry.jsonObject
 			val footprint = (tile["footprint"] as? JsonObject)?.let {
 				TextureFootprint(it.int("cell"), it.int("columns"), it.int("rows"),
-					BitSet.valueOf(java.util.Base64.getDecoder().decode(it["bits"]?.jsonPrimitive?.content ?: throw IllegalArgumentException("Invalid footprint bits"))))
+					bitSetOf(base64Decode(it["bits"]?.jsonPrimitive?.content ?: throw IllegalArgumentException("Invalid footprint bits"))))
 			}
 			ArrangedTile(tile.int("page"), tile.int("x"), tile.int("y"), footprint,
 				normalizedRotation(tile["rotation"]?.let { it.jsonPrimitive.floatOrNull ?: throw IllegalArgumentException("Invalid atlas arrangement rotation") } ?: 0f))

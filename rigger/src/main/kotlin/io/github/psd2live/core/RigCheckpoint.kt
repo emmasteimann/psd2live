@@ -7,8 +7,6 @@ import org.umamo.runtime.model.ArtSource
 import org.umamo.runtime.model.DrawableMesh
 import org.umamo.runtime.model.PuppetAtlas
 import org.umamo.runtime.model.PuppetModel
-import java.util.Collections
-import java.util.WeakHashMap
 
 /**
  * The `rig_checkpoint` journal record: the authored rig at its place in the journal, stored as data. Replay starts

@@ -37,9 +37,6 @@ import org.umamo.runtime.model.DeformPathPoint
 import org.umamo.runtime.model.WarpLatticeForm
 import org.umamo.runtime.model.withDerivedRenderRoot
 import org.umamo.render.eval.buildDeformerWorlds
-import java.text.Normalizer
-import java.util.Locale
-import java.util.UUID
 import kotlin.math.PI
 import kotlin.math.asin
 import kotlin.math.abs
@@ -493,10 +490,10 @@ object RigBuilder {
 		val head = context.head
 		val cx = head.centerX; val cy = head.centerY
 		for (name in config.layerTurnDepths.keys + config.layerTurnDepthsY.keys) {
-			val layer = byName[name] ?: run { System.err.println("Warning: turn depth: no layer named \"$name\""); null } ?: continue
+			val layer = byName[name] ?: run { warn("Warning: turn depth: no layer named \"$name\""); null } ?: continue
 			val (parentId, parentFrame) = context.parentAndFrame(layer, config)
 			val parent = parentId?.let { warps[it.raw] }
-			if (parent == null) { System.err.println("Warning: turn depth: \"$name\" isn't under a warp; left as it was"); continue }
+			if (parent == null) { warn("Warning: turn depth: \"$name\" isn't under a warp; left as it was"); continue }
 			// the chain up to a hair follow warp, if any: [parent, ..., child of the follow]
 			val chain = mutableListOf<String>(); var at: String? = parentId.raw; var follow: String? = null
 			while (at != null && chain.size < 64) {
@@ -512,7 +509,7 @@ object RigBuilder {
 				val physicsShared = chain.last() == frontHairPhysicsWarpId.raw || chain.last() == backHairPhysicsWarpId.raw
 				if (physicsShared && chain.size > 1) {
 					// something between the piece and the shared physics (an old pin-bottom hair anchor): not handled
-					System.err.println("Warning: turn depth: \"$name\" hangs from the hair through ${chain.first()}; left as it was"); continue
+					warn("Warning: turn depth: \"$name\" hangs from the hair through ${chain.first()}; left as it was"); continue
 				}
 				val sharedFollow = warps.getValue(follow)
 				val followCopy = hairFollowWarp(turnFollowId(layer), "Turn depth: $name", hairFrame, head, sharedFollow.partId ?: PartId(if (front) "PartHairFront" else "PartHairBack"),
@@ -609,16 +606,16 @@ object RigBuilder {
 		val byName = context.analysis.layers.filter { it.opaquePixels > 0 }.associateBy { it.source.name }
 		val warps = context.deformers.filterIsInstance<Deformer.Warp>().associateBy { it.id.raw }
 		return config.layerGlues.mapNotNull { (name, glue) ->
-			val layer = byName[name] ?: return@mapNotNull null.also { System.err.println("Warning: glue: no layer named \"$name\"") }
-			val target = byName[glue.target] ?: return@mapNotNull null.also { System.err.println("Warning: glue: \"$name\" -> no layer named \"${glue.target}\"") }
+			val layer = byName[name] ?: return@mapNotNull null.also { warn("Warning: glue: no layer named \"$name\"") }
+			val target = byName[glue.target] ?: return@mapNotNull null.also { warn("Warning: glue: \"$name\" -> no layer named \"${glue.target}\"") }
 			if (target.source.name in config.layerGlues || target === layer) {
-				System.err.println("Warning: glue: \"$name\" can't glue to \"${glue.target}\" (itself glued)"); return@mapNotNull null
+				warn("Warning: glue: \"$name\" can't glue to \"${glue.target}\" (itself glued)"); return@mapNotNull null
 			}
 			val (targetParent, targetFrame) = context.parentAndFrame(target, config)
 			val warp = targetParent?.let { warps[it.raw] }
 			val grid = warp?.geometryGrid
 			if (warp == null || grid == null) {
-				System.err.println("Warning: glue: \"${glue.target}\" isn't under a warp; \"$name\" left as it was"); return@mapNotNull null
+				warn("Warning: glue: \"${glue.target}\" isn't under a warp; \"$name\" left as it was"); return@mapNotNull null
 			}
 			val raw = rigLayerById.getValue(layer.source.id.raw).bounds
 			val frame = hairAnchorFrame(raw)
@@ -668,7 +665,7 @@ object RigBuilder {
 	)
 
 	private fun scaffold(analysis: PipelineAnalysis, config: PipelineConfig, stages: RigStageCache?): Scaffold {
-		val faceStart = System.nanoTime()
+		val faceStart = nanoTime()
 		val character = analysis.anchors.character
 		val layout = analysis.calibration ?: analysis
 		val faceRig = NinePoseFaceRig.from(layout, config.rigTuning)
@@ -692,12 +689,12 @@ object RigBuilder {
 		val frontHair = frontHairCandidates.map { it.bounds }.takeIf { it.isNotEmpty() }?.reduce(Bounds::union)?.expanded(0.04f)
 		val backHair = backHairCandidates.map { it.bounds }.takeIf { it.isNotEmpty() }?.reduce(Bounds::union)?.expanded(0.04f)
 
-		if (RigBuildProfile.recording) RigBuildProfile.add("scaffold: face rig + frames", System.nanoTime() - faceStart)
-		val bodyStart = System.nanoTime()
+		if (RigBuildProfile.recording) RigBuildProfile.add("scaffold: face rig + frames", nanoTime() - faceStart)
+		val bodyStart = nanoTime()
 		val deformersEnabled = !config.meshOnly && config.generateDeformers
 		val stance = BodyStance.of(analysis, character, config.rigEdits.skeleton, config.bodyStrength, config.rigTuning)
 		val bodyFrame = bodyFrame(analysis, stance, faceRig, character, head, face, frontHair, backHair, config.rigEdits.skeleton?.enabled == true)
-		if (RigBuildProfile.recording) RigBuildProfile.add("scaffold: stance + body frame", System.nanoTime() - bodyStart)
+		if (RigBuildProfile.recording) RigBuildProfile.add("scaffold: stance + body frame", nanoTime() - bodyStart)
 		val deformerResult = if (deformersEnabled) stages?.get(RigStageCache.DEFORMERS, 8,
 			deformerKey(analysis, rigLayerById, stance, bodyFrame, faceRig, character, head, face, frontHair, backHair, config)) {
 			deformerStage(analysis, stance, bodyFrame, rigLayerById, faceRig, character, head, face, frontHair, backHair, config)
@@ -1411,7 +1408,7 @@ object RigBuilder {
 			partNeutralBounds[part.drawableId] = built.second
 		}
 
-		val assemblyStart = System.nanoTime()
+		val assemblyStart = nanoTime()
 		// Masks are generated among the resolved drawables: a passenger never masks, a part does.
 		val maskSources = if (!v2) drawables else drawables.filterNot { it.id in ghostIds } + partDrawables
 		val maskTargets = if (!v2) drawables else drawables + partDrawables
@@ -1557,7 +1554,7 @@ object RigBuilder {
 			sources = artSources,
 			deformPaths = builtDeformPaths,
 		)
-		if (RigBuildProfile.recording) RigBuildProfile.add("assembly: masks, parts, parameters, model", System.nanoTime() - assemblyStart)
+		if (RigBuildProfile.recording) RigBuildProfile.add("assembly: masks, parts, parameters, model", nanoTime() - assemblyStart)
 		val skeleton = config.rigEdits.skeleton?.takeIf { it.enabled && shouldBuildDeformers }
 		// Bound meshes the journal places under deformers of its own: skinned after it replays (see [SkeletonCanvasSkin]).
 		val canvasSkinned = skeleton?.let { SkeletonCanvasSkin.placedByRecords(config.rigEdits) }.orEmpty()
@@ -1812,7 +1809,7 @@ object RigBuilder {
 	 * so every build of the same rig names it the same and a content hash of the rig is stable.
 	 */
 	fun generatedPathId(drawable: DrawableId, role: String): String =
-		UUID.nameUUIDFromBytes("psd2live:generated-path:${drawable.raw}:$role".encodeToByteArray()).toString()
+		nameUuidFromBytes("psd2live:generated-path:${drawable.raw}:$role".encodeToByteArray())
 
 	/** A mesh a paint commit replaces, with the atlas slice its texture coordinates were sampled from. */
 	class ReplacedMesh constructor(
@@ -2539,7 +2536,7 @@ object RigBuilder {
 			val (defaultParentId, _) = defaultParentAndFrame(layer, faceRig, analysis.anchors, character, head, faceFrame, frontHair, backHair,
 				config.rigEdits.skeleton?.enabled == true, stance.legsFrame, bodyFrame)
 			val baseName = pairBaseName(layer.source.name)
-			defaultParentId to baseName.lowercase(Locale.ROOT).trim()
+			defaultParentId to baseName.lowercase().trim()
 		}
 		for ((key, pairLayers) in grouped) {
 			val hasLeft = pairLayers.any { it.semantic.side == Side.LEFT }
@@ -2686,7 +2683,7 @@ object RigBuilder {
 	private val sidePrefixRegex = Regex("^(左|右)(?:[-_.\\s]+)?", RegexOption.IGNORE_CASE)
 
 	fun pairBaseName(name: String): String {
-		var s = Normalizer.normalize(name, Normalizer.Form.NFKC).trim()
+		var s = normalizeNfkc(name).trim()
 		sideSuffixRegex.find(s)?.let {
 			s = s.removeRange(it.range).trim()
 		} ?: sidePrefixRegex.find(s)?.let {
@@ -2705,7 +2702,7 @@ object RigBuilder {
 		val baseId = when {
 			pascal.isNotBlank() -> "DeformPair_$pascal"
 			tag != SemanticTag.UNKNOWN -> {
-				val tagWords = tag.name.lowercase(Locale.ROOT).split('_').joinToString("") { it.replaceFirstChar(Char::uppercaseChar) }
+				val tagWords = tag.name.lowercase().split('_').joinToString("") { it.replaceFirstChar(Char::uppercaseChar) }
 				"DeformPair_$tagWords"
 			}
 			else -> "DeformPair_Part"
@@ -3727,8 +3724,7 @@ object RigBuilder {
 	private const val SPLIT_DRAWABLE_PREFIX = "ArtMeshSplit"
 
 	private fun stableSplitDrawableId(layerId: String, reserved: Collection<DrawableId>): DrawableId {
-		val hash = UUID.nameUUIDFromBytes(layerId.toByteArray(Charsets.UTF_8))
-			.toString().replace("-", "")
+		val hash = nameUuidFromBytes(layerId.encodeToByteArray()).replace("-", "")
 		val base = "$SPLIT_DRAWABLE_PREFIX$hash"
 		var candidate = base
 		var suffix = 2

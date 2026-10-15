@@ -31,7 +31,7 @@ object CharacterAnalyzer {
 		val depthLayerIds = config.rigEdits.authoringJournal.filter {
 			it["op"]?.jsonPrimitive?.contentOrNull == DepthSplit.OP
 		}.mapNotNullTo(HashSet()) { it["layer_id"]?.jsonPrimitive?.contentOrNull }
-		val classifyStart = System.nanoTime()
+		val classifyStart = nanoTime()
 		// Layers classify independently (dense ones resample to canvas resolution first); the list keeps source order.
 		val initiallyClassified = source.layers
 			.filter { it.raster.width > 0 && it.raster.height > 0 && it.id.raw !in config.deletedLayerIds }
@@ -42,7 +42,7 @@ object CharacterAnalyzer {
 		val unitScale = MeshResolution.unitScale(config, source)
 		val layers = initiallyClassified.flatMap { expandLayer(it, config, unitScale) }
 			.filter { it.source.id.raw !in config.deletedLayerIds }
-		if (RigBuildProfile.recording) RigBuildProfile.add("analyze: classify layers", System.nanoTime() - classifyStart)
+		if (RigBuildProfile.recording) RigBuildProfile.add("analyze: classify layers", nanoTime() - classifyStart)
 		val warnings = source.warnings.toMutableList()
 		val nonEmpty = layers.filter { it.opaquePixels > 0 }
 		require(nonEmpty.isNotEmpty()) { tr("error.psdNoVisibleLayers") }

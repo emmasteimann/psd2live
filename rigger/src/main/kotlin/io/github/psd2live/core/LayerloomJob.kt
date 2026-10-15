@@ -101,7 +101,7 @@ data class LayerloomJob(
 				if (spec.bones.any { it.drawableIds.isNotEmpty() }) {
 					config = config.copy(rigEdits = config.rigEdits.copy(skeleton = spec))
 					built = rebuild(config)
-				} else System.err.println("Warning: skeleton: no limb layers to bind (arms need left/right handwear)")
+				} else warn("Warning: skeleton: no limb layers to bind (arms need left/right handwear)")
 			}
 			if (config.layerSwings.isNotEmpty()) {
 				val swung = LayerSwings.apply(built.baseRig, config, built.analysis.layers)

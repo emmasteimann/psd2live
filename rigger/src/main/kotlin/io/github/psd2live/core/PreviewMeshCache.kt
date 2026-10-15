@@ -2,7 +2,6 @@ package io.github.psd2live.core
 
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ExecutionException
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Per-pipeline, bounded cache of raster-local geometry; never caches parent coordinates.

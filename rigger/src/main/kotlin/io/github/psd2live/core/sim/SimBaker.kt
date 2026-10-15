@@ -8,7 +8,7 @@ import org.umamo.runtime.model.Parameter
 import org.umamo.runtime.model.ParameterId
 import org.umamo.runtime.model.ParameterKind
 import org.umamo.runtime.model.PuppetModel
-import java.util.concurrent.CancellationException
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.sqrt

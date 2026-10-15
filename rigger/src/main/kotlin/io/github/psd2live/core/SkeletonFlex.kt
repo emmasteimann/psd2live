@@ -1,7 +1,6 @@
 package io.github.psd2live.core
 
 import org.umamo.runtime.model.PuppetModel
-import java.util.PriorityQueue
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.ceil

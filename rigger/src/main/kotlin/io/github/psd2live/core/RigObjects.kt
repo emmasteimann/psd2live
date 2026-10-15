@@ -3,9 +3,7 @@ package io.github.psd2live.core
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
-import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * Stored rig objects ([io.github.psd2live.format.compile.RigIrObjects]) by the SHA-256 of their bytes: those this
@@ -67,5 +65,5 @@ object RigObjects {
 	/** Forgets held objects and folders: for tests that need a cold process. */
 	fun clear() { held.clear(); folders.clear() }
 
-	private fun sha256(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it.toInt() and 255) }
+	private fun sha256(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).let(::hex)
 }

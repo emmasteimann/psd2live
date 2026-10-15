@@ -21,8 +21,8 @@ object PreviewRenderer {
 	}
 	private data class CompositeKey(val width: Int, val height: Int, val layers: List<LayerKey>)
 
-	private val composites = object : LinkedHashMap<CompositeKey, java.lang.ref.SoftReference<BufferedImage>>(4, 0.75f, true) {
-		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<CompositeKey, java.lang.ref.SoftReference<BufferedImage>>?) = size > 3
+	private val composites = object : LinkedHashMap<CompositeKey, SoftReference<BufferedImage>>(4, 0.75f, true) {
+		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<CompositeKey, SoftReference<BufferedImage>>?) = size > 3
 	}
 
 	/**
@@ -34,7 +34,7 @@ object PreviewRenderer {
 			.map { LayerKey(it.raster.rgba, it.raster.width, it.bounds.left, it.bounds.top, it.opacity.coerceIn(0f, 1f),
 				it.storedCanvasRect, it.raster.height) })
 		synchronized(composites) { composites[key]?.get()?.let { return it } }
-		return compositeOf(source).also { image -> synchronized(composites) { composites[key] = java.lang.ref.SoftReference(image) } }
+		return compositeOf(source).also { image -> synchronized(composites) { composites[key] = SoftReference(image) } }
 	}
 
 	private fun compositeOf(source: SourceArt): BufferedImage {

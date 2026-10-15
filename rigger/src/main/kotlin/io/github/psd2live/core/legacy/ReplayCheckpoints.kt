@@ -1,12 +1,13 @@
 package io.github.psd2live.core.legacy
+import io.github.psd2live.core.SoftReference
+import io.github.psd2live.core.WeakReference
+import io.github.psd2live.core.nanoTime
 
 import io.github.psd2live.core.synchronized
 import kotlin.concurrent.Volatile
 
 import kotlinx.serialization.json.JsonObject
 import org.umamo.runtime.model.PuppetModel
-import java.lang.ref.SoftReference
-import java.lang.ref.WeakReference
 import io.github.psd2live.core.RigBuildProfile
 
 /**
@@ -93,14 +94,14 @@ object ReplayCheckpoints {
 		}
 		val recorded = HashMap<Int, Any>()
 		var current = model ?: start().also { recorded[0] = it; from = 0 }
-		val replayStart = System.nanoTime()
+		val replayStart = nanoTime()
 		for (i in from until journal.size) {
 			current = step(current, journal[i])
 			val index = i + 1
 			if (index % INTERVAL == 0 || index > journal.size - RECENT) recorded[index] = current
 		}
 		if (RigBuildProfile.recording) {
-			RigBuildProfile.add("replay: journal", System.nanoTime() - replayStart)
+			RigBuildProfile.add("replay: journal", nanoTime() - replayStart)
 			repeat(journal.size - from) { RigBuildProfile.count("replay: entries replayed") }
 		}
 		last.set(Replayed(from, journal.size - from))

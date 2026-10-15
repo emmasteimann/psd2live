@@ -20,7 +20,7 @@ enum class AppLanguage(
 
 	companion object {
 		fun fromTag(tag: String?): AppLanguage? {
-			val language = tag?.trim()?.replace('_', '-')?.substringBefore('-')?.lowercase(Locale.ROOT)
+			val language = tag?.trim()?.replace('_', '-')?.substringBefore('-')?.lowercase()
 			return entries.firstOrNull { it.tag == language }
 		}
 

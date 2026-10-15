@@ -1,4 +1,9 @@
 package io.github.psd2live.project
+import io.github.psd2live.core.Collections
+import java.security.MessageDigest
+import io.github.psd2live.core.SoftReference
+import io.github.psd2live.core.WeakHashMap
+import io.github.psd2live.core.WeakReference
 
 import io.github.psd2live.core.synchronized
 
@@ -7,14 +12,9 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import org.umamo.format.art.SourceArt
 import java.lang.ref.ReferenceQueue
-import java.lang.ref.SoftReference
-import java.lang.ref.WeakReference
 import java.lang.reflect.Field
 import java.lang.reflect.Modifier
-import java.security.MessageDigest
-import java.util.Collections
 import java.util.UUID
-import java.util.WeakHashMap
 
 /**
  * v1 revision identity, shared by GUI and application commands. Raster buffers are immutable.
@@ -91,7 +91,7 @@ object WorkspaceRevisions {
 	fun seedRasterDigest(rgba: ByteArray, digest: String) { rasterDigests[rgba] = digest }
 
 	fun sha256(value: ByteArray): String = hex(MessageDigest.getInstance("SHA-256").digest(value))
-	fun hex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it.toInt() and 255) }
+	fun hex(bytes: ByteArray): String = io.github.psd2live.core.hex(bytes)
 
 	/**
 	 * The canonical text is `prefix + entry0 + ", " + entry1 + ... + suffix + tail`: the overlay's data-class text

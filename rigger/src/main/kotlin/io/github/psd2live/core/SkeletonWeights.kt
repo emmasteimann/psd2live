@@ -2,7 +2,6 @@ package io.github.psd2live.core
 
 import kotlin.math.abs
 import kotlin.math.hypot
-import java.util.PriorityQueue
 
 /**
  * One bone of a limb as the skinning sees it: its rest segment in canvas pixels, the index of its parent

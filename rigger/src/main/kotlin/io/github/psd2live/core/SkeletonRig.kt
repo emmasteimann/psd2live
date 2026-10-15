@@ -277,7 +277,7 @@ object SkeletonRig {
 	}
 
 	/** A computed [cacheKey]: [base] by identity, every other input by value. Models are immutable. */
-	private class KeyMemo(val base: java.lang.ref.WeakReference<PuppetModel>, val inputs: List<Any?>, val key: String)
+	private class KeyMemo(val base: WeakReference<PuppetModel>, val inputs: List<Any?>, val key: String)
 	private const val KEY_MEMOS = 8
 	private val keys = ArrayList<KeyMemo>()
 
@@ -294,7 +294,7 @@ object SkeletonRig {
 		}
 		val key = cacheKey(base, spec, frame, lockedTopology, stance, inputs, canvasSkinned)
 		synchronized(keys) {
-			keys.add(0, KeyMemo(java.lang.ref.WeakReference(base), values, key))
+			keys.add(0, KeyMemo(WeakReference(base), values, key))
 			keys.removeAll { it.base.get() == null }
 			while (keys.size > KEY_MEMOS) keys.removeAt(keys.size - 1)
 		}
@@ -1589,20 +1589,20 @@ object SkeletonRig {
 		// return a copy because additive pose shapes subtract their reference in place. Each sample is a
 		// pure function of its parameter values, so [prefetch] solves a batch of them on the common pool
 		// and the bake reads them back in its own order: the result does not depend on the thread count.
-		val caller = Thread.currentThread()
-		val samples = java.util.concurrent.ConcurrentHashMap<Map<ParameterId, Float>, Lazy<FloatArray>>()
+		val interrupted = callerInterruptCheck()
+		val samples = Collections.synchronizedMap(HashMap<Map<ParameterId, Float>, Lazy<FloatArray>>())
 		fun solved(values: Map<ParameterId, Float>): FloatArray {
 			val key = values.filterValues { it != 0f }
-			return samples.computeIfAbsent(key) { lazy {
-				if (caller.isInterrupted) throw InterruptedException()
+			return synchronized(samples) { samples.getOrPut(key) { lazy {
+				interrupted()
 				computeDeltas(key)
-			} }.value
+			} } }.value
 		}
 		fun deltasAt(values: Map<ParameterId, Float>): FloatArray = solved(values).copyOf()
 		fun prefetch(batch: Collection<Map<ParameterId, Float>>) {
 			val missing = batch.map { values -> values.filterValues { it != 0f } }.distinct().filter { samples[it]?.isInitialized() != true }
-			if (missing.size > 1 && parallelSamples) missing.parallelStream().forEach { solved(it) }
-			if (caller.isInterrupted) throw InterruptedException()
+			if (missing.size > 1 && parallelSamples) parallelFor(missing.indices.toList().toIntArray()) { solved(missing[it]) }
+			interrupted()
 		}
 
 		// Each bone keyed as sparsely as its arcs allow; the blend-shape bones add, the rest multiply.
@@ -1733,8 +1733,8 @@ object SkeletonRig {
 	/** Version of [skinKey]; raise it whenever [skinDrawable] or what the key covers changes. */
 	private const val SKIN_VERSION = "skin-4"
 	private const val SKIN_CAPACITY = 128
-	private val skins = object : LinkedHashMap<String, java.lang.ref.SoftReference<Skin>>(16, 0.75f, true) {
-		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, java.lang.ref.SoftReference<Skin>>?): Boolean = size > SKIN_CAPACITY
+	private val skins = object : LinkedHashMap<String, SoftReference<Skin>>(16, 0.75f, true) {
+		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, SoftReference<Skin>>?): Boolean = size > SKIN_CAPACITY
 	}
 	@Volatile private var skinHits = 0
 	@Volatile private var skinMisses = 0
@@ -1769,7 +1769,7 @@ object SkeletonRig {
 		})
 		val output = bake()
 		val skinned = output.drawables.first { it.id == drawableId }
-		synchronized(skins) { skins[key] = java.lang.ref.SoftReference(Skin(skinned.parentDeformerId, skinned.mesh, skinned.geometryGrid, skinned.blendShapes)) }
+		synchronized(skins) { skins[key] = SoftReference(Skin(skinned.parentDeformerId, skinned.mesh, skinned.geometryGrid, skinned.blendShapes)) }
 		return output
 	}
 

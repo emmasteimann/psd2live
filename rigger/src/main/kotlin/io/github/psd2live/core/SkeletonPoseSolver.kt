@@ -19,7 +19,7 @@ class BoneHit(val boneId: String, val tip: Boolean)
  */
 object SkeletonPoseSolver {
 	/** The leg solve of each baked model, which takes a few dozen deformer evaluations to rebuild. */
-	private val legSolves = java.util.WeakHashMap<PuppetModel, Map<String, SkeletonRig.LegJointPose>>()
+	private val legSolves = WeakHashMap<PuppetModel, Map<String, SkeletonRig.LegJointPose>>()
 
 	private fun legJoints(model: PuppetModel, legs: List<SkeletonRig.Leg>, spec: SkeletonSpec): Map<String, SkeletonRig.LegJointPose> =
 		synchronized(legSolves) { legSolves.getOrPut(model) { SkeletonRig.solveLegPoses(model, legs,

@@ -1,4 +1,8 @@
 package io.github.psd2live.project
+import io.github.psd2live.core.hex
+import io.github.psd2live.core.base64Decode
+import io.github.psd2live.core.base64Encode
+import io.github.psd2live.core.MessageDigest
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
@@ -60,8 +64,8 @@ class ProjectRepository(
                     ui["logEntries"] = JsonArray(ui["logEntries"]?.jsonArray.orEmpty().map { entry ->
                         val log = entry.jsonObject.toMutableMap()
                         log.remove("image")?.jsonPrimitive?.content?.let { encoded ->
-                            val bytes = java.util.Base64.getDecoder().decode(encoded)
-                            val hash = java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it.toInt() and 255) }
+                            val bytes = base64Decode(encoded)
+                            val hash = MessageDigest.getInstance("SHA-256").digest(bytes).let(::hex)
                             val imagePath = "images/$hash.png"
                             Files.createDirectories(root.resolve("images")); Files.write(root.resolve(imagePath), bytes)
                             log["imagePath"] = JsonPrimitive(imagePath)
@@ -123,7 +127,7 @@ class ProjectRepository(
                     log.remove("imagePath")?.jsonPrimitive?.content?.let { name ->
                         val image = root.resolve(name).normalize()
                         require(!Path.of(name).isAbsolute && image.startsWith(root) && Files.isRegularFile(image)) { "Invalid log image reference" }
-                        log["image"] = JsonPrimitive(java.util.Base64.getEncoder().encodeToString(Files.readAllBytes(image)))
+                        log["image"] = JsonPrimitive(base64Encode(Files.readAllBytes(image)))
                     }
                     JsonObject(log)
                 })

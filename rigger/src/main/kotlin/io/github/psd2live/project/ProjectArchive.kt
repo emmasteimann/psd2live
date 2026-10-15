@@ -1,4 +1,6 @@
 package io.github.psd2live.project
+import io.github.psd2live.core.hex
+import io.github.psd2live.core.MessageDigest
 
 import io.github.psd2live.core.synchronized
 
@@ -14,7 +16,6 @@ import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.nio.file.attribute.BasicFileAttributes
-import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import java.util.zip.CRC32
 import java.util.zip.ZipEntry
@@ -137,7 +138,7 @@ object ProjectArchive {
             hash.update(buffer, 0, n); crc.update(buffer, 0, n)
             output?.write(buffer, 0, n)
         }
-        return Digest(hash.digest().joinToString("") { "%02x".format(it.toInt() and 255) }, crc.value, size)
+        return Digest(hash.digest().let(::hex), crc.value, size)
     }
 
     /**
@@ -253,7 +254,7 @@ object ProjectArchive {
                     // Windows drops a trailing dot or space and ignores case, so such names would land on one file
                     // and the last write would replace a digest already checked.
                     require(name.trimEnd('/').split('/').none { it.endsWith('.') || it.endsWith(' ') }) { "Invalid project entry: $name" }
-                    require(names.add(name) && folded.add(name.trimEnd('/').lowercase(java.util.Locale.ROOT))) { "Duplicate project entry: $name" }
+                    require(names.add(name) && folded.add(name.trimEnd('/').lowercase())) { "Duplicate project entry: $name" }
                     require(names.size <= 1_000_000) { "Too many project entries" }
                     val path = root.resolve(name).normalize()
                     require(path.startsWith(root)) { "Project entry escapes archive" }

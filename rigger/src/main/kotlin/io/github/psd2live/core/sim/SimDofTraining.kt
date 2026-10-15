@@ -1,9 +1,9 @@
 package io.github.psd2live.core.sim
+import io.github.psd2live.core.AtomicInteger
 
 import io.github.psd2live.core.PhysicsEngine
 import org.umamo.runtime.model.ParameterId
 import org.umamo.runtime.model.PuppetModel
-import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.exp

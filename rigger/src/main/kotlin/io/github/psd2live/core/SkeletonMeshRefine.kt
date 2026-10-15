@@ -53,8 +53,8 @@ object SkeletonMeshRefine {
 	private class Refined(val edit: MeshTopologyEdit, val frame: FloatArray)
 
 	private const val CACHE_CAPACITY = 128
-	private val cache = object : LinkedHashMap<String, java.lang.ref.SoftReference<Refined>>(16, 0.75f, true) {
-		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, java.lang.ref.SoftReference<Refined>>?): Boolean = size > CACHE_CAPACITY
+	private val cache = object : LinkedHashMap<String, SoftReference<Refined>>(16, 0.75f, true) {
+		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, SoftReference<Refined>>?): Boolean = size > CACHE_CAPACITY
 	}
 	/** Marks a cached "nothing to add", which a soft reference cannot hold. */
 	private val unchanged = Refined(MeshTopologyEdit(DrawableMesh(FloatArray(0), FloatArray(0), IntArray(0)), emptyList()), FloatArray(0))
@@ -72,7 +72,7 @@ object SkeletonMeshRefine {
 		val hit = synchronized(cache) { cache[key]?.get() }
 		if (hit != null) return hit.takeIf { it !== unchanged }
 		val result = compute(mesh, canvas, bands, segments)
-		synchronized(cache) { cache[key] = java.lang.ref.SoftReference(result ?: unchanged) }
+		synchronized(cache) { cache[key] = SoftReference(result ?: unchanged) }
 		return result
 	}
 

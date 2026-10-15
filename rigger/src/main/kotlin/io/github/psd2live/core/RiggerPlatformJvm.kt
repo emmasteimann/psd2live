@@ -99,3 +99,14 @@ actual fun <T> synchronizedListOf(list: MutableList<T>): MutableList<T> = java.u
 
 actual fun normalizeNfkc(text: String): String = java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFKC)
 
+
+actual fun warn(message: String) = System.err.println(message)
+
+actual fun nanoTime(): Long = System.nanoTime()
+
+actual typealias InterruptedException = java.lang.InterruptedException
+
+actual fun callerInterruptCheck(): () -> Unit {
+	val caller = Thread.currentThread()
+	return { if (caller.isInterrupted) throw InterruptedException() }
+}

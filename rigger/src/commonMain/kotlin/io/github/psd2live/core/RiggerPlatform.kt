@@ -44,3 +44,18 @@ expect fun parallelFor(indices: IntArray, body: (Int) -> Unit)
 
 /** Throws when the platform asked the current job to stop (a JVM thread interrupt); nothing on the iPad. */
 expect fun checkInterrupted()
+
+/** A warning line for whoever runs the rigger (System.err on the desktop, the console on the iPad). */
+expect fun warn(message: String)
+
+/** A monotonic clock in nanoseconds (System.nanoTime on the desktop), for timings only. */
+expect fun nanoTime(): Long
+
+/** java.lang.InterruptedException: a job was asked to stop. */
+expect open class InterruptedException() : Exception
+
+/**
+ * A check bound to the calling thread, to be run from work it hands to others: it throws [InterruptedException] once
+ * that thread is interrupted (the desktop cancels a build so). Never throws on the iPad.
+ */
+expect fun callerInterruptCheck(): () -> Unit

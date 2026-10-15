@@ -1,4 +1,6 @@
 package io.github.psd2live.project
+import io.github.psd2live.core.hex
+import io.github.psd2live.core.MessageDigest
 
 import io.github.psd2live.core.SkeletonRig
 import io.github.psd2live.format.compile.Compiler
@@ -10,7 +12,6 @@ import java.io.DataOutputStream
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
-import java.security.MessageDigest
 
 /**
  * The optional, non-authoritative `cache/head/` folder of a v2 archive: expensive intermediate results of
@@ -162,5 +163,5 @@ object ProjectHeadCache {
 		Files.walk(path).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) }
 	}
 
-	private fun sha256(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it.toInt() and 255) }
+	private fun sha256(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).let(::hex)
 }

@@ -1,4 +1,6 @@
 package io.github.psd2live.core.legacy
+import io.github.psd2live.core.base64Decode
+import io.github.psd2live.core.base64Encode
 
 import io.github.psd2live.core.*
 
@@ -6,7 +8,6 @@ import kotlinx.serialization.json.*
 import org.umamo.format.art.SourceArt
 import org.umamo.format.art.LayerBounds
 import org.umamo.format.art.LayerRaster
-import java.util.Base64
 
 /** Retired derived assets remain reconstructible for earlier creation and mesh journals. */
 object RigGenerationTextures {
@@ -32,7 +33,7 @@ object RigGenerationTextures {
                 buildJsonObject {
                     put("side", lip.side); put("bounds", buildJsonArray { add(lip.bounds.left); add(lip.bounds.top); add(lip.bounds.width); add(lip.bounds.height) })
                     put("width", lip.raster.width); put("height", lip.raster.height)
-                    put("rgba", Base64.getEncoder().encodeToString(lip.raster.rgba))
+                    put("rgba", base64Encode(lip.raster.rgba))
                 }
             } }))
         } }
@@ -52,7 +53,7 @@ object RigGenerationTextures {
                     val layer = element.jsonObject; val side = layer.getValue("side").jsonPrimitive.int
                     val bounds = layer.getValue("bounds").jsonArray.map { it.jsonPrimitive.int }
                     val width = layer.getValue("width").jsonPrimitive.int; val height = layer.getValue("height").jsonPrimitive.int
-                    val pixels = Base64.getDecoder().decode(layer.getValue("rgba").jsonPrimitive.content)
+                    val pixels = base64Decode(layer.getValue("rgba").jsonPrimitive.content)
                     require(side in 0..1 && bounds.size == 4 && width > 0 && height > 0 && width.toLong() * height * 4 == pixels.size.toLong()) { "Invalid persisted lip artwork" }
                     val visible = (3 until sourceLayer.raster.rgba.size step 4).any { (sourceLayer.raster.rgba[it].toInt() and 255) > config.alphaThreshold }
                     val lip = MouthLipLayer(owner, side, sourceLayer, LayerRaster(width, height, if (visible) pixels else ByteArray(pixels.size)), LayerBounds(bounds[0], bounds[1], bounds[2], bounds[3]))

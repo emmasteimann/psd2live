@@ -2,7 +2,6 @@ package io.github.psd2live.core
 
 import kotlinx.serialization.json.*
 import org.umamo.runtime.model.*
-import java.security.MessageDigest
 
 /** Editable controls live in the journal; the runtime and CMO3 retain the sampled Warp lattice. */
 object RigBezierJournal {
@@ -146,5 +145,5 @@ object RigBezierJournal {
     private fun coordinate(value: JsonElement) = value.jsonObject.mapValues { it.value.jsonPrimitive.float }
     private fun keyJson(key: Map<String, Float>) = buildJsonObject { key.toSortedMap().forEach { (id, value) -> put(id, value) } }
     private fun fingerprint(points: FloatArray): String = MessageDigest.getInstance("SHA-256")
-        .digest(RigWarpTopology.floats(points).toString().toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it.toInt() and 255) }
+        .digest(RigWarpTopology.floats(points).toString().encodeToByteArray()).let(::hex)
 }

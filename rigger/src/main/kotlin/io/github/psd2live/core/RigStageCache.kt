@@ -2,11 +2,6 @@ package io.github.psd2live.core
 
 import kotlin.concurrent.Volatile
 
-import java.security.MessageDigest
-import java.util.Collections
-import java.util.WeakHashMap
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicLong
 
 /**
  * The outputs of the rig builder's stages, each kept under a content key of only what that stage reads.
@@ -31,12 +26,12 @@ class RigStageCache {
 		val misses = AtomicLong()
 	}
 
-	private val kinds = ConcurrentHashMap<String, Kind>()
+	private val kinds = Collections.synchronizedMap(HashMap<String, Kind>())
 
 	/** The output of stage [kind] for [key], computed by [build] (outside any lock) when not kept. */
 	@Suppress("UNCHECKED_CAST")
 	fun <T : Any> get(kind: String, capacity: Int, key: Any, build: () -> T): T {
-		val entries = kinds.computeIfAbsent(kind) { Kind(capacity) }
+		val entries = synchronized(kinds) { kinds.getOrPut(kind) { Kind(capacity) } }
 		synchronized(entries) { entries.entries[key] }?.let { entries.hits.incrementAndGet(); return it as T }
 		entries.misses.incrementAndGet()
 		val value = build()
@@ -76,5 +71,5 @@ object RasterDigest {
 	fun seed(rgba: ByteArray, digest: String) { digests[rgba] = digest }
 
 	/** The digest computed afresh, without the per-array memo. */
-	fun compute(rgba: ByteArray): String = java.util.HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(rgba))
+	fun compute(rgba: ByteArray): String = hex(MessageDigest.getInstance("SHA-256").digest(rgba))
 }

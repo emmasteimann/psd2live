@@ -2,8 +2,6 @@ package io.github.psd2live.core
 
 import kotlin.concurrent.Volatile
 
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Wall time spent in each stage of a rig build, summed over every build while [recording] is on. Off - the
@@ -11,21 +9,23 @@ import java.util.concurrent.atomic.AtomicLong
  */
 object RigBuildProfile {
 	@Volatile var recording: Boolean = false
-	private val nanos = ConcurrentHashMap<String, AtomicLong>()
-	private val calls = ConcurrentHashMap<String, AtomicLong>()
+	private val nanos = Collections.synchronizedMap(HashMap<String, AtomicLong>())
+	private val calls = Collections.synchronizedMap(HashMap<String, AtomicLong>())
 
 	inline fun <T> stage(name: String, block: () -> T): T {
 		if (!recording) return block()
-		val start = System.nanoTime()
-		try { return block() } finally { add(name, System.nanoTime() - start) }
+		val start = nanoTime()
+		try { return block() } finally { add(name, nanoTime() - start) }
 	}
 
 	fun add(name: String, elapsed: Long) {
-		nanos.computeIfAbsent(name) { AtomicLong() }.addAndGet(elapsed)
-		calls.computeIfAbsent(name) { AtomicLong() }.incrementAndGet()
+		counter(nanos, name).addAndGet(elapsed)
+		counter(calls, name).incrementAndGet()
 	}
 
-	fun count(name: String) = calls.computeIfAbsent(name) { AtomicLong() }.incrementAndGet()
+	fun count(name: String) = counter(calls, name).incrementAndGet()
+
+	private fun counter(map: MutableMap<String, AtomicLong>, name: String): AtomicLong = synchronized(map) { map.getOrPut(name) { AtomicLong() } }
 
 	fun reset() { nanos.clear(); calls.clear() }
 

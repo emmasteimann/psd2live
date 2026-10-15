@@ -60,7 +60,7 @@ object AtlasArrange {
 		val column = x / CELL; val row = y / CELL
 		val columns = ceilDiv(x + width, CELL) - column; val rows = ceilDiv(y + height, CELL) - row
 		if (footprint == null) return Shape(column, row, columns, rows, Array(rows) { intArrayOf(0, columns) })
-		val bits = java.util.BitSet(columns * rows)
+		val bits = BitSet(columns * rows)
 		val sx = width.toDouble() / rasterWidth; val sy = height.toDouble() / rasterHeight
 		for (j in 0 until footprint.rows) for (i in 0 until footprint.columns) {
 			if (!footprint[i, j]) continue
@@ -81,7 +81,7 @@ object AtlasArrange {
 		// A thousandth of a pixel absorbs the trigonometry's rounding, so a quarter turn's box stays on its cells.
 		val column = floor((box[0] + 1e-3f) / CELL).toInt(); val row = floor((box[1] + 1e-3f) / CELL).toInt()
 		val columns = (ceil((box[2] - 1e-3f) / CELL).toInt() - column).coerceAtLeast(1); val rows = (ceil((box[3] - 1e-3f) / CELL).toInt() - row).coerceAtLeast(1)
-		val bits = java.util.BitSet(columns * rows)
+		val bits = BitSet(columns * rows)
 		fun quad(tx0: Float, ty0: Float, tx1: Float, ty1: Float) {
 			val q = FloatArray(8)
 			for ((k, corner) in listOf(tx0 to ty0, tx1 to ty0, tx1 to ty1, tx0 to ty1).withIndex()) {
@@ -102,7 +102,7 @@ object AtlasArrange {
 	}
 
 	/** Sets every cell of the box at ([column], [row]) that the convex quad [q] (four page points) overlaps. */
-	private fun markQuad(bits: java.util.BitSet, column: Int, row: Int, columns: Int, rows: Int, q: FloatArray) {
+	private fun markQuad(bits: BitSet, column: Int, row: Int, columns: Int, rows: Int, q: FloatArray) {
 		val minX = minOf(q[0], q[2], q[4], q[6]); val maxX = maxOf(q[0], q[2], q[4], q[6])
 		val minY = minOf(q[1], q[3], q[5], q[7]); val maxY = maxOf(q[1], q[3], q[5], q[7])
 		val c0 = (floor(minX / CELL).toInt() - column).coerceIn(0, columns - 1); val c1 = (ceil(maxX / CELL).toInt() - column).coerceIn(c0 + 1, columns)
@@ -127,7 +127,7 @@ object AtlasArrange {
 		}
 	}
 
-	private fun runs(bits: java.util.BitSet, start: Int, length: Int): IntArray {
+	private fun runs(bits: BitSet, start: Int, length: Int): IntArray {
 		val out = ArrayList<Int>()
 		var at = bits.nextSetBit(start)
 		while (at in start until start + length) {
@@ -142,7 +142,7 @@ object AtlasArrange {
 	fun dilate(shape: Shape, cells: Int): Shape {
 		if (cells <= 0) return shape
 		val columns = shape.width + cells * 2; val rows = shape.height + cells * 2
-		val bits = java.util.BitSet(columns * rows)
+		val bits = BitSet(columns * rows)
 		for (r in 0 until shape.height) {
 			val run = shape.runs[r]
 			for (k in run.indices step 2) for (rr in r until r + cells * 2 + 1) bits.set(rr * columns + run[k], rr * columns + run[k + 1] + cells * 2)
@@ -404,7 +404,7 @@ object AtlasArrange {
 	fun footprint(rasterWidth: Int, rasterHeight: Int, cell: Int, triangles: List<FloatArray>): TextureFootprint? {
 		if (triangles.isEmpty()) return null
 		val columns = ceilDiv(rasterWidth, cell); val rows = ceilDiv(rasterHeight, cell)
-		val bits = java.util.BitSet(columns * rows)
+		val bits = BitSet(columns * rows)
 		for (t in triangles) {
 			val minX = minOf(t[0], t[2], t[4]); val maxX = maxOf(t[0], t[2], t[4])
 			val minY = minOf(t[1], t[3], t[5]); val maxY = maxOf(t[1], t[3], t[5])
@@ -430,7 +430,7 @@ object AtlasArrange {
 		val cell = footprint.cell; val columns = footprint.columns
 		if (columns != ceilDiv(raster.width, cell) || footprint.rows != ceilDiv(raster.height, cell)) return null
 		val rgba = raster.rgba
-		var grown: java.util.BitSet? = null
+		var grown: BitSet? = null
 		for (y in 0 until raster.height) {
 			val row = y / cell * columns
 			var x = 0
@@ -438,7 +438,7 @@ object AtlasArrange {
 				val index = row + x / cell
 				val owned = footprint.bits[index] || grown?.get(index) == true
 				if (!owned && (rgba[(y * raster.width + x) * 4 + 3].toInt() and 0xff) < COVER_ALPHA) { x++; continue }
-				if (!owned) (grown ?: (footprint.bits.clone() as java.util.BitSet).also { grown = it }).set(index)
+				if (!owned) (grown ?: (footprint.bits.clone() as BitSet).also { grown = it }).set(index)
 				x = (x / cell + 1) * cell
 			}
 		}

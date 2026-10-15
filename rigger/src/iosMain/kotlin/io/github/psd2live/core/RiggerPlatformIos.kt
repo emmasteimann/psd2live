@@ -175,3 +175,13 @@ actual inline fun <R> synchronized(lock: Any, block: () -> R): R {
 	monitor.lock()
 	try { return block() } finally { monitor.unlock() }
 }
+
+actual fun warn(message: String) = println(message)
+
+private val clockStart = kotlin.time.TimeSource.Monotonic.markNow()
+
+actual fun nanoTime(): Long = clockStart.elapsedNow().inWholeNanoseconds
+
+actual open class InterruptedException actual constructor() : Exception()
+
+actual fun callerInterruptCheck(): () -> Unit = {}

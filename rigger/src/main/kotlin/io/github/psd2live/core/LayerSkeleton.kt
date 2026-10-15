@@ -13,7 +13,7 @@ object LayerSkeleton {
 		var grew = true
 		while (grew) grew = spec.bones.filter { it.parentId in dropped && it.id !in dropped }.onEach { dropped += it.id }.isNotEmpty()
 		val kept = spec.bones.filterNot { it.id in dropped }
-		System.err.println("Skeleton (arms): " + kept.filter { it.role in armRoles }.joinToString { "${it.name} (${it.headX.toInt()},${it.headY.toInt()})->(${it.tailX.toInt()},${it.tailY.toInt()}) ${it.drawableIds.size} mesh(es)" })
+		warn("Skeleton (arms): " + kept.filter { it.role in armRoles }.joinToString { "${it.name} (${it.headX.toInt()},${it.headY.toInt()})->(${it.tailX.toInt()},${it.tailY.toInt()}) ${it.drawableIds.size} mesh(es)" })
 		return spec.copy(bones = kept, ikTargets = spec.ikTargets.filterKeys { it !in dropped })
 	}
 

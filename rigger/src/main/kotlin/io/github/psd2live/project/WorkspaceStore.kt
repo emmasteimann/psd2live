@@ -1,4 +1,7 @@
 package io.github.psd2live.project
+import io.github.psd2live.core.base64Decode
+import io.github.psd2live.core.base64Encode
+import io.github.psd2live.core.MessageDigest
 
 import io.github.psd2live.core.Math
 
@@ -56,7 +59,6 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
-import java.security.MessageDigest
 import java.time.Instant
 import java.util.UUID
 import java.util.zip.GZIPInputStream
@@ -329,7 +331,7 @@ class WorkspaceStore(
 			put("id", value.id)
 			put("sha256", value.sha256)
             put("details", value.details)
-            asset.originalPng?.let { put("originalPng", java.util.Base64.getEncoder().encodeToString(it)) }
+            asset.originalPng?.let { put("originalPng", base64Encode(it)) }
 			put("pixelWidth", value.pixelWidth)
 			put("pixelHeight", value.pixelHeight)
 			put("rgbaBlob", blobHash)
@@ -347,7 +349,7 @@ class WorkspaceStore(
 		return WorkspacePngAsset(
 			public = public,
 			rgba = loadRaster(project, objectValue.requiredString("rgbaBlob"), public.pixelWidth, public.pixelHeight),
-            originalPng = objectValue.optionalString("originalPng")?.let { java.util.Base64.getDecoder().decode(it) },
+            originalPng = objectValue.optionalString("originalPng")?.let { base64Decode(it) },
 		)
 	}
 

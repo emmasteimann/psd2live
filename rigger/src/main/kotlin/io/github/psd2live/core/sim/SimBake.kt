@@ -1,11 +1,11 @@
 package io.github.psd2live.core.sim
+import io.github.psd2live.core.MessageDigest
 
 import io.github.psd2live.core.Math
 
 import io.github.psd2live.core.RigPhysicsEdit
 import kotlinx.serialization.json.*
 import org.umamo.runtime.model.PuppetModel
-import java.security.MessageDigest
 
 /**
  * Keys on one parameter axis, with what each target mesh adds at each key: local mesh deltas, the same

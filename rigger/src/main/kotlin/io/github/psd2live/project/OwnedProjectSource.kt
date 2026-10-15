@@ -1,10 +1,10 @@
 package io.github.psd2live.project
+import io.github.psd2live.core.MessageDigest
 
 import kotlinx.serialization.json.*
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
-import java.security.MessageDigest
 
 /** Immutable import bytes owned by the workspace; external paths are presentation/provenance only. */
 data class OwnedProjectSource(val path: Path, val descriptor: JsonObject) {

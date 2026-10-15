@@ -108,3 +108,13 @@ class MessageDigest private constructor(private val algorithm: String) {
 		fun getInstance(algorithm: String): MessageDigest = MessageDigest(algorithm)
 	}
 }
+
+/** Lower-case hex of [bytes] (java.util.HexFormat.of().formatHex). */
+fun hex(bytes: ByteArray): String = bytes.toByteString().hex()
+
+/** java.util.Base64's basic encoder. */
+fun base64Encode(bytes: ByteArray): String = kotlin.io.encoding.Base64.encode(bytes)
+
+/** java.util.Base64's basic decoder: padding optional, anything outside the alphabet rejected. */
+fun base64Decode(text: String): ByteArray =
+	kotlin.io.encoding.Base64.withPadding(kotlin.io.encoding.Base64.PaddingOption.PRESENT_OPTIONAL).decode(text)

@@ -562,7 +562,7 @@ object ArtPrimitiveReplay {
 				val replayed = if (held) g else replay(g, record, previousSkins)
 				g2 = replay(g2, record, nextSkins)
 				g = replayed
-			} catch (failure: java.util.concurrent.CancellationException) {
+			} catch (failure: kotlin.coroutines.cancellation.CancellationException) {
 				throw failure
 			} catch (failure: RuntimeException) {
 				g = g.withDrawablesDeleted(ids)

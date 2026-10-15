@@ -13,7 +13,6 @@ import org.umamo.interop.cmo3.Cmo3AtlasIngest
 import org.umamo.interop.cmo3.cmo3AtlasIngest
 import org.umamo.runtime.model.*
 import org.umamo.render.restMeshesToCanvasSpace
-import java.util.Base64
 import kotlinx.serialization.json.jsonPrimitive
 import java.awt.image.BufferedImage
 import java.awt.geom.AffineTransform
@@ -39,7 +38,7 @@ object Cmo3ModelImport {
     @Synchronized
     fun decode(encoded: String): Document {
         cached?.takeIf { it.first == encoded }?.let { return it.second }
-        return read(Base64.getDecoder().decode(encoded)).also { cached = encoded to it }
+        return read(base64Decode(encoded)).also { cached = encoded to it }
     }
 
     fun read(bytes: ByteArray): Document {
@@ -120,7 +119,7 @@ object Cmo3ModelImport {
                 "Imported model", System.currentTimeMillis(), 0)
             Cmo3.write(converted.model)
         } else bytes
-        val baseline = Base64.getEncoder().encodeToString(document)
+        val baseline = base64Encode(document)
         val decoded = decode(baseline)
         val importedLayers = layers(incoming, layerIds)
         val layers = if (replace) mergeById(current!!.analysis.source.layers, importedLayers) { it.id } else importedLayers

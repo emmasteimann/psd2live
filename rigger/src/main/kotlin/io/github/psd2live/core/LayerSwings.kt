@@ -19,7 +19,7 @@ object LayerSwings {
 		var overlay = config.rigEdits
 		for ((name, settings) in config.layerSwings) {
 			val drawables = drawablesByName[name].orEmpty().sorted()
-			if (drawables.isEmpty()) { System.err.println("Warning: swing: no layer named \"$name\""); continue }
+			if (drawables.isEmpty()) { warn("Warning: swing: no layer named \"$name\""); continue }
 			val id = "Layer" + name.filter { it.isLetterOrDigit() }.replaceFirstChar { it.uppercase() }
 			overlay = runCatching {
 				val request = SwingAuthoring.request(JsonObject(settings + mapOf(
@@ -27,7 +27,7 @@ object LayerSwings {
 					"targets" to JsonArray(drawables.map(::JsonPrimitive)),
 				)))
 				SwingAuthoring.put(overlay, rig.withRigEdits(overlay).puppet, request.edit, request.estimatePhysics)
-			}.getOrElse { System.err.println("Warning: swing \"$name\": ${it.message}"); overlay }
+			}.getOrElse { warn("Warning: swing \"$name\": ${it.message}"); overlay }
 		}
 		return config.copy(rigEdits = overlay)
 	}

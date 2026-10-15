@@ -160,7 +160,7 @@ class PhysicsEngine(settings: List<RigPhysicsEdit>, ranges: Map<String, Range>, 
 		var out = emptyMap<String, Float>()
 		var t = 0f
 		while (t < seconds) {
-			if (cancelled()) throw java.util.concurrent.CancellationException("Physics settling cancelled")
+			if (cancelled()) throw kotlin.coroutines.cancellation.CancellationException("Physics settling cancelled")
 			out = step(values, SETTLE_STEP); t += SETTLE_STEP
 			progress((t / seconds).coerceIn(0f, 1f))
 		}

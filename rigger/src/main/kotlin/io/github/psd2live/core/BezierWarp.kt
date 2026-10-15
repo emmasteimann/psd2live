@@ -7,7 +7,6 @@ import org.umamo.format.cmo3.model.gen.CWarpDeformerSource
 import org.umamo.format.cmo3.type.CArrayList
 import org.umamo.format.cmo3.Cmo3
 import org.umamo.interop.cmo3.Cmo3Import
-import java.util.Base64
 
 /** Direction of a Bezier tangent handle relative to its anchor point. */
 enum class BezierHandleDir { LEFT, RIGHT, TOP, BOTTOM }
@@ -261,7 +260,7 @@ object BezierWarp {
     fun importedDivisions(overlay: RigEditOverlay, id: String): Pair<Int, Int>? {
         val encoded = overlay.importedCmo3 ?: return null
         if (importedCache?.first != encoded) {
-            val model = Cmo3.read(Base64.getDecoder().decode(encoded)).root as CModelSource
+            val model = Cmo3.read(base64Decode(encoded)).root as CModelSource
             val sources = Cmo3Import.elementsOf((model.deformerSourceSet as? CDeformerSourceSet)?._sources).filterIsInstance<CWarpDeformerSource>()
             val values = sources.mapNotNull { source ->
                 val key = Cmo3Import.idStrOf(source.id) ?: return@mapNotNull null

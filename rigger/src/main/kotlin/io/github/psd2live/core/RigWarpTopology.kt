@@ -3,8 +3,7 @@ package io.github.psd2live.core
 import kotlinx.serialization.json.*
 import org.umamo.render.eval.warpApply
 import org.umamo.runtime.model.*
-import java.security.MessageDigest
-import java.util.concurrent.CancellationException
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.abs
 
 /** A lattice change samples the actual runtime surface, including every additive reference form. */
@@ -23,8 +22,8 @@ object RigWarpTopology {
                 put("parameter", b.parameterId.raw); put("keys", floats(b.keys)); put("neutral", b.neutralIndex)
                 put("forms", JsonArray(b.forms.map { it?.let { f -> floats(f.controlPoints) } ?: JsonNull }))
             } }))
-        }.toString().toByteArray(Charsets.UTF_8)
-        return MessageDigest.getInstance("SHA-256").digest(data).joinToString("") { "%02x".format(it.toInt() and 255) }
+        }.toString().encodeToByteArray()
+        return MessageDigest.getInstance("SHA-256").digest(data).let(::hex)
     }
 
     fun prepare(model: PuppetModel, id: String, rows: Int, columns: Int, check: () -> Unit = ::checkpoint): JsonObject {

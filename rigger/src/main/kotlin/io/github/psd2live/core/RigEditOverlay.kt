@@ -352,7 +352,7 @@ data class RigEditOverlay(
 				GeneratedOverrides.OP -> model
 				else -> RigAuthoringJournal.replay(model, command, skins)
 			}, state.notes)
-		} catch (failure: java.util.concurrent.CancellationException) {
+		} catch (failure: kotlin.coroutines.cancellation.CancellationException) {
 			throw failure
 		} catch (failure: RuntimeException) {
 			val stubs = stubTolerance[command] ?: throw failure
@@ -525,7 +525,7 @@ data class RigEditOverlay(
 	}
 
 	/** Per journal entry (by identity) before a version 2 split, the drawables later v2 records supersede ([StubTolerance]). */
-	private val stubTolerance: java.util.IdentityHashMap<kotlinx.serialization.json.JsonObject, Set<String>> by lazy { StubTolerance.of(authoringJournal) }
+	private val stubTolerance: IdentityHashMap<kotlinx.serialization.json.JsonObject, Set<String>> by lazy { StubTolerance.of(authoringJournal) }
 
 	companion object {
 		/** Cubism Editor's default physics rate. */

@@ -2,7 +2,6 @@ package io.github.psd2live.core
 
 import org.umamo.render.eval.CpuDeformationEvaluator
 import org.umamo.runtime.model.PuppetModel
-import java.util.PriorityQueue
 import kotlin.math.abs
 import kotlin.math.acos
 import kotlin.math.exp

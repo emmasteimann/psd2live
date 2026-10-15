@@ -1,4 +1,5 @@
 package io.github.psd2live.core.legacy
+import io.github.psd2live.core.IdentityHashMap
 
 import io.github.psd2live.core.*
 import kotlinx.serialization.json.*
@@ -21,8 +22,8 @@ data class SupersededEntryNote(val index: Int, val op: String, val targets: List
  */
 object StubTolerance {
 	/** Per entry (by identity) before at least one v2 record: every drawable those later records supersede. */
-	fun of(journal: List<JsonObject>): java.util.IdentityHashMap<JsonObject, Set<String>> {
-		val result = java.util.IdentityHashMap<JsonObject, Set<String>>()
+	fun of(journal: List<JsonObject>): IdentityHashMap<JsonObject, Set<String>> {
+		val result = IdentityHashMap<JsonObject, Set<String>>()
 		var later = emptySet<String>()
 		for (index in journal.indices.reversed()) {
 			val entry = journal[index]

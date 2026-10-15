@@ -4,10 +4,6 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import org.umamo.format.art.SourceArt
-import java.security.MessageDigest
-import java.util.Collections
-import java.util.WeakHashMap
-import java.lang.ref.SoftReference
 
 /**
  * The last few rigs generated from a saved generation source, before their UVs are moved onto the current
@@ -73,7 +69,7 @@ class GeneratedGeometryCache {
 
 		/** Saved generation rasters keep their identity across rebuilds, so each is hashed once. */
 		private fun digest(rgba: ByteArray): String = digests.getOrPut(rgba) {
-			java.util.HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(rgba))
+			hex(MessageDigest.getInstance("SHA-256").digest(rgba))
 		}
 
 		private fun withoutGeometryPoints(config: PipelineConfig): PipelineConfig {

@@ -1,8 +1,6 @@
 package io.github.psd2live.core
 
 import org.umamo.format.art.SourceLayer
-import java.text.Normalizer
-import java.util.Locale
 
 /** See-Through/Stretchy names plus Anime2.5DRig's English, Chinese and Japanese aliases, and Korean ones. */
 object LayerClassifier {
@@ -52,9 +50,9 @@ object LayerClassifier {
 	private val copySuffix = Regex("\\s*(?:copy|のコピー|的副本|副本|복사)\\s*\\d*$", RegexOption.IGNORE_CASE)
 
 	fun classify(name: String): LayerSemantic {
-		var normalized = Normalizer.normalize(name, Normalizer.Form.NFKC)
+		var normalized = normalizeNfkc(name)
 			.trim()
-			.lowercase(Locale.ROOT)
+			.lowercase()
 			.replace(copySuffix, "")
 			.trim()
 		var side = Side.NONE
@@ -111,7 +109,7 @@ object LayerClassifier {
 			?.value
 
 	private fun sideOf(raw: String): Side =
-		when (raw.lowercase(Locale.ROOT)) {
+		when (raw.lowercase()) {
 			"l", "left", "左", "왼쪽", "왼", "좌" -> Side.LEFT
 			else -> Side.RIGHT
 		}
@@ -124,7 +122,7 @@ object LayerClassifier {
 	 * Stats by raster array. Rasters keep their identity across rebuilds - only a painted or replaced layer gets
 	 * a new one - so every rebuild after a paint scans just that layer.
 	 */
-	private val alphaStats = java.util.Collections.synchronizedMap(java.util.WeakHashMap<ByteArray, AlphaStats>())
+	private val alphaStats = Collections.synchronizedMap(WeakHashMap<ByteArray, AlphaStats>())
 
 	private fun alphaStats(raster: org.umamo.format.art.LayerRaster, alphaThreshold: Int): AlphaStats {
 		alphaStats[raster.rgba]?.takeIf { it.width == raster.width && it.threshold == alphaThreshold }?.let { return it }

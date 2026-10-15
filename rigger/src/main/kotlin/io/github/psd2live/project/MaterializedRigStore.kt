@@ -1,4 +1,5 @@
 package io.github.psd2live.project
+import io.github.psd2live.core.SoftReference
 
 import io.github.psd2live.core.synchronized
 import kotlin.concurrent.Volatile
@@ -11,7 +12,6 @@ import io.github.psd2live.core.RigEditOverlay
 import io.github.psd2live.core.RigObjects
 import io.github.psd2live.history.WorkspaceHistoryState
 import kotlinx.serialization.json.*
-import java.lang.ref.SoftReference
 import java.nio.file.Files
 import java.nio.file.Path
 

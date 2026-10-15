@@ -8,8 +8,6 @@ import org.umamo.format.art.LayerBounds
 import org.umamo.format.art.LayerRaster
 import org.umamo.format.art.SourceLayer
 import org.umamo.format.art.isFullyTransparent
-import java.util.Collections
-import java.util.WeakHashMap
 
 /**
  * The canvas-resolution view of a layer whose raster is not one pixel per canvas unit over its integer bounds.

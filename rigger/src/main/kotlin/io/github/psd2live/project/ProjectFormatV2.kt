@@ -1,10 +1,12 @@
 package io.github.psd2live.project
+import io.github.psd2live.core.hex
+import io.github.psd2live.core.IdentityHashMap
+import io.github.psd2live.core.MessageDigest
 
 import kotlinx.serialization.json.*
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
-import java.security.MessageDigest
 
 /**
  * The v2 layout of a `.psd2live` archive, and its conversion to and from the working store.
@@ -194,7 +196,7 @@ object ProjectFormatV2 {
 
 	/** Payload node hashes by journal entry identity. */
 	class PayloadHashes {
-		private val hashes = java.util.IdentityHashMap<JsonObject, String>()
+		private val hashes = IdentityHashMap<JsonObject, String>()
 		fun getOrPut(entry: JsonObject, write: () -> String): String = hashes.getOrPut(entry, write)
 	}
 
@@ -360,5 +362,5 @@ object ProjectFormatV2 {
 		Files.walk(path).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) }
 	}
 
-	private fun sha256(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it.toInt() and 255) }
+	private fun sha256(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).let(::hex)
 }

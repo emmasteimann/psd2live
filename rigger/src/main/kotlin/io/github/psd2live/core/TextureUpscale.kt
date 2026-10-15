@@ -5,7 +5,6 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
 import java.nio.file.Files
 import java.nio.file.Path
-import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import javax.imageio.ImageIO
 
@@ -180,7 +179,7 @@ object TextureUpscale {
                     process.destroyForcibly()
                 }, "psd2live-upscale-shutdown")
                 Runtime.getRuntime().addShutdownHook(shutdown)
-                val logLines = java.util.Collections.synchronizedList(mutableListOf<String>())
+                val logLines = Collections.synchronizedList(mutableListOf<String>())
                 val layerRegex = Regex("""Upscaling layer (\d+)/(\d+)""")
                 // A pipe read ignores interrupts, so the output is drained on its own thread and this one
                 // waits in waitFor, which a cancel does interrupt; the finally below then kills the worker.

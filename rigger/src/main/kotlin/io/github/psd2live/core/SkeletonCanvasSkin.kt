@@ -78,7 +78,7 @@ object SkeletonCanvasSkin {
 	}
 
 	/** [unskinned] of each checkpoint record's authored rig, for the skeleton it was computed with. */
-	private val checkpointed = java.util.WeakHashMap<JsonObject, Pair<SkeletonSpec, Set<String>>>()
+	private val checkpointed = WeakHashMap<JsonObject, Pair<SkeletonSpec, Set<String>>>()
 
 	/**
 	 * The meshes bound to a limb bone of [spec] that no bone of their limb moves in [model]: none of the limb's bone

@@ -142,7 +142,7 @@ object SimAuthoring {
     fun report(model: PuppetModel, edit: RigSimEdit, hold: Float = 0.5f, release: Float = 1.5f, wind: Pair<Float, Float>? = null,
                progress: (Float) -> Unit = {}, cancelled: () -> Boolean = { false }): JsonObject {
         require(hold.isFinite() && hold in 0f..20f && release.isFinite() && release in 0f..20f) { "Hold and release must be within 0..20 seconds" }
-        fun check() { if (cancelled()) throw java.util.concurrent.CancellationException("Simulation sampling cancelled") }
+        fun check() { if (cancelled()) throw kotlin.coroutines.cancellation.CancellationException("Simulation sampling cancelled") }
         check(); progress(0f)
         val scene = SimScene.build(model, edit)
         val fps = 60
@@ -302,7 +302,7 @@ object SimAuthoring {
         return try {
             withBake(overlay, id, SimBaker.bake(model, edit, SimBaker.Options(physicsFps = overlay.physicsFps, previous = edit.bake?.physics, previousExtra = edit.bake?.extraPhysics.orEmpty(),
                 progress = progress, cancelled = cancelled, trainingMotions = trainingMotions(overlay, edit, model)))) to null
-        } catch (failure: java.util.concurrent.CancellationException) {
+        } catch (failure: kotlin.coroutines.cancellation.CancellationException) {
             overlay to "Bake cancelled"
         } catch (failure: IllegalArgumentException) {
             overlay to (failure.message ?: "Bake failed")

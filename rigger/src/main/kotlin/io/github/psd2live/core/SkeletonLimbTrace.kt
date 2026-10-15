@@ -1,6 +1,5 @@
 package io.github.psd2live.core
 
-import java.util.PriorityQueue
 import kotlin.math.hypot
 
 /**

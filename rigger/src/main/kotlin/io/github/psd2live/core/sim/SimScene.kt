@@ -1,4 +1,5 @@
 package io.github.psd2live.core.sim
+import io.github.psd2live.core.PriorityQueue
 
 import org.umamo.render.eval.CpuDeformationEvaluator
 import org.umamo.runtime.model.DrawableId
@@ -6,7 +7,6 @@ import org.umamo.runtime.model.ParameterId
 import org.umamo.runtime.model.PuppetModel
 import org.umamo.runtime.model.VertexGroup
 import org.umamo.runtime.model.VertexGroupKind
-import java.util.PriorityQueue
 import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.pow
@@ -92,13 +92,13 @@ class SimScene private constructor(
         try {
             for (i in 0 until s.count) s.damping[i] = maxOf(calm[i], 8f)
             repeat(passes) { pass ->
-                if (cancelled()) throw java.util.concurrent.CancellationException("Simulation calibration cancelled")
+                if (cancelled()) throw kotlin.coroutines.cancellation.CancellationException("Simulation calibration cancelled")
                 reset(model, pose)
                 val rest = s.positions()
                 repeat(frames) { frame ->
-                    if (cancelled()) throw java.util.concurrent.CancellationException("Simulation calibration cancelled")
+                    if (cancelled()) throw kotlin.coroutines.cancellation.CancellationException("Simulation calibration cancelled")
                     drive(model, pose, 1f / 60f) {
-                        if (cancelled()) throw java.util.concurrent.CancellationException("Simulation calibration cancelled")
+                        if (cancelled()) throw kotlin.coroutines.cancellation.CancellationException("Simulation calibration cancelled")
                     }
                     progress((pass.toLong() * frames + frame + 1).toFloat() / (passes.toLong() * frames).coerceAtLeast(1))
                 }

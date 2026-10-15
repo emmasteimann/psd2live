@@ -9,12 +9,8 @@ import io.github.psd2live.project.TextureOverride
 import io.github.psd2live.project.TexturePin
 import org.umamo.format.art.SourceLayer
 import java.awt.image.BufferedImage
-import java.lang.ref.SoftReference
 import java.nio.file.Path
-import java.security.MessageDigest
-import java.util.Collections
 import java.util.Locale
-import java.util.WeakHashMap
 import javax.imageio.ImageIO
 
 /**
@@ -448,7 +444,7 @@ object AtlasLayout {
 
     /** Layer rasters keep their identity across rebuilds, so each is hashed once. */
     private fun digest(rgba: ByteArray): String = digests.getOrPut(rgba) {
-        java.util.HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(rgba))
+        hex(MessageDigest.getInstance("SHA-256").digest(rgba))
     }
 
     /**
@@ -466,7 +462,7 @@ object AtlasLayout {
         synchronized(pageCache) { pageCache[recipe]?.get()?.let { return it } }
         val dirtyRows = base?.recipe?.takeIf { it.size == size }?.let { old ->
             val kept = old.tiles.toHashSet().apply { retainAll(recipe.tiles.toSet()) }
-            java.util.BitSet().apply { for (tile in old.tiles + recipe.tiles) if (tile !in kept) tile.rows.let { set(maxOf(0, it.first), maxOf(0, it.last + 1)) } }
+            BitSet().apply { for (tile in old.tiles + recipe.tiles) if (tile !in kept) tile.rows.let { set(maxOf(0, it.first), maxOf(0, it.last + 1)) } }
         }
         val image = BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB)
         // The page's own pixels (ARGB, as setRGB stores them on this image type), written directly.

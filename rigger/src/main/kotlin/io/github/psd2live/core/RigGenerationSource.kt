@@ -102,7 +102,7 @@ object RigGenerationSource {
             // Primitive layers are never generated, so they own no ribbons; a superseded mouth keeps its ribbons.
             .filterNot { layer -> (layer.source as? MouthLipLayer)?.ownerId?.let { it in owned } == true }
             .associateBy { it.source.id.raw }
-        val texturesStart = System.nanoTime()
+        val texturesStart = nanoTime()
         val textures = geometry.copy(source = input.source, preview = input.preview, layers = geometry.layers.map { layer ->
             // Keeping a generated ribbon's mesh also keeps its generated raster and contour.
             val lip = layer.source as? MouthLipLayer
@@ -144,7 +144,7 @@ object RigGenerationSource {
             val artwork = current[id]?.let { padded(it, coverage) } ?: if (id in superseded) ArtPrimitiveJournal.placeholder(id, id, coverage) else null
             artwork?.let { CharacterAnalyzer.classify(it, textureConfig).let { classified -> classified.copy(opaquePixels = classified.opaquePixels.coerceAtLeast(1)) } }
         })
-        if (RigBuildProfile.recording) RigBuildProfile.add("prepare: texture layers", System.nanoTime() - texturesStart)
+        if (RigBuildProfile.recording) RigBuildProfile.add("prepare: texture layers", nanoTime() - texturesStart)
         return Analyses(geometry, textures)
     }
 
@@ -345,7 +345,7 @@ object RigGenerationSource {
         found.also { visibility[rgba] = it }
     }
 
-    private val visibility = java.util.Collections.synchronizedMap(java.util.WeakHashMap<ByteArray, Boolean>())
+    private val visibility = Collections.synchronizedMap(WeakHashMap<ByteArray, Boolean>())
 
     /** Transparent coverage prevents a kept mesh from sampling another layer after a tighter crop. */
     fun padded(current: SourceLayer, previous: LayerBounds): SourceLayer {
@@ -369,7 +369,7 @@ object RigGenerationSource {
      */
     private object Paddings {
         private data class Key(val bounds: LayerBounds, val space: LayerSpace?, val target: LayerBounds)
-        private val entries = java.util.Collections.synchronizedMap(java.util.WeakHashMap<ByteArray, List<Pair<Key, LayerRaster>>>())
+        private val entries = Collections.synchronizedMap(WeakHashMap<ByteArray, List<Pair<Key, LayerRaster>>>())
 
         fun get(current: SourceLayer, bounds: LayerBounds): LayerRaster {
             val dense = CanvasDensity.dense(current)

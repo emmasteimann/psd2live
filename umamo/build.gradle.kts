@@ -26,6 +26,9 @@ kotlin {
 				api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
 			}
 		}
+		val commonTest by getting {
+			dependencies { implementation(kotlin("test")) }
+		}
 		val jvmMain by getting {
 			kotlin.srcDir("src/main/kotlin")
 			resources.srcDir("src/main/resources")

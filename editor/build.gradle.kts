@@ -1,6 +1,6 @@
 // The editor: workspace sessions, editing commands, the view model and the Compose UI - split out of the desktop app
 // so it can come to the iPad (Layerloom iPad plan, phase 5). The root project keeps the launcher and packaging.
-// Kotlin Multiplatform with a JVM target; iOS as its code moves to shared code, as the rigger did.
+// Kotlin Multiplatform: shared code in src/commonMain (desktop and iPad), desktop-only code in src/main.
 plugins {
 	kotlin("multiplatform")
 	kotlin("plugin.serialization")
@@ -25,7 +25,24 @@ kotlin {
 			freeCompilerArgs.add("-Xno-optimize")
 		}
 	}
+	// The iPad: the shared editor (src/commonMain) compiles for it; desktop-only code stays in src/main.
+	iosArm64()
+	iosSimulatorArm64()
 	sourceSets {
+		val commonMain by getting {
+			dependencies {
+				api(project(":umamo"))
+				api(project(":rigger"))
+				api(project(":targets:cubism"))
+				api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
+				api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
+				api("org.jetbrains.compose.runtime:runtime:1.11.1")
+				api("org.jetbrains.compose.foundation:foundation:1.11.1")
+				api("org.jetbrains.compose.ui:ui:1.11.1")
+				api("org.jetbrains.compose.material:material:1.11.1")
+				implementation("com.squareup.okio:okio:3.17.0")
+			}
+		}
 		val jvmMain by getting {
 			kotlin.srcDir("src/main/kotlin")
 			resources.srcDir("src/main/resources")

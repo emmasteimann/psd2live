@@ -2,7 +2,6 @@ package io.github.psd2live.format.compile
 
 import io.github.psd2live.format.model.ColorBlend
 import io.github.psd2live.format.model.RigIR
-import java.util.Properties
 
 /** What kind of output a target writes, which decides the input it lowers from. */
 public enum class TargetFamily {
@@ -150,7 +149,7 @@ public data class ExportReport(
 			'\n' -> append("\\n")
 			'\r' -> append("\\r")
 			'\t' -> append("\\t")
-			else -> if (c < ' ') append("\\u%04x".format(c.code)) else append(c)
+			else -> if (c < ' ') append("\\u").append(c.code.toString(16).padStart(4, '0')) else append(c)
 		}
 		append('"')
 	}
@@ -158,11 +157,7 @@ public data class ExportReport(
 
 public object Compiler {
 	/** This compiler's version, recorded in every export so differing outputs can be traced. */
-	public val version: String by lazy {
-		val properties = Properties()
-		Compiler::class.java.getResourceAsStream("compiler.properties")?.use(properties::load)
-		properties.getProperty("version") ?: "dev"
-	}
+	public val version: String get() = COMPILER_VERSION
 
 	/** Lowers [ir] for [target] and writes it, collecting the file list and the loss report. */
 	public fun export(target: ExportTarget, ir: RigIR, options: ExportOptions, sink: OutputSink): ExportReport {

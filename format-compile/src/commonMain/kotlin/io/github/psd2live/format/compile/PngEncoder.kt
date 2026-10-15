@@ -1,11 +1,6 @@
 package io.github.psd2live.format.compile
 
-import java.io.ByteArrayOutputStream
-import java.nio.ByteBuffer
-import java.util.stream.IntStream
-import java.util.zip.Adler32
-import java.util.zip.CRC32
-import java.util.zip.Deflater
+import okio.Buffer
 import kotlin.math.abs
 
 /**
@@ -16,6 +11,9 @@ import kotlin.math.abs
  * flush; the bands' deflate segments concatenate into one zlib stream whose Adler-32 is combined from the
  * bands'. The bands do not depend on the number of threads, so the bytes are the same on every machine with
  * the same zlib.
+ *
+ * Shared code (it runs on the iPad too): only the deflating and the band parallelism are the platform's
+ * ([deflateRawSyncFlush], [forEachBand]); the checksums are computed here.
  */
 public object PngEncoder {
 	private const val BAND_ROWS = 64
@@ -28,24 +26,24 @@ public object PngEncoder {
 		require(width > 0 && height > 0 && argb.size.toLong() == width.toLong() * height) { "Raster size mismatch" }
 		val count = (height + BAND_ROWS - 1) / BAND_ROWS
 		val bands = arrayOfNulls<Band>(count)
-		IntStream.range(0, count).parallel().forEach { index ->
+		forEachBand(count) { index ->
 			val start = index * BAND_ROWS
 			bands[index] = band(argb, width, start, minOf(height, start + BAND_ROWS))
 		}
 		var adler = 1
 		for (band in bands) adler = combineAdler(adler, band!!.adler, band.length)
-		val idat = ByteArrayOutputStream(bands.sumOf { it!!.deflated.size } + 16)
+		val idat = Buffer()
 		// zlib header (deflate, 32K window, no preset dictionary), the bands, an empty final stored block, the checksum.
-		idat.write(0x78); idat.write(0x01)
+		idat.writeByte(0x78); idat.writeByte(0x01)
 		for (band in bands) idat.write(band!!.deflated)
 		idat.write(byteArrayOf(0x01, 0x00, 0x00, 0xff.toByte(), 0xff.toByte()))
-		idat.write(ByteBuffer.allocate(4).putInt(adler).array())
-		val out = ByteArrayOutputStream(idat.size() + 64)
+		idat.writeInt(adler)
+		val out = Buffer()
 		out.write(SIGNATURE)
-		chunk(out, "IHDR", ByteBuffer.allocate(13).putInt(width).putInt(height).put(8).put(6).put(0).put(0).put(0).array())
-		chunk(out, "IDAT", idat.toByteArray())
+		chunk(out, "IHDR", Buffer().writeInt(width).writeInt(height).writeByte(8).writeByte(6).writeByte(0).writeByte(0).writeByte(0).readByteArray())
+		chunk(out, "IDAT", idat.readByteArray())
 		chunk(out, "IEND", ByteArray(0))
-		return out.toByteArray()
+		return out.readByteArray()
 	}
 
 	/** Rows [start] until [end] filtered and deflated on their own. */
@@ -67,22 +65,7 @@ public object PngEncoder {
 			candidates[best].copyInto(raw, offset + 1)
 			val swap = previous; previous = current; current = swap
 		}
-		val adler = Adler32().apply { update(raw) }.value.toInt()
-		val deflater = Deflater(Deflater.DEFAULT_COMPRESSION, true)
-		try {
-			deflater.setInput(raw)
-			val output = ByteArrayOutputStream(raw.size / 4 + 64)
-			val buffer = ByteArray(64 * 1024)
-			while (true) {
-				val written = deflater.deflate(buffer, 0, buffer.size, Deflater.SYNC_FLUSH)
-				output.write(buffer, 0, written)
-				// The flush is complete once it no longer fills the buffer.
-				if (written < buffer.size) break
-			}
-			return Band(output.toByteArray(), adler, raw.size.toLong())
-		} finally {
-			deflater.end()
-		}
+		return Band(deflateRawSyncFlush(raw), adler32(raw), raw.size.toLong())
 	}
 
 	private fun row(argb: IntArray, width: Int, y: Int, into: ByteArray): ByteArray {
@@ -121,12 +104,35 @@ public object PngEncoder {
 		return sum
 	}
 
-	private fun chunk(out: ByteArrayOutputStream, type: String, data: ByteArray) {
+	private fun chunk(out: Buffer, type: String, data: ByteArray) {
 		val typeBytes = type.encodeToByteArray()
-		val crc = CRC32().apply { update(typeBytes); update(data) }.value.toInt()
-		out.write(ByteBuffer.allocate(8).putInt(data.size).put(typeBytes).array())
-		out.write(data)
-		out.write(ByteBuffer.allocate(4).putInt(crc).array())
+		out.writeInt(data.size).write(typeBytes).write(data).writeInt(crc32(typeBytes, data))
+	}
+
+	/** Adler-32 of [data] (zlib's checksum). */
+	internal fun adler32(data: ByteArray): Int {
+		var a = 1L; var b = 0L
+		var i = 0
+		while (i < data.size) {
+			// 5552 bytes is the most that can be summed before the 32-bit sums must be reduced (zlib's NMAX).
+			val end = minOf(data.size, i + 5552)
+			while (i < end) { a += data[i].toInt() and 0xff; b += a; i++ }
+			a %= 65521; b %= 65521
+		}
+		return ((b shl 16) or a).toInt()
+	}
+
+	private val CRC_TABLE = IntArray(256) { n ->
+		var c = n
+		repeat(8) { c = if (c and 1 != 0) (c ushr 1) xor 0xEDB88320.toInt() else c ushr 1 }
+		c
+	}
+
+	/** CRC-32 of the parts in order (PNG's chunk checksum). */
+	internal fun crc32(vararg parts: ByteArray): Int {
+		var c = -1
+		for (part in parts) for (byte in part) c = CRC_TABLE[(c xor byte.toInt()) and 0xff] xor (c ushr 8)
+		return c.inv()
 	}
 
 	/** The Adler-32 of two byte runs from each one's checksum and the second's length. */
@@ -144,3 +150,9 @@ public object PngEncoder {
 		return (sum1 or (sum2 shl 16)).toInt()
 	}
 }
+
+/** [raw] deflated without a zlib header, ending on a sync flush (zlib's Z_SYNC_FLUSH), at the default level. */
+internal expect fun deflateRawSyncFlush(raw: ByteArray): ByteArray
+
+/** Runs [body] for every band index below [count]: in parallel where the platform allows, each band on its own. */
+internal expect fun forEachBand(count: Int, body: (Int) -> Unit)

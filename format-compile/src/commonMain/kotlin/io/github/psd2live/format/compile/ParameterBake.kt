@@ -57,9 +57,9 @@ public class ParameterBake(private val ir: RigIR, private val session: GeometryS
 				worst[mesh] = max(worst[mesh] ?: 0f, error)
 			}
 		}
-		return worst.filterValues { it > 0.5f }.toSortedMap().map { (mesh, error) ->
+		return worst.filterValues { it > 0.5f }.entries.sortedBy { it.key }.map { (mesh, error) ->
 			LossEntry(mesh, Feature.PARAMETER_GRID, Handling.APPROXIMATED, error,
-				"Parameters combining on this mesh are summed per parameter (max ${"%.1f".format(error)} px at sampled poses)")
+				"Parameters combining on this mesh are summed per parameter (max ${oneDecimal(error)} px at sampled poses)")
 		}
 	}
 
@@ -95,4 +95,12 @@ public class ParameterBake(private val ir: RigIR, private val session: GeometryS
 			return result
 		}
 	}
+}
+
+/** [value] with one decimal, as "%.1f" printed it (shared code has no String.format). */
+internal fun oneDecimal(value: Float): String {
+	val tenths = kotlin.math.round(value * 10.0).toLong()
+	val sign = if (tenths < 0) "-" else ""
+	val abs = kotlin.math.abs(tenths)
+	return "$sign${abs / 10}.${abs % 10}"
 }

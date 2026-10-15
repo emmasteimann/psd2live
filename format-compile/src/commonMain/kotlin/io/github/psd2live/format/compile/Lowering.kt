@@ -164,7 +164,7 @@ public class PlacedRaster(public val left: Int, public val top: Int, public val 
 		if (left == 0 && top == 0 && right == width - 1 && bottom == image.height - 1) return this
 		val w = right - left + 1; val h = bottom - top + 1
 		val out = IntArray(w * h)
-		for (y in 0 until h) System.arraycopy(argb, (top + y) * width + left, out, y * w, w)
+		for (y in 0 until h) argb.copyInto(out, y * w, (top + y) * width + left, (top + y) * width + left + w)
 		return PlacedRaster(this.left + left, this.top + top, RasterImage(w, h, out))
 	}
 }

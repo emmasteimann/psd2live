@@ -1,6 +1,5 @@
 package io.github.psd2live.format.compile.document
 
-import java.security.MessageDigest
 
 /**
  * A content hash: SHA-256 over the canonical text of each part, length-prefixed so that part boundaries
@@ -9,12 +8,13 @@ import java.security.MessageDigest
  */
 public object ContentHash {
 	public fun of(vararg parts: Any?): String {
-		val digest = MessageDigest.getInstance("SHA-256")
+		// The same bytes as before through okio's SHA-256 (lowercase hex, as HexFormat gave), so hashes are unchanged.
+		val bytes = okio.Buffer()
 		for (part in parts) {
 			val text = part.toString().encodeToByteArray()
-			digest.update(text.size.toString().encodeToByteArray()); digest.update(':'.code.toByte()); digest.update(text)
+			bytes.write(text.size.toString().encodeToByteArray()); bytes.writeByte(':'.code); bytes.write(text)
 		}
-		return java.util.HexFormat.of().formatHex(digest.digest())
+		return bytes.sha256().hex()
 	}
 }
 
@@ -78,22 +78,30 @@ public class GeneratorGraph(nodes: List<GeneratorNode>) {
  * does not hold up lookups of other keys; two threads missing the same key at once may both compute it.
  */
 public class GenerationCache<V : Any>(private val capacity: Int = 64) {
-	private val entries = object : LinkedHashMap<String, V>(16, 0.75f, true) {
-		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, V>?): Boolean = size > capacity
-	}
+	// Least recently used first: a hit moves its key to the end, and the first key goes when the cache is full.
+	// (Shared code: no access-ordered LinkedHashMap or synchronized; CacheLock is the platform's lock.)
+	private val entries = LinkedHashMap<String, V>()
+	private val lock = CacheLock()
 	public var hits: Int = 0; private set
 	public var misses: Int = 0; private set
 
 	public fun getOrPut(key: String, compute: () -> V): V {
-		synchronized(this) {
-			entries[key]?.let { hits++; return it }
-			misses++
+		val cached = lock.locked {
+			val hit = entries.remove(key)
+			if (hit != null) { hits++; entries[key] = hit } else misses++
+			hit
 		}
+		if (cached != null) return cached
 		val value = compute()
-		synchronized(this) { return entries.getOrPut(key) { value } }
+		return lock.locked {
+			val kept = entries.remove(key) ?: value
+			entries[key] = kept
+			while (entries.size > capacity) entries.remove(entries.keys.first())
+			kept
+		}
 	}
 
-	public fun clear(): Unit = synchronized(this) { entries.clear() }
+	public fun clear(): Unit = lock.locked { entries.clear() }
 }
 
 /**
@@ -125,4 +133,9 @@ public object ThreeWayMerge {
 		}
 		return MergeResult(merged, conflicts)
 	}
+}
+
+/** A lock for [GenerationCache]: java.util.concurrent on the JVM, Foundation's on the iPad. */
+internal expect class CacheLock() {
+	fun <T> locked(block: () -> T): T
 }

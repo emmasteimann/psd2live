@@ -1,10 +1,9 @@
 package io.github.psd2live.format.compile
 
 import io.github.psd2live.format.model.*
-import java.io.ByteArrayOutputStream
-import java.io.DataInputStream
-import java.io.DataOutputStream
-import java.io.IOException
+import okio.Buffer
+import okio.EOFException
+import okio.IOException
 
 /**
  * A [RigIR] as separately stored objects, for a store that shares the unchanged objects of successive versions of a
@@ -37,25 +36,23 @@ public object RigIrObjects {
 	)
 
 	private fun encode(kind: Kind, write: (RigIrBinary.Writer) -> Unit): ByteArray {
-		val bytes = ByteArrayOutputStream(1 shl 12)
-		DataOutputStream(bytes).use { out ->
-			out.writeInt(MAGIC); out.writeInt(RigIrBinary.VERSION); out.writeInt(kind.ordinal)
-			write(RigIrBinary.Writer(out))
-		}
-		return bytes.toByteArray()
+		val out = Buffer()
+		out.writeInt(MAGIC); out.writeInt(RigIrBinary.VERSION); out.writeInt(kind.ordinal)
+		write(RigIrBinary.Writer(out))
+		return out.readByteArray()
 	}
 
 	private fun <T> decode(bytes: ByteArray, kind: Kind, read: (RigIrBinary.Reader) -> T): T {
-		val input = DataInputStream(bytes.inputStream())
+		val input = Buffer().write(bytes)
 		try {
 			if (input.readInt() != MAGIC) throw IOException("Not a stored rig object")
 			val version = input.readInt()
 			if (version !in MIN_VERSION..RigIrBinary.VERSION) throw IOException("Unsupported stored rig object version $version")
 			if (input.readInt() != kind.ordinal) throw IOException("Stored rig object is not a ${kind.name.lowercase()}")
 			val value = read(RigIrBinary.Reader(input, version))
-			if (input.read() != -1) throw IOException("Trailing bytes after stored rig object")
+			if (!input.exhausted()) throw IOException("Trailing bytes after stored rig object")
 			return value
-		} catch (failure: java.io.EOFException) {
+		} catch (failure: EOFException) {
 			throw IOException("Truncated stored rig object", failure)
 		} catch (failure: IllegalArgumentException) {
 			throw IOException("Invalid stored rig object", failure)

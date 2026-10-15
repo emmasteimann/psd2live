@@ -1,10 +1,9 @@
 package io.github.psd2live.format.compile
 
 import io.github.psd2live.format.model.*
-import java.io.ByteArrayOutputStream
-import java.io.DataInputStream
-import java.io.DataOutputStream
-import java.io.IOException
+import okio.Buffer
+import okio.EOFException
+import okio.IOException
 
 /**
  * A compact, exact binary encoding of a whole [RigIR], for caches that must hand back the very value they
@@ -21,21 +20,22 @@ public object RigIrBinary {
 	private const val MAGIC = 0x50524952 // "PRIR"
 
 	public fun encode(ir: RigIR): ByteArray {
-		val bytes = ByteArrayOutputStream(1 shl 16)
-		DataOutputStream(bytes).use { out -> out.writeInt(MAGIC); out.writeInt(VERSION); Writer(out).rig(ir) }
-		return bytes.toByteArray()
+		// okio's Buffer writes big-endian as DataOutputStream did, so the bytes are unchanged (and it runs on the iPad).
+		val out = Buffer()
+		out.writeInt(MAGIC); out.writeInt(VERSION); Writer(out).rig(ir)
+		return out.readByteArray()
 	}
 
 	public fun decode(bytes: ByteArray): RigIR {
-		val input = DataInputStream(bytes.inputStream())
+		val input = Buffer().write(bytes)
 		try {
 			if (input.readInt() != MAGIC) throw IOException("Not an encoded rig")
 			val version = input.readInt()
 			if (version != VERSION) throw IOException("Unsupported encoded rig version $version")
 			val ir = Reader(input).rig()
-			if (input.read() != -1) throw IOException("Trailing bytes after encoded rig")
+			if (!input.exhausted()) throw IOException("Trailing bytes after encoded rig")
 			return ir
-		} catch (failure: java.io.EOFException) {
+		} catch (failure: EOFException) {
 			throw IOException("Truncated encoded rig", failure)
 		} catch (failure: IllegalArgumentException) {
 			throw IOException("Invalid encoded rig", failure)
@@ -44,10 +44,10 @@ public object RigIrBinary {
 		}
 	}
 
-	internal class Writer(private val out: DataOutputStream) {
-		fun int(value: Int) = out.writeInt(value)
-		fun float(value: Float) = out.writeInt(java.lang.Float.floatToRawIntBits(value))
-		fun bool(value: Boolean) = out.writeBoolean(value)
+	internal class Writer(private val out: Buffer) {
+		fun int(value: Int) { out.writeInt(value) }
+		fun float(value: Float) { out.writeInt(value.toRawBits()) }
+		fun bool(value: Boolean) { out.writeByte(if (value) 1 else 0) }
 		fun string(value: String) { val bytes = value.encodeToByteArray(); int(bytes.size); out.write(bytes) }
 		fun <T> nullable(value: T?, write: (T) -> Unit) { bool(value != null); if (value != null) write(value) }
 		fun <T> list(values: List<T>, write: (T) -> Unit) { int(values.size); values.forEach(write) }
@@ -274,11 +274,11 @@ public object RigIrBinary {
 	}
 
 	/** [version] is the version the bytes were written with: a field added later is read only from its version on. */
-	internal class Reader(private val input: DataInputStream, val version: Int = VERSION) {
+	internal class Reader(private val input: Buffer, val version: Int = VERSION) {
 		fun int() = input.readInt()
-		fun float() = java.lang.Float.intBitsToFloat(input.readInt())
-		fun bool() = input.readBoolean()
-		fun count(): Int { val n = int(); if (n < 0 || n > input.available()) throw IOException("Invalid length $n"); return n }
+		fun float() = Float.fromBits(input.readInt())
+		fun bool() = input.readByte().toInt() != 0
+		fun count(): Int { val n = int(); if (n < 0 || n > input.size) throw IOException("Invalid length $n"); return n }
 		fun string(): String { val bytes = ByteArray(count()); input.readFully(bytes); return bytes.decodeToString() }
 		fun <T> nullable(read: () -> T): T? = if (bool()) read() else null
 		fun <T> list(read: () -> T): List<T> { val n = count(); return List(n) { read() } }

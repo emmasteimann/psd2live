@@ -34,15 +34,15 @@ public object RasterResample {
 		require(width >= 0 && height >= 0 && newWidth >= 0 && newHeight >= 0) { "Raster sizes must not be negative" }
 		require(rgba.size.toLong() == width.toLong() * height * 4) { "RGBA buffer does not match its size" }
 		require(stepX.isFinite() && stepY.isFinite() && stepX > 0.0 && stepY > 0.0) { "Resample step must be positive" }
-		val out = ByteArray(Math.multiplyExact(Math.multiplyExact(newWidth, newHeight), 4))
+		val out = ByteArray(multiplyExact(multiplyExact(newWidth, newHeight), 4))
 		if (width == 0 || height == 0 || newWidth == 0 || newHeight == 0) return out
 		val columns = weights(width, newWidth, originX, stepX)
 		val rows = weights(height, newHeight, originY, stepY)
 		// Premultiplied source, read lazily per row through the horizontal pass.
-		val horizontal = FloatArray(Math.multiplyExact(Math.multiplyExact(newWidth, height), 4))
+		val horizontal = FloatArray(multiplyExact(multiplyExact(newWidth, height), 4))
 		val line = FloatArray(width * 4)
 		for (y in 0 until height) {
-			if (Thread.currentThread().isInterrupted) throw InterruptedException()
+			checkInterrupted()
 			val base = y * width * 4
 			for (x in 0 until width) {
 				val offset = base + x * 4
@@ -67,7 +67,7 @@ public object RasterResample {
 			}
 		}
 		for (j in 0 until newHeight) {
-			if (Thread.currentThread().isInterrupted) throw InterruptedException()
+			checkInterrupted()
 			val w = rows[j]
 			for (i in 0 until newWidth) {
 				var r = 0f; var g = 0f; var b = 0f; var a = 0f
@@ -120,3 +120,13 @@ public object RasterResample {
 		}
 	}
 }
+
+/** [a] times [b], or an ArithmeticException on overflow (Math.multiplyExact's contract). */
+internal fun multiplyExact(a: Int, b: Int): Int {
+	val product = a.toLong() * b
+	if (product != product.toInt().toLong()) throw ArithmeticException("integer overflow")
+	return product.toInt()
+}
+
+/** Stops a resample whose thread was interrupted (the JVM's cancellation); nothing to check elsewhere. */
+internal expect fun checkInterrupted()

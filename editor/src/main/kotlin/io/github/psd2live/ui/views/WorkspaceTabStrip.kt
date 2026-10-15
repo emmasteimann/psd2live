@@ -1,0 +1,501 @@
+package io.github.psd2live.ui.views
+
+import androidx.compose.foundation.BorderStroke
+import io.github.psd2live.ui.state.effectiveButton
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.DropdownMenu
+import androidx.compose.material.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerButton
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.onPointerEvent
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import io.github.psd2live.i18n.tr
+import io.github.psd2live.ui.components.AppMenuHeader
+import io.github.psd2live.ui.components.AppMenuItem
+import io.github.psd2live.ui.components.AppMenuSeparator
+import io.github.psd2live.ui.components.IconClose
+import io.github.psd2live.ui.state.CanvasMode
+import io.github.psd2live.ui.state.EditorWorkspace
+import io.github.psd2live.ui.state.PSD2LiveState
+import io.github.psd2live.ui.state.PSD2LiveViewModel
+import io.github.psd2live.ui.state.WorkspacePreset
+import io.github.psd2live.ui.state.displayName
+import io.github.psd2live.ui.state.isCanvasModule
+import io.github.psd2live.ui.theme.LocalToolColors
+import io.github.psd2live.ui.theme.LocalToolTypography
+import java.awt.Cursor
+
+/** Dock modules the window menu can show or hide, in menu order. */
+val WINDOW_MODULES = listOf(
+	"hierarchy",
+	"skeleton",
+	"history",
+	"log",
+	"animationEditor",
+	"settings",
+	"layers",
+	"parameters",
+	"tools",
+	"mesh",
+	"inspector",
+	"animation",
+	"physics",
+	"simulation",
+	"atlas",
+	"texture",
+)
+
+/**
+ * Workspace strip: each chip is a named arrangement of panels and canvases.
+ * The window menu toggles components and adds canvases.
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+fun WorkspaceStrip(
+	state: PSD2LiveState,
+	viewModel: PSD2LiveViewModel,
+	layoutModules: Set<String>,
+	modifier: Modifier = Modifier,
+) {
+	var showWindowMenu by remember { mutableStateOf(false) }
+	val workspace = state.activeWorkspace
+	val chipSpacing = 2.dp
+	val chipSpacingPx = with(LocalDensity.current) { chipSpacing.toPx() }
+	// Left edge and width of each chip in the strip, for dragging past its neighbours.
+	val chipBounds = remember { mutableStateMapOf<String, Pair<Float, Float>>() }
+	var draggingId by remember { mutableStateOf<String?>(null) }
+	var dragOffset by remember { mutableFloatStateOf(0f) }
+
+	// The dragged chip follows the pointer; once its centre passes a neighbour's centre the two
+	// swap, and the offset drops by the neighbour's width so the chip stays under the pointer.
+	fun dragChip(id: String, amount: Float) {
+		dragOffset += amount
+		// Read the live order: several drag events can land before the strip recomposes.
+		val workspaces = viewModel.state.value.workspaces
+		val index = workspaces.indexOfFirst { it.id == id }
+		val (left, width) = chipBounds[id] ?: return
+		val center = left + dragOffset + width / 2
+		val forward = dragOffset > 0
+		val neighbour = workspaces.getOrNull(if (forward) index + 1 else index - 1) ?: return
+		val (otherLeft, otherWidth) = chipBounds[neighbour.id] ?: return
+		val passed = if (forward) center > otherLeft + otherWidth / 2 else center < otherLeft + otherWidth / 2
+		if (!passed) return
+		viewModel.moveWorkspace(id, if (forward) index + 1 else index - 1)
+		val shift = otherWidth + chipSpacingPx
+		val back = width + chipSpacingPx
+		dragOffset += if (forward) -shift else shift
+		// The layout catches up next frame; move the cached edges now so a fast drag keeps swapping.
+		chipBounds[id] = (if (forward) left + shift else left - shift) to width
+		chipBounds[neighbour.id] = (if (forward) otherLeft - back else otherLeft + back) to otherWidth
+	}
+
+	Row(
+		modifier = modifier.fillMaxHeight(),
+		verticalAlignment = Alignment.CenterVertically,
+	) {
+		Row(
+			modifier = Modifier
+				.weight(1f)
+				.fillMaxHeight()
+				.horizontalScroll(rememberScrollState())
+				.padding(start = 4.dp),
+			verticalAlignment = Alignment.CenterVertically,
+			horizontalArrangement = Arrangement.spacedBy(chipSpacing),
+		) {
+			state.workspaces.forEachIndexed { index, item ->
+				val dragging = draggingId == item.id
+				WorkspaceChip(
+					workspace = item,
+					isActive = item.id == state.activeWorkspaceId,
+					canClose = state.workspaces.size > 1,
+					canCloseRight = index < state.workspaces.lastIndex,
+					onSelect = { viewModel.setActiveWorkspace(item.id) },
+					onClose = { viewModel.closeWorkspace(item.id) },
+					onCloseOthers = { viewModel.closeOtherWorkspaces(item.id) },
+					onCloseRight = { viewModel.closeWorkspacesToRight(item.id) },
+					onRename = { viewModel.renameWorkspace(item.id, it) },
+					onDuplicate = { viewModel.duplicateWorkspace(item.id) },
+					onDragStart = {
+						draggingId = item.id
+						dragOffset = 0f
+					},
+					onDrag = { dragChip(item.id, it) },
+					onDragEnd = {
+						draggingId = null
+						dragOffset = 0f
+					},
+					modifier = Modifier
+						.onGloballyPositioned { chipBounds[item.id] = it.positionInParent().x to it.size.width.toFloat() }
+						.zIndex(if (dragging) 1f else 0f)
+						.graphicsLayer { translationX = if (dragging) dragOffset else 0f },
+				)
+			}
+			NewWorkspaceButton(onCreate = { viewModel.addWorkspace(it) })
+		}
+
+		Box {
+			TabStripButton(label = "${tr("workspace.windows")} \u25BE") { showWindowMenu = true }
+			TabStripDropdown(expanded = showWindowMenu, onDismissRequest = { showWindowMenu = false }) {
+				AppMenuHeader(tr("workspace.windows"))
+				WINDOW_MODULES.forEach { module ->
+					val shown = module in layoutModules && module !in workspace.hiddenModules
+					AppMenuItem(
+						text = moduleTitle(module),
+						isChecked = shown,
+						onClick = { viewModel.setModuleVisible(module, !shown) },
+					)
+				}
+				AppMenuSeparator()
+				AppMenuHeader(tr("dock.canvas"))
+				workspace.canvases.forEach { canvas ->
+					val shown = canvas.id in layoutModules && canvas.id !in workspace.hiddenModules
+					AppMenuItem(
+						text = viewModel.canvasTitle(canvas, workspace),
+						isChecked = shown,
+						onClick = { viewModel.setModuleVisible(canvas.id, !shown) },
+					)
+				}
+				AppMenuItem(text = tr("window.addEditCanvas"), onClick = {
+					showWindowMenu = false
+					viewModel.addCanvas(CanvasMode.EDIT)
+				})
+				AppMenuItem(text = tr("window.addPreviewCanvas"), onClick = {
+					showWindowMenu = false
+					viewModel.addCanvas(CanvasMode.PREVIEW)
+				})
+			}
+		}
+		Spacer(Modifier.width(2.dp))
+	}
+}
+
+@Composable
+private fun NewWorkspaceButton(onCreate: (WorkspacePreset) -> Unit) {
+	var expanded by remember { mutableStateOf(false) }
+	Box {
+		TabStripButton(label = "+") { expanded = true }
+		NewWorkspaceMenu(expanded = expanded, onDismissRequest = { expanded = false }, onCreate = onCreate)
+	}
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun WorkspaceChip(
+	workspace: EditorWorkspace,
+	isActive: Boolean,
+	canClose: Boolean,
+	canCloseRight: Boolean,
+	onSelect: () -> Unit,
+	onClose: () -> Unit,
+	onCloseOthers: () -> Unit,
+	onCloseRight: () -> Unit,
+	onRename: (String) -> Unit,
+	onDuplicate: () -> Unit,
+	onDragStart: () -> Unit,
+	onDrag: (Float) -> Unit,
+	onDragEnd: () -> Unit,
+	modifier: Modifier = Modifier,
+) {
+	val colors = LocalToolColors.current
+	val typography = LocalToolTypography.current
+	val interactionSource = remember(workspace.id) { MutableInteractionSource() }
+	val isHovered by interactionSource.collectIsHoveredAsState()
+	var showMenu by remember(workspace.id) { mutableStateOf(false) }
+	var renaming by remember(workspace.id) { mutableStateOf(false) }
+	var draft by remember(workspace.id, workspace.name) { mutableStateOf(workspace.displayName()) }
+	var renameArmed by remember(workspace.id) { mutableStateOf(false) }
+	val focusRequester = remember(workspace.id) { FocusRequester() }
+	val currentOnDragStart by rememberUpdatedState(onDragStart)
+	val currentOnDrag by rememberUpdatedState(onDrag)
+	val currentOnDragEnd by rememberUpdatedState(onDragEnd)
+
+	// Workspace tabs are top-level pills; dock tabs below stay flat and join their panel.
+	val bg = when {
+		isActive -> colors.controlBackground
+		isHovered -> colors.controlHover.copy(alpha = 0.6f)
+		else -> Color.Transparent
+	}
+
+	Box(modifier) {
+		Row(
+			modifier = Modifier
+				.height(22.dp)
+				.clip(RoundedCornerShape(4.dp))
+				.background(bg)
+				.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+				.onPointerEvent(PointerEventType.Press, pass = PointerEventPass.Initial) { event ->
+					when {
+						event.effectiveButton == PointerButton.Secondary -> {
+							showMenu = true
+							event.changes.forEach { it.consume() }
+						}
+						event.effectiveButton == PointerButton.Tertiary && !renaming -> {
+							if (canClose) onClose()
+							event.changes.forEach { it.consume() }
+						}
+					}
+				}
+				.pointerInput(workspace.id, renaming) {
+					if (renaming) return@pointerInput
+					detectHorizontalDragGestures(
+						onDragStart = { currentOnDragStart() },
+						onDragEnd = { currentOnDragEnd() },
+						onDragCancel = { currentOnDragEnd() },
+					) { change, amount ->
+						change.consume()
+						currentOnDrag(amount)
+					}
+				}
+				.combinedClickable(
+					interactionSource = interactionSource,
+					indication = null,
+					enabled = !renaming,
+					onClick = onSelect,
+					onDoubleClick = {
+						onSelect()
+						draft = workspace.displayName()
+						renaming = true
+					},
+				)
+				.padding(start = 8.dp, end = 4.dp),
+			verticalAlignment = Alignment.CenterVertically,
+		) {
+			WorkspacePresetIcon(
+				workspace.preset,
+				tint = if (isActive) colors.textPrimary else colors.textMuted,
+				modifier = Modifier.size(12.dp),
+			)
+			Spacer(Modifier.width(5.dp))
+			if (renaming && isActive) {
+				BasicTextField(
+					value = draft,
+					onValueChange = { draft = it },
+					singleLine = true,
+					textStyle = typography.body.copy(fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = colors.textPrimary),
+					cursorBrush = SolidColor(colors.accent),
+					modifier = Modifier
+						.widthIn(min = 48.dp, max = 160.dp)
+						.focusRequester(focusRequester)
+						.onFocusChanged { focus ->
+							if (renameArmed && !focus.isFocused) {
+								renameArmed = false
+								renaming = false
+								onRename(draft)
+							}
+						}
+						.onPreviewKeyEvent { event ->
+							if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+							when (event.key) {
+								Key.Enter -> {
+									renameArmed = false
+									renaming = false
+									onRename(draft)
+									true
+								}
+								Key.Escape -> {
+									renameArmed = false
+									renaming = false
+									draft = workspace.displayName()
+									true
+								}
+								else -> false
+							}
+						},
+				)
+				LaunchedEffect(renaming) {
+					if (renaming) {
+						focusRequester.requestFocus()
+						renameArmed = true
+					}
+				}
+			} else {
+				Text(
+					text = workspace.displayName(),
+					style = typography.body.copy(
+						fontSize = 11.5.sp,
+						fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
+					),
+					color = if (isActive) colors.textPrimary else colors.textMuted,
+					maxLines = 1,
+					overflow = TextOverflow.Ellipsis,
+					modifier = Modifier.widthIn(max = 160.dp),
+				)
+			}
+			Spacer(Modifier.width(4.dp))
+			Box(
+				modifier = Modifier
+					.size(14.dp)
+					.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+					.clickable(enabled = canClose && (isActive || isHovered)) { onClose() },
+				contentAlignment = Alignment.Center,
+			) {
+				if (canClose && (isActive || isHovered)) {
+					IconClose(modifier = Modifier.size(8.dp), tint = if (isActive) colors.textPrimary else colors.textMuted)
+				}
+			}
+		}
+
+		TabStripDropdown(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+			AppMenuHeader(workspace.displayName())
+			AppMenuItem(text = tr("workspace.rename"), onClick = {
+				showMenu = false
+				onSelect()
+				draft = workspace.displayName()
+				renaming = true
+			})
+			AppMenuItem(text = tr("workspace.duplicate"), onClick = {
+				showMenu = false
+				onDuplicate()
+			})
+			AppMenuSeparator()
+			AppMenuItem(text = tr("workspace.close"), enabled = canClose, onClick = {
+				showMenu = false
+				onClose()
+			})
+			AppMenuItem(text = tr("workspace.closeOthers"), enabled = canClose, onClick = {
+				showMenu = false
+				onCloseOthers()
+			})
+			AppMenuItem(text = tr("workspace.closeRight"), enabled = canCloseRight, onClick = {
+				showMenu = false
+				onCloseRight()
+			})
+		}
+	}
+}
+
+@Composable
+fun TabStripButton(
+	label: String,
+	highlighted: Boolean = false,
+	onClick: () -> Unit,
+) {
+	val colors = LocalToolColors.current
+	val typography = LocalToolTypography.current
+	val interactionSource = remember { MutableInteractionSource() }
+	val isHovered by interactionSource.collectIsHoveredAsState()
+
+	Box(
+		modifier = Modifier
+			.height(22.dp)
+			.clip(RoundedCornerShape(4.dp))
+			.background(if (isHovered) colors.controlHover.copy(alpha = 0.6f) else Color.Transparent)
+			.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+			.clickable(interactionSource = interactionSource, indication = null) { onClick() }
+			.drawBehind {
+				if (highlighted) {
+					drawCircle(color = colors.accent, radius = 2.5.dp.toPx(), center = Offset(size.width - 6.dp.toPx(), 8.dp.toPx()))
+				}
+			}
+			.padding(horizontal = 7.dp),
+		contentAlignment = Alignment.Center,
+	) {
+		Text(
+			text = label,
+			style = typography.body.copy(fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold),
+			color = if (highlighted) colors.textPrimary else colors.textMuted,
+			maxLines = 1,
+		)
+	}
+}
+
+@Composable
+fun TabStripDropdown(
+	expanded: Boolean,
+	onDismissRequest: () -> Unit,
+	content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
+) {
+	val colors = LocalToolColors.current
+	DropdownMenu(
+		expanded = expanded,
+		onDismissRequest = onDismissRequest,
+		modifier = Modifier
+			.background(colors.panelElevated)
+			.border(BorderStroke(1.dp, colors.border))
+			.widthIn(min = 210.dp, max = 280.dp),
+		content = content,
+	)
+}
+
+fun moduleTitle(id: String): String = when {
+	isCanvasModule(id) -> tr("dock.canvas")
+	else -> tr(when (id) {
+		"hierarchy" -> "dock.hierarchy"
+		"skeleton" -> "dock.skeleton"
+		"history" -> "dock.history"
+		"prepare" -> "dock.prepare"
+		"log" -> "dock.log"
+		"animationEditor" -> "dock.animationEditor"
+		"settings" -> "dock.settings"
+		"layers" -> "tab.layers"
+		"parameters" -> "tab.parameters"
+		"tools" -> "tab.toolDetails"
+		"mesh" -> "tab.mesh"
+		"inspector" -> "tab.inspector"
+		"animation" -> "tab.animation"
+		"physics" -> "tab.physics"
+		"expressions" -> "tab.expressions"
+		"parts" -> "tab.parts"
+		"simulation" -> "tab.simulation"
+		"atlas" -> "dock.atlas"
+		"texture" -> "dock.texture"
+		else -> id
+	})
+}

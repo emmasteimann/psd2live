@@ -110,7 +110,7 @@ class EditorAndAgentScenario {
 		vm.setMouthColor(0xAABBCC)
 		vm.setMouthThickness(5f)
 		vm.setMouthShapeCurve("w", io.github.psd2live.core.MouthCurve.preset("w"))
-		withTimeout(20_000) { vm.state.first { it.previewModel?.config?.mouthColor == 0xAABBCC && it.previewModel.config.mouthThickness == 5f } }
+		withTimeout(20_000) { vm.state.first { s -> s.previewModel?.config.let { c -> c?.mouthColor == 0xAABBCC && c.mouthThickness == 5f } } }
 		assertEquals(nodes, workspace.history().nodes.size, "color samples must remain transient")
 		vm.endEditorField("mouthColor")
 		consistent("committed color gesture")

@@ -21,6 +21,7 @@ rootProject.name = "psd2live"
 include(":umamo")
 // Layerloom iPad plan, phase 2: the rigger, split out of the editor app.
 include(":rigger")
+include(":editor")
 include(":format-model")
 include(":format-compile")
 include(":targets:cubism")

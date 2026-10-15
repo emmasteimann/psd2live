@@ -1,4 +1,0 @@
-package io.github.psd2live.application
-
-/** Normal close explicitly relinquishes the current session; shutdown preserves recoverable edits. */
-internal enum class WorkspaceCloseReason { SAVED, DISCARDED, ABNORMAL }

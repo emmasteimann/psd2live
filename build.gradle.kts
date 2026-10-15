@@ -62,6 +62,8 @@ dependencies {
 	implementation(project(":umamo"))
 	// The rigger (PSD in, rig out), split out of the app for the iPad.
 	implementation(project(":rigger"))
+	// The editor (sessions, commands, view model, Compose UI), split out of the app for the iPad; the app is its launcher.
+	implementation(project(":editor"))
 	// Neutral rig IR, export framework and targets (see docs/zh/spec/EXPORT_TARGETS.md).
 	implementation(project(":targets:cubism"))
 	implementation(project(":targets:raster"))

@@ -189,3 +189,41 @@ expect object Exchange {
 	/** The share sheet for [paths] (files or folders): VTube Studio, AirDrop, Save to Files... */
 	fun share(paths: List<String>)
 }
+
+/** The settings of the project at [path] (its whole rig config), for using it as a template. Blocking. */
+suspend fun projectSettings(path: String): PipelineConfig {
+	val opened = io.github.psd2live.project.ProjectRepository().open(io.github.psd2live.project.pathOf(path))
+	try { return opened.history.head().snapshot.config(PipelineConfig()) } finally { opened.close() }
+}
+
+/**
+ * [target] with the transferable settings of [template]: how the rig is generated (rig tuning, head/body range, hair
+ * wrap, physics and motion switches, motion knobs), the physics groups and expressions whose parameters [outcome]'s
+ * rig has, and the per-layer options (anchors, glues, mesh detail) for layers whose names [outcome]'s art shares.
+ * Hand tweaks, paint and the art itself are the target's own and stay.
+ */
+fun withTemplate(outcome: RigOutcome, target: PipelineConfig, template: PipelineConfig): PipelineConfig {
+	val params = outcome.model.rig.puppet.parameters.mapTo(HashSet()) { it.id.raw }
+	val names = outcome.source.layers.mapTo(HashSet()) { it.name }
+	val idByName = outcome.source.layers.associate { it.name to it.id.raw }
+	val templateNames = template.generationSource?.layers?.associate { it.id.raw to it.name }.orEmpty()
+	val t = template.rigEdits
+	val physics = t.physicsEdits.filter { p -> p.parameters.all { it in params } }
+	val expressions = t.expressions.map { e -> e.copy(entries = e.entries.filter { it.parameter in params }) }.filter { it.entries.isNotEmpty() }
+	// Mesh detail is stored by layer id; carry it across by the layer's name when the template knows the names.
+	val meshes = template.meshOverrides.mapNotNull { (id, m) -> templateNames[id]?.let { idByName[it] }?.let { it to m } }.toMap()
+	return target.copy(
+		rigTuning = template.rigTuning, headTurnStrength = template.headTurnStrength, bodyStrength = template.bodyStrength,
+		hairTurnDepth = template.hairTurnDepth, hairTurnDepthY = template.hairTurnDepthY,
+		physicsFrontHair = template.physicsFrontHair, physicsBackHair = template.physicsBackHair, physicsEyeJelly = template.physicsEyeJelly,
+		motionIdle = template.motionIdle, motionBlink = template.motionBlink, motionNod = template.motionNod, motionShake = template.motionShake,
+		hairAnchors = target.hairAnchors + template.hairAnchors.filterKeys { it in names },
+		layerGlues = target.layerGlues + template.layerGlues.filter { (n, g) -> n in names && g.target in names },
+		meshOverrides = target.meshOverrides + meshes,
+		rigEdits = target.rigEdits.copy(
+			physicsEdits = target.rigEdits.physicsEdits.filter { p -> physics.none { it.id == p.id } } + physics,
+			expressions = target.rigEdits.expressions.filter { e -> expressions.none { it.name.equals(e.name, true) } } + expressions,
+			motionPresets = target.rigEdits.motionPresets + t.motionPresets,
+		),
+	)
+}

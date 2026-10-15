@@ -56,6 +56,8 @@ fun RigSettingsScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onCa
 	var meshes by remember { mutableStateOf(false) }
 	// Choosing a layer for an anchor or a glue: "anchor", "glue", or "target:<layer>" (choosing what that layer is glued to).
 	var picking by remember { mutableStateOf<String?>(null) }
+	var templating by remember { mutableStateOf(false) }
+	var templateNote by remember { mutableStateOf<String?>(null) }
 	val layerNames = remember(outcome) { paintableLayers(outcome).map { it.name }.distinct() }
 	var applying by remember { mutableStateOf<Pair<String, Double>?>(null) }
 	var failure by remember { mutableStateOf<String?>(null) }
@@ -95,6 +97,25 @@ fun RigSettingsScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onCa
 			}
 		}
 		failure?.let { Text("Couldn't re-rig: $it", color = Danger, fontSize = 13.sp) }
+		Chip(if (templating) "Close the project list" else "Copy settings from another project…", templating) { templating = !templating }
+		if (templating) {
+			Text("Takes how that rig is generated (every value below), its physics, expressions and motion settings, and its " +
+				"anchors, glue and mesh detail for layers with the same names. Your hand tweaks and paint stay. Apply re-rigs.",
+				color = Muted, fontSize = 12.sp)
+			for (path in RigFiles.projects().filter { !it.endsWith("/" + RigFiles.projectPath(outcome.name).substringAfterLast('/')) }) {
+				Text(path.substringAfterLast('/'), color = Accent, fontSize = 14.sp, modifier = Modifier.fillMaxWidth().clickable {
+					scope.launch {
+						templateNote = "Reading ${path.substringAfterLast('/')}…"
+						templateNote = try {
+							val other = withContext(Dispatchers.Default) { projectSettings(path) }
+							config = withTemplate(outcome, config, other); templating = false
+							"Settings from ${path.substringAfterLast('/')} are in - check them, then Apply and re-rig."
+						} catch (e: Throwable) { "Couldn't read it: ${e.message ?: e::class.simpleName}" }
+					}
+				}.padding(vertical = 6.dp))
+			}
+		}
+		templateNote?.let { Text(it, color = Muted, fontSize = 13.sp) }
 
 		Section("Depth, hair and range")
 		ValueRow("Hair wraps round the head", "On a head turn the hair turns round a cylinder on the head: the far side squeezes, " +

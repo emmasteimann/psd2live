@@ -258,3 +258,10 @@ actual fun <T> synchronizedListOf(list: MutableList<T>): MutableList<T> = Locked
 @Suppress("CAST_NEVER_SUCCEEDS")
 actual fun normalizeNfkc(text: String): String =
 	(text as NSString).precomposedStringWithCompatibilityMapping
+
+actual class ThreadLocal<T> actual constructor() {
+	private var value: T? = null
+	actual fun get(): T? = value
+	actual fun set(value: T) { this.value = value }
+	actual fun remove() { value = null }
+}

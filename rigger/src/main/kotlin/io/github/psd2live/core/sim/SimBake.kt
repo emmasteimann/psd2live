@@ -1,4 +1,5 @@
 package io.github.psd2live.core.sim
+import io.github.psd2live.core.hex
 import io.github.psd2live.core.MessageDigest
 
 import io.github.psd2live.core.Math
@@ -238,5 +239,5 @@ object SimBake {
     fun stale(model: PuppetModel, edit: RigSimEdit): Boolean = edit.bake != null && edit.bake.fingerprint != fingerprint(model, edit)
 
     fun sha1(text: String): String =
-        MessageDigest.getInstance("SHA-1").digest(text.toByteArray()).joinToString("") { "%02x".format(it) }.take(16)
+        hex(MessageDigest.getInstance("SHA-1").digest(text.encodeToByteArray())).take(16)
 }

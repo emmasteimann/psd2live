@@ -1,4 +1,6 @@
 package io.github.psd2live.core.legacy
+import io.github.psd2live.core.ThreadLocal
+import io.github.psd2live.core.toSortedMap
 import io.github.psd2live.core.SoftReference
 import io.github.psd2live.core.WeakReference
 import io.github.psd2live.core.nanoTime

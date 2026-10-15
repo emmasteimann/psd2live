@@ -26,13 +26,13 @@ object SourcePartitionJournal {
             if (followCutVertices) put("follow_cut_vertices", true)
             put("before_mesh", RasterMeshJournal.fingerprint(requireNotNull(drawable.mesh)))
             put("parent", drawable.parentDeformerId?.raw?.let(::JsonPrimitive) ?: JsonNull)
-            put("owners", JsonArray(plan.ownerByVertex.map(::JsonPrimitive)))
+            put("owners", JsonArray(plan.ownerByVertex.map { JsonPrimitive(it) }))
             put("pieces", JsonArray(plan.pieces.mapIndexed { index, piece -> buildJsonObject {
                 put("id", ids[index]); put("layer_id", layers[index]); put("name", names[index])
                 put("visible", drawable.isVisible)
-                put("points", JsonArray(piece.mesh.positions.map(::JsonPrimitive)))
-                put("texture_canvas", JsonArray(piece.mesh.uvs.map(::JsonPrimitive)))
-                put("triangles", JsonArray(piece.mesh.indices.map(::JsonPrimitive)))
+                put("points", JsonArray(piece.mesh.positions.map { JsonPrimitive(it) }))
+                put("texture_canvas", JsonArray(piece.mesh.uvs.map { JsonPrimitive(it) }))
+                put("triangles", JsonArray(piece.mesh.indices.map { JsonPrimitive(it) }))
                 put("sources", encodeSources(piece.sources))
             } }))
         }

@@ -131,7 +131,7 @@ class LimbGraph(parts: List<Pair<FloatArray, IntArray>>) {
 		val queue = PriorityQueue<Pair<Double, Int>>(compareBy { it.first })
 		for ((v, d) in seeds) if (d < dist[v]) { dist[v] = d; queue += d to v }
 		while (queue.isNotEmpty()) {
-			val (cost, at) = queue.poll()
+			val (cost, at) = queue.poll()!!
 			if (cost > dist[at]) continue
 			for (next in adjacency[at]) {
 				val through = cost + distance(at, next)
@@ -309,7 +309,7 @@ object LimbTrace {
 		val owned = DoubleArray(count) { if (label[it] >= 0) 0.0 else Double.MAX_VALUE }
 		for (v in 0 until count) if (label[v] >= 0) queue += 0.0 to v
 		while (queue.isNotEmpty()) {
-			val (cost, at) = queue.poll()
+			val (cost, at) = queue.poll()!!
 			if (cost > owned[at]) continue
 			for (next in graph.neighbours(at)) {
 				if (!geo.reached(next)) continue

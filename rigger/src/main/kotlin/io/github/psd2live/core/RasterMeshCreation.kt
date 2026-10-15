@@ -38,7 +38,7 @@ object RasterMeshCreation {
             put("multiply", color(drawable.multiplyColor)); put("screen", color(drawable.screenColor))
             put("invert_mask", drawable.invertMask); put("alpha_blend", drawable.alphaBlendMode.name); put("culling", drawable.culling)
             put("masks", JsonArray(drawable.maskedBy.map { JsonPrimitive(it.raw) })); put("user_data", drawable.userData)
-            put("positions", floats(mesh.positions)); put("triangles", JsonArray(mesh.indices.map(::JsonPrimitive)))
+            put("positions", floats(mesh.positions)); put("triangles", JsonArray(mesh.indices.map { JsonPrimitive(it) }))
             put("canvas_uvs", floats(texture.toCanvas(mesh.uvs)))
             rig.sourceBoundsByDrawableId[id.raw]?.let { put("neutral_bounds", floats(floatArrayOf(it.left, it.top, it.right, it.bottom))) }
             put("parameters", JsonArray(axes.map { it.parameterId }.distinct().map { axis ->
@@ -180,7 +180,7 @@ object RasterMeshCreation {
         return LayerBounds(left, top, width.toInt(), height.toInt())
     }
 
-    private fun floats(values: FloatArray) = JsonArray(values.map(::JsonPrimitive))
+    private fun floats(values: FloatArray) = JsonArray(values.map { JsonPrimitive(it) })
     private fun color(value: ColorRgb) = floats(floatArrayOf(value.red, value.green, value.blue))
     private fun decodeColor(value: JsonElement): ColorRgb {
         val numbers = value.jsonArray.map { it.jsonPrimitive.float }
@@ -189,7 +189,7 @@ object RasterMeshCreation {
     }
     fun <T> grid(value: KeyformGrid<T>, form: (T) -> JsonElement) = buildJsonObject {
         put("axes", JsonArray(value.axes.map { axis -> buildJsonObject { put("id", axis.parameterId.raw); put("keys", floats(axis.keys)) } }))
-        put("cells", JsonArray(value.cells.map { cell -> buildJsonArray { add(JsonArray(cell.coordinate.map(::JsonPrimitive))); add(form(cell.form)) } }))
+        put("cells", JsonArray(value.cells.map { cell -> buildJsonArray { add(JsonArray(cell.coordinate.map { JsonPrimitive(it) })); add(form(cell.form)) } }))
     }
     fun <T> decodeGrid(data: JsonObject, model: PuppetModel, form: (JsonElement) -> T): KeyformGrid<T> {
         val axes = data.getValue("axes").jsonArray.map { element ->

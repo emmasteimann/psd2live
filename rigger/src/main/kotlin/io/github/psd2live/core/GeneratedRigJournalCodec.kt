@@ -13,7 +13,7 @@ object GeneratedRigJournalCodec {
             put("id", drawable.id.raw); put("name", drawable.name); put("parent", drawable.parentDeformerId?.raw?.let(::JsonPrimitive) ?: JsonNull)
             put("positions", drawable.mesh?.let { floats(it.positions) } ?: JsonNull)
             put("uvs", drawable.mesh?.let { floats(it.uvs) } ?: JsonNull)
-            put("triangles", drawable.mesh?.let { JsonArray(it.indices.map(::JsonPrimitive)) } ?: JsonNull)
+            put("triangles", drawable.mesh?.let { JsonArray(it.indices.map { JsonPrimitive(it) }) } ?: JsonNull)
             put("geometry", drawable.geometryGrid?.let { grid -> RasterMeshCreation.grid(grid) { floats(it.positionDeltas) } } ?: JsonNull)
             put("channels", channels(drawable.channelGrids)); put("opacity", drawable.opacity)
             put("multiply", color(drawable.multiplyColor)); put("screen", color(drawable.screenColor))
@@ -65,7 +65,7 @@ object GeneratedRigJournalCodec {
     fun parameters(model: PuppetModel) = JsonArray(model.parameters.map { parameter -> buildJsonObject {
         put("id", parameter.id.raw); put("name", parameter.name); put("min", parameter.min); put("max", parameter.max)
         put("default", parameter.default); put("kind", parameter.kind.name); put("repeat", parameter.repeat)
-        put("keys", parameter.keys?.let { JsonArray(it.map(::JsonPrimitive)) } ?: JsonNull)
+        put("keys", parameter.keys?.let { JsonArray(it.map { JsonPrimitive(it) }) } ?: JsonNull)
     } })
 
     fun parameters(value: JsonArray): List<Parameter> = value.map { element ->
@@ -151,7 +151,7 @@ object GeneratedRigJournalCodec {
         }
     }
 
-    private fun floats(values: FloatArray) = JsonArray(values.map(::JsonPrimitive))
+    private fun floats(values: FloatArray) = JsonArray(values.map { JsonPrimitive(it) })
     private fun color(value: ColorRgb) = floats(floatArrayOf(value.red, value.green, value.blue))
     private fun color(value: JsonElement): ColorRgb {
         val numbers = value.jsonArray.map { it.jsonPrimitive.float }

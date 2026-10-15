@@ -103,8 +103,8 @@ object GeneratedOverrides {
 			buildJsonObject {
 				put("op", OP); put("generator", generator); put("target", "$kind:$id")
 				put("key", JsonObject(key.mapValues { JsonPrimitive(it.value) }))
-				put("base", JsonArray(base.map(::JsonPrimitive)))
-				put("points", JsonArray(points.map(::JsonPrimitive)))
+				put("base", JsonArray(base.map { JsonPrimitive(it) }))
+				put("points", JsonArray(points.map { JsonPrimitive(it) }))
 			}
 		})
 	}
@@ -163,8 +163,8 @@ object GeneratedOverrides {
 		fun override(generator: String, kind: String, id: String, key: Map<String, Float>, base: FloatArray, points: FloatArray) = buildJsonObject {
 			put("op", OP); put("generator", generator); put("target", "$kind:$id")
 			put("key", JsonObject(key.mapValues { JsonPrimitive(it.value) }))
-			put("base", JsonArray(base.map(::JsonPrimitive)))
-			put("points", JsonArray(points.map(::JsonPrimitive)))
+			put("base", JsonArray(base.map { JsonPrimitive(it) }))
+			put("points", JsonArray(points.map { JsonPrimitive(it) }))
 		}
 		fun cell(model: PuppetModel, kind: String, id: String, key: Map<String, Float>) =
 			if (kind == "warp") warpCell(model, id, key)?.form?.controlPoints else meshCell(model, id, key)?.form?.positionDeltas

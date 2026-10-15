@@ -230,8 +230,8 @@ object PrimitiveResidual {
 			overrides += buildJsonObject {
 				put("op", GeneratedOverrides.OP); put("generator", generator); put("target", "mesh:${parked.id.raw}")
 				put("key", JsonObject(key.entries.associate { it.key.raw to JsonPrimitive(it.value) }))
-				put("base", JsonArray(base.map(::JsonPrimitive)))
-				put("points", JsonArray(FloatArray(base.size) { base[it] + carried[it] }.map(::JsonPrimitive)))
+				put("base", JsonArray(base.map { JsonPrimitive(it) }))
+				put("points", JsonArray(FloatArray(base.size) { base[it] + carried[it] }.map { JsonPrimitive(it) }))
 			}
 		}
 		return Geometry(residual, overrides)

@@ -112,16 +112,16 @@ object RasterMeshJournal {
         require(canvas.all(Float::isFinite)) { "Invalid mesh migration texture coordinates" }
         return buildJsonObject {
             put("op", OP); put("id", id.raw); put("before_mesh", fingerprint(previous))
-            previousPositions?.let { put("previous_parent_points", JsonArray(it.map(::JsonPrimitive))) }
+            previousPositions?.let { put("previous_parent_points", JsonArray(it.map { JsonPrimitive(it) })) }
             neutralBounds?.let { bounds -> put("neutral_bounds", buildJsonArray {
                 add(bounds.left); add(bounds.top); add(bounds.right); add(bounds.bottom)
             }) }
             put("parent", drawable.parentDeformerId?.raw?.let(::JsonPrimitive) ?: JsonNull)
             put("source", reference.layer.key)
             put("source_id", reference.sourceId.raw)
-            put("points", JsonArray(replacement.positions.map(::JsonPrimitive)))
-            put("triangles", JsonArray(replacement.indices.map(::JsonPrimitive)))
-            put("texture_canvas", JsonArray(canvas.map(::JsonPrimitive)))
+            put("points", JsonArray(replacement.positions.map { JsonPrimitive(it) }))
+            put("triangles", JsonArray(replacement.indices.map { JsonPrimitive(it) }))
+            put("texture_canvas", JsonArray(canvas.map { JsonPrimitive(it) }))
             put("sources", JsonArray(plan.sources.map { source -> buildJsonArray {
                 when (source) {
                     is VertexSource.FromOld -> add(source.oldIndex)
@@ -131,7 +131,7 @@ object RasterMeshJournal {
                     else -> error("Unsupported raster vertex source")
                 }
             } }))
-            put("glue_map", JsonArray(plan.glueMap.map(::JsonPrimitive)))
+            put("glue_map", JsonArray(plan.glueMap.map { JsonPrimitive(it) }))
         }
     }
 

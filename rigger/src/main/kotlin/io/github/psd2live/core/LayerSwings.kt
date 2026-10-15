@@ -24,7 +24,7 @@ object LayerSwings {
 			overlay = runCatching {
 				val request = SwingAuthoring.request(JsonObject(settings + mapOf(
 					"id" to JsonPrimitive(id), "name" to JsonPrimitive("Swing: $name"),
-					"targets" to JsonArray(drawables.map(::JsonPrimitive)),
+					"targets" to JsonArray(drawables.map { JsonPrimitive(it) }),
 				)))
 				SwingAuthoring.put(overlay, rig.withRigEdits(overlay).puppet, request.edit, request.estimatePhysics)
 			}.getOrElse { warn("Warning: swing \"$name\": ${it.message}"); overlay }

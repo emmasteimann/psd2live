@@ -133,8 +133,8 @@ object ProjectHeadCache {
 	fun encodeBake(bake: SkeletonRig.StoredBake): ByteArray {
 		val header = buildJsonObject {
 			put("bakeVersion", SkeletonRig.BAKE_VERSION); put("key", bake.key); put("spec", bake.spec)
-			put("drawables", JsonArray(bake.drawables.map(::JsonPrimitive))); put("deformers", JsonArray(bake.deformers.map(::JsonPrimitive)))
-			put("unread", JsonArray(bake.unread.map(::JsonPrimitive)))
+			put("drawables", JsonArray(bake.drawables.map { JsonPrimitive(it) })); put("deformers", JsonArray(bake.deformers.map { JsonPrimitive(it) }))
+			put("unread", JsonArray(bake.unread.map { JsonPrimitive(it) }))
 			put("reparentedDrawables", JsonObject(bake.reparentedDrawables.mapValues { JsonPrimitive(it.value) }))
 			put("reparentedDeformers", JsonObject(bake.reparentedDeformers.mapValues { JsonPrimitive(it.value) }))
 			bake.exact?.let { put("exact", it) }

@@ -153,7 +153,7 @@ object ArtPrimitiveJournal {
 			put("multiply", color(drawable.multiplyColor)); put("screen", color(drawable.screenColor))
 			put("invert_mask", drawable.invertMask); put("alpha_blend", drawable.alphaBlendMode.name); put("culling", drawable.culling)
 			put("masks", JsonArray(drawable.maskedBy.map { JsonPrimitive(it.raw) })); put("user_data", drawable.userData)
-			put("positions", floats(mesh.positions)); put("triangles", JsonArray(mesh.indices.map(::JsonPrimitive)))
+			put("positions", floats(mesh.positions)); put("triangles", JsonArray(mesh.indices.map { JsonPrimitive(it) }))
 			put("canvas_uvs", floats(mesh.uvs))
 			put("parameters", JsonArray(axes.distinct().map { axis ->
 				val parameter = model.parameters.single { it.id == axis }
@@ -194,7 +194,7 @@ object ArtPrimitiveJournal {
 	           masks: Map<DrawableId, List<DrawableId>> = replace, version: Int = VERSION): JsonObject = buildJsonObject {
 		put("op", OP); put("v", version); put("origin", origin); put("texture_source_id", textureSourceId)
 		put("supersedes", JsonArray(supersedes.map { JsonPrimitive(it.raw) }))
-		put("supersedes_layers", JsonArray(supersededLayers.map(::JsonPrimitive)))
+		put("supersedes_layers", JsonArray(supersededLayers.map { JsonPrimitive(it) }))
 		put("replace", buildJsonObject { replace.forEach { (id, ids) -> put(id.raw, JsonArray(ids.map { JsonPrimitive(it.raw) })) } })
 		if (masks != replace) put("masks", buildJsonObject { masks.forEach { (id, ids) -> put(id.raw, JsonArray(ids.map { JsonPrimitive(it.raw) })) } })
 		put("primitives", JsonArray(primitives))
@@ -230,6 +230,6 @@ object ArtPrimitiveJournal {
 		return LayerBounds(left, top, right - left, bottom - top)
 	}
 
-	private fun floats(values: FloatArray) = JsonArray(values.map(::JsonPrimitive))
+	private fun floats(values: FloatArray) = JsonArray(values.map { JsonPrimitive(it) })
 	private fun color(value: ColorRgb) = floats(floatArrayOf(value.red, value.green, value.blue))
 }

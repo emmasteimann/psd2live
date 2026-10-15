@@ -1,4 +1,5 @@
 package io.github.psd2live.project
+import io.github.psd2live.core.toSortedMap
 import io.github.psd2live.core.base64Decode
 import io.github.psd2live.core.base64Encode
 import io.github.psd2live.core.MessageDigest

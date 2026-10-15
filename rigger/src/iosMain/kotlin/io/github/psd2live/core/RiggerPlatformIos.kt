@@ -88,6 +88,8 @@ actual class BitSet actual constructor() {
 		}
 	}
 
+	actual fun isEmpty(): Boolean = words.all { it == 0L }
+
 	actual fun cardinality(): Int = words.sumOf { it.countOneBits() }
 
 	actual fun length(): Int {

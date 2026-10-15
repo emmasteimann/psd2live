@@ -75,7 +75,7 @@ object RigGenerationJournal {
             buildJsonObject {
                 put("id", drawable.id.raw); put("expected", RasterMeshJournal.fingerprint(mesh))
                 put("parent", drawable.parentDeformerId?.raw?.let(::JsonPrimitive) ?: JsonNull)
-                put("geometry", geometry?.let { grid -> RasterMeshCreation.grid(grid) { JsonArray(it.positionDeltas.map(::JsonPrimitive)) } } ?: JsonNull)
+                put("geometry", geometry?.let { grid -> RasterMeshCreation.grid(grid) { JsonArray(it.positionDeltas.map { JsonPrimitive(it) }) } } ?: JsonNull)
                 put("channels", GeneratedRigJournalCodec.channels(channels))
                 // Masks are a generated relation unless an appearance edit changed the original relation.
                 put("masks", JsonArray((if (original == null || drawable.maskedBy == old.maskedBy) next.maskedBy else drawable.maskedBy).map { JsonPrimitive(it.raw) }))

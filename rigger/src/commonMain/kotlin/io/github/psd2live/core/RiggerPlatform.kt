@@ -24,6 +24,7 @@ expect class BitSet() {
 	fun set(fromIndex: Int, toIndex: Int)
 	fun nextSetBit(fromIndex: Int): Int
 	fun nextClearBit(fromIndex: Int): Int
+	fun isEmpty(): Boolean
 	fun cardinality(): Int
 	fun length(): Int
 	fun andNot(set: BitSet)

@@ -414,7 +414,7 @@ object AtlasArrange {
 				if (!bits[r * columns + c] && touches(t, c * cell.toFloat(), r * cell.toFloat(), (c + 1) * cell.toFloat(), (r + 1) * cell.toFloat())) bits.set(r * columns + c)
 			}
 		}
-		return if (bits.isEmpty) null else TextureFootprint(cell, columns, rows, bits)
+		return if (bits.isEmpty()) null else TextureFootprint(cell, columns, rows, bits)
 	}
 
 	/** Alpha from which a pixel is art a mesh covers: the mesh tracer's default threshold. */

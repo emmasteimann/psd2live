@@ -182,9 +182,9 @@ object PoseGroups {
 	}
 
 	fun request(groups: List<List<String>>, fadeIn: Float, links: Map<String, List<String>> = emptyMap()): JsonObject = buildJsonObject {
-		putJsonArray("groups") { groups.forEach { g -> add(JsonArray(g.map(::JsonPrimitive))) } }
+		putJsonArray("groups") { groups.forEach { g -> add(JsonArray(g.map { JsonPrimitive(it) })) } }
 		put("fade_in", fadeIn)
-		if (links.isNotEmpty()) put("links", JsonObject(links.toSortedMap().mapValues { (_, l) -> JsonArray(l.map(::JsonPrimitive)) }))
+		if (links.isNotEmpty()) put("links", JsonObject(links.toSortedMap().mapValues { (_, l) -> JsonArray(l.map { JsonPrimitive(it) }) }))
 	}
 
 	/** What the model exports: groups over the parts it has, each with two or more, members carrying their links; null when none. */

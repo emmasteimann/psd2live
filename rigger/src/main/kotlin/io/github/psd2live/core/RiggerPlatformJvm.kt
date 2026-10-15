@@ -182,3 +182,5 @@ actual fun legacyPaddedRaster(current: org.umamo.format.art.SourceLayer, bounds:
 	return org.umamo.format.art.LayerRaster(bounds.width, bounds.height, rgba)
 }
 
+
+actual typealias ThreadLocal<T> = java.lang.ThreadLocal<T>

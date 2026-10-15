@@ -32,9 +32,9 @@ object MaterializedRigCodec {
 				rig.sourceBoundsByDrawableId.toSortedMap().forEach { (id, b) -> put(id, floats(b.left, b.top, b.right, b.bottom)) }
 			}
 			put("face", floats(rig.faceCenterX, rig.faceCenterY, rig.faceRadiusX, rig.faceRadiusY, rig.initialHeadAngleZ))
-			put("warnings", JsonArray(rig.warnings.map(::JsonPrimitive)))
+			put("warnings", JsonArray(rig.warnings.map { JsonPrimitive(it) }))
 			put("skipped", JsonArray(rig.supersededEntryNotes.map { note -> buildJsonObject {
-				put("index", note.index); put("op", note.op); put("targets", JsonArray(note.targets.map(::JsonPrimitive))); put("detail", note.detail)
+				put("index", note.index); put("op", note.op); put("targets", JsonArray(note.targets.map { JsonPrimitive(it) })); put("detail", note.detail)
 			} }))
 			put("visibility", JsonArray(authored.visibilityTargets.map { (id, layer) -> JsonArray(listOf(JsonPrimitive(id), JsonPrimitive(layer))) }))
 		}

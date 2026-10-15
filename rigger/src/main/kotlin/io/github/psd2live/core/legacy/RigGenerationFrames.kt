@@ -192,7 +192,7 @@ object RigGenerationFrames {
     }
 
     private fun encodeMesh(before: Drawable, after: Drawable) = buildJsonObject {
-        fun floats(v: FloatArray) = JsonArray(v.map(::JsonPrimitive))
+        fun floats(v: FloatArray) = JsonArray(v.map { JsonPrimitive(it) })
         put("id", before.id.raw); put("expected", RasterMeshJournal.fingerprint(requireNotNull(before.mesh)))
         put("expected_parent", before.parentDeformerId?.raw?.let(::JsonPrimitive) ?: JsonNull)
         put("positions", floats(requireNotNull(after.mesh).positions))
@@ -399,13 +399,13 @@ object RigGenerationFrames {
     private fun encode(d: Deformer): JsonObject {
         val base = when (d) { is Deformer.Warp -> d.copy(blendShapes = emptyList()); is Deformer.Rotation -> d.copy(blendShapes = emptyList()) }
         fun <T: Any> bindings(values: List<BlendShapeBinding<T>>, form: (T) -> JsonElement) = JsonArray(values.map { b -> buildJsonObject {
-            put("parameter", b.parameterId.raw); put("keys", JsonArray(b.keys.map(::JsonPrimitive))); put("neutral", b.neutralIndex)
+            put("parameter", b.parameterId.raw); put("keys", JsonArray(b.keys.map { JsonPrimitive(it) })); put("neutral", b.neutralIndex)
             put("forms", JsonArray(b.forms.map { it?.let(form) ?: JsonNull }))
             put("limits", JsonArray(b.limits.map { limit -> buildJsonObject {
                 put("parameter", limit.parameterId.raw); put("points", JsonArray(limit.points.map { point -> buildJsonArray { add(point.value); add(point.weight) } }))
             } }))
         } })
-        fun floats(a: FloatArray) = JsonArray(a.map(::JsonPrimitive))
+        fun floats(a: FloatArray) = JsonArray(a.map { JsonPrimitive(it) })
         fun channels(opacity: Float, multiply: ColorRgb, screen: ColorRgb) = buildJsonArray {
             add(opacity); add(multiply.red); add(multiply.green); add(multiply.blue); add(screen.red); add(screen.green); add(screen.blue)
         }

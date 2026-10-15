@@ -96,5 +96,5 @@ object RigWarpTopology {
         return model.copy(deformers = model.deformers.map { if (it.id == warp.id) replacement else it })
     }
 
-    fun floats(points: FloatArray) = JsonArray(points.map(::JsonPrimitive))
+    fun floats(points: FloatArray) = JsonArray(points.map { JsonPrimitive(it) })
 }

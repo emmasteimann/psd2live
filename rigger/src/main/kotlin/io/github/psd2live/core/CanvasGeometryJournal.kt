@@ -110,9 +110,9 @@ object CanvasGeometryJournal {
             command.forEach { (name, value) -> if (name != "points") put(name, value) }
             put("v", VERSION); put("n", points.size); put("q", exponent)
             if (sparse) {
-                put("i", JsonArray(moved.map(::JsonPrimitive)))
+                put("i", JsonArray(moved.map { JsonPrimitive(it) }))
                 put("d", JsonArray(moved.flatMap { listOf(JsonPrimitive(quantized[it * 2]), JsonPrimitive(quantized[it * 2 + 1])) }))
-            } else put("d", JsonArray(quantized.map(::JsonPrimitive)))
+            } else put("d", JsonArray(quantized.map { JsonPrimitive(it) }))
         }
     }
 }

@@ -396,7 +396,7 @@ class SimScene private constructor(
                 for (r in roots) { distance[r] = 0f; root[r] = r; queue += 0f to r }
                 while (queue.isNotEmpty()) {
                     checkpoint()
-                    val (d, i) = queue.poll()
+                    val (d, i) = queue.poll()!!
                     if (d > distance[i]) continue
                     for (j in neighbours[i]) {
                         val next = d + length(i, j)

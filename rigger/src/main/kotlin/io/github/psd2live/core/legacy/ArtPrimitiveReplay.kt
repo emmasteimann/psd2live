@@ -571,7 +571,7 @@ object ArtPrimitiveReplay {
 		return g to g2
 	}
 
-	private fun floats(values: FloatArray) = JsonArray(values.map(::JsonPrimitive))
+	private fun floats(values: FloatArray) = JsonArray(values.map { JsonPrimitive(it) })
 	private fun decodeColor(value: JsonElement): ColorRgb {
 		val numbers = value.jsonArray.map { it.jsonPrimitive.float }
 		require(numbers.size == 3 && numbers.all(Float::isFinite)) { "Invalid art primitive color" }

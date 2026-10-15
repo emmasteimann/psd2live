@@ -154,3 +154,28 @@ open class AccessOrderMap<K, V> constructor(initialCapacity: Int, @Suppress("UNU
 	override fun clear() = map.clear()
 	override val entries: MutableSet<MutableMap.MutableEntry<K, V>> get() = map.entries
 }
+
+/** The entries in key order, as java.util.TreeMap iterates them (Kotlin's toSortedMap is the JVM's only). */
+fun <K : Comparable<K>, V> Map<out K, V>.toSortedMap(): Map<K, V> {
+	val out = LinkedHashMap<K, V>(size)
+	for (entry in entries.sortedBy { it.key }) out[entry.key] = entry.value
+	return out
+}
+
+/**
+ * java.util.Map.merge: [value] when [key] has none, else [remapping] of the old and [value]; a null result removes the
+ * key. On the JVM the map's own merge is a member and takes precedence; this serves shared code elsewhere.
+ */
+fun <K, V : Any> MutableMap<K, V>.merge(key: K, value: V, remapping: (V, V) -> V?): V? {
+	val old = get(key)
+	val new = if (old == null) value else remapping(old, value)
+	if (new == null) remove(key) else put(key, new)
+	return new
+}
+
+/** java.lang.ThreadLocal (the iPad's rigger runs its work one at a time, so there it is one value). */
+expect class ThreadLocal<T>() {
+	fun get(): T?
+	fun set(value: T)
+	fun remove()
+}

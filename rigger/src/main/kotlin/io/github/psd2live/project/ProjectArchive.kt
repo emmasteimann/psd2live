@@ -31,19 +31,19 @@ import java.util.zip.ZipOutputStream
  * DEFLATEd, and the manifest is the last entry. Reading accepts either method and any entry order, as earlier
  * builds wrote every entry DEFLATEd with the manifest among them.
  */
-object ProjectArchive {
-    val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
+actual object ProjectArchive {
+    actual val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
     const val MANIFEST = "manifest.json"
-    fun writeJson(path: Path, value: JsonElement) {
+    actual fun writeJson(path: Path, value: JsonElement) {
         Files.createDirectories(path.parent)
         Files.writeString(path, json.encodeToString(JsonElement.serializer(), value))
     }
-    fun readJson(path: Path): JsonObject = json.parseToJsonElement(Files.readString(path)).jsonObject
+    actual fun readJson(path: Path): JsonObject = json.parseToJsonElement(Files.readString(path)).jsonObject
     /** Versions [extract] opens: v1 archives migrate on open, saves write [ProjectFormatV2.VERSION]. */
-    val readableVersions = setOf(1, ProjectFormatV2.VERSION)
+    actual val readableVersions = setOf(1, ProjectFormatV2.VERSION)
 
     /** Entries always written without compression: their content is compressed already, so DEFLATE would only cost time. */
-    fun isStored(name: String): Boolean = name.endsWith(".png", ignoreCase = true) || name.endsWith(".cmo3", ignoreCase = true)
+    actual fun isStored(name: String): Boolean = name.endsWith(".png", ignoreCase = true) || name.endsWith(".cmo3", ignoreCase = true)
 
     /** Other files at least this long (other than JSON) are sampled ([compresses]) before they are DEFLATEd. */
     private const val SAMPLED_BYTES = 1L shl 20
@@ -120,7 +120,11 @@ object ProjectArchive {
     }
 
     /** [copyKeepingTime] with the shared storage code's copy options (the same Java options). */
-    fun copyKeepingTime(source: Path, target: Path, option: io.github.psd2live.project.StandardCopyOption,
+    actual fun copyKeepingTime(source: Path, target: Path) = copyKeepingTime(source, target, *emptyArray<StandardCopyOption>())
+
+    actual fun sourceDigest(name: String, file: Path): String = Digests.of(name, file).sha256
+
+    actual fun copyKeepingTime(source: Path, target: Path, option: io.github.psd2live.project.StandardCopyOption,
                         vararg more: io.github.psd2live.project.StandardCopyOption) =
         copyKeepingTime(source, target, *(listOf(option) + more).map { StandardCopyOption.valueOf(it.name) }.toTypedArray())
 
@@ -154,8 +158,8 @@ object ProjectArchive {
      * (entry set, lengths, CRCs and manifest) before it atomically replaces [target]. [progress] sees the share of
      * bytes written and read back, from 0 to 1.
      */
-    fun write(directory: Path, target: Path, projectId: String, version: Int = ProjectFormatV2.VERSION,
-              progress: (Double) -> Unit = {}, beforeReplace: () -> Unit = {}) {
+    actual fun write(directory: Path, target: Path, projectId: String, version: Int,
+              progress: (Double) -> Unit, beforeReplace: () -> Unit) {
         val files = Files.walk(directory).use { paths -> paths.filter(Files::isRegularFile).toList() }
             .map { directory.relativize(it).toString().replace('\\', '/') to it }
             .filter { it.first != MANIFEST }.sortedBy { it.first }
@@ -244,7 +248,7 @@ object ProjectArchive {
     }
 
     /** Unpacks [file] into a new temporary directory; [progress] sees the share of declared entry bytes written, from 0 to 1. */
-    fun extract(file: Path, progress: (Double) -> Unit = {}): Path {
+    actual fun extract(file: Path, progress: (Double) -> Unit): Path {
         val root = Files.createTempDirectory("psd2live-project-").toAbsolutePath().normalize()
         try {
             ZipFile(file.toFile()).use { zip ->
@@ -295,7 +299,7 @@ object ProjectArchive {
         } catch (failure: Throwable) { deleteTemporaryDirectory(root); throw failure }
     }
     /** Only accepts directories created by this project subsystem in the OS temporary directory. */
-    fun deleteTemporaryDirectory(root: Path) {
+    actual fun deleteTemporaryDirectory(root: Path) {
         val path = root.toAbsolutePath().normalize()
         // The temporary directory may be named through a link or a Windows short name; compare where both lead.
         fun real(of: Path) = runCatching { of.toRealPath() }.getOrElse { of.toAbsolutePath().normalize() }

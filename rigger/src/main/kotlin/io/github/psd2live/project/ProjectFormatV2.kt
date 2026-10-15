@@ -33,7 +33,7 @@ import kotlinx.serialization.json.*
  * without the new fields still open in builds that read only schema 1, and builds that do reject the rest.
  */
 object ProjectFormatV2 {
-	const val VERSION = 2
+	const val VERSION = PROJECT_FORMAT_VERSION
 	/** Schema of document nodes v1 writers produced; still written for every node without newer fields. */
 	const val NODE_SCHEMA = 1
 	/** Schema of a node holding texture fields (layer `rect`, `textureOverrides`, the `atlas` setting). */

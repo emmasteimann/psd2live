@@ -7,10 +7,7 @@ import io.github.psd2live.core.SkeletonRig
 import io.github.psd2live.format.compile.Compiler
 import io.github.psd2live.format.compile.RigIrBinary
 import kotlinx.serialization.json.*
-import java.io.ByteArrayOutputStream
-import java.io.DataInputStream
-import java.io.DataOutputStream
-import java.io.IOException
+import okio.IOException
 
 /**
  * The optional, non-authoritative `cache/head/` folder of a v2 archive: expensive intermediate results of
@@ -139,16 +136,14 @@ object ProjectHeadCache {
 			bake.exact?.let { put("exact", it) }
 		}.toString().encodeToByteArray()
 		val output = RigIrBinary.encode(bake.output)
-		return ByteArrayOutputStream(header.size + output.size + 8).also { bytes ->
-			DataOutputStream(bytes).use { out -> out.writeInt(header.size); out.write(header); out.write(output) }
-		}.toByteArray()
+		return okio.Buffer().writeInt(header.size).write(header).write(output).readByteArray()
 	}
 
 	fun decodeBake(bytes: ByteArray): SkeletonRig.StoredBake {
-		val input = DataInputStream(bytes.inputStream())
-		val size = input.readInt()
+		if (bytes.size < 4) throw IOException("Invalid head cache entry")
+		val size = ((bytes[0].toInt() and 0xff) shl 24) or ((bytes[1].toInt() and 0xff) shl 16) or ((bytes[2].toInt() and 0xff) shl 8) or (bytes[3].toInt() and 0xff)
 		if (size < 0 || size > bytes.size - 4) throw IOException("Invalid head cache entry")
-		val header = json.parseToJsonElement(ByteArray(size).also(input::readFully).decodeToString()).jsonObject
+		val header = json.parseToJsonElement(bytes.decodeToString(4, 4 + size)).jsonObject
 		if (header["bakeVersion"]?.jsonPrimitive?.contentOrNull != SkeletonRig.BAKE_VERSION) throw IOException("Skeleton bake of another version")
 		fun strings(name: String) = header.getValue(name).jsonArray.map { it.jsonPrimitive.content }
 		fun parents(name: String) = header.getValue(name).jsonObject.mapValues { it.value.jsonPrimitive.contentOrNull }

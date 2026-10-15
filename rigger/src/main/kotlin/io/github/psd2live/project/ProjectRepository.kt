@@ -51,7 +51,7 @@ class ProjectRepository(
                         val sourceName = if (original.fileName.toString().endsWith(".cmo3", true)) "original.cmo3" else "original.psd"
                         ProjectArchive.copyKeepingTime(original, root.resolve("source/$sourceName"))
                         capture.auxiliary[OwnedProjectSource.KEY]?.jsonObject?.get("sha256")?.jsonPrimitive?.content?.let { expected ->
-                            require(ProjectArchive.Digests.of("source/$sourceName", root.resolve("source/$sourceName")).sha256 == expected) {
+                            require(ProjectArchive.sourceDigest("source/$sourceName", root.resolve("source/$sourceName")) == expected) {
                                 "Owned original source bytes no longer match their descriptor"
                             }
                         }

@@ -39,14 +39,14 @@ object LayerClassifier {
 	}
 
 	private val sideSuffix = Regex(
-		"(?:[\\s_-]*[（\\(\\[【](l|r|left|right|左|右|왼쪽|오른쪽|좌|우)[）\\)\\]】]|[\\s_-]+(l|r|left|right|左|右|왼쪽|오른쪽|좌|우)|(?<=[\\p{IsHan}\\p{IsHiragana}\\p{IsKatakana}\\d])(左|右)|(?<=[\\p{IsHangul}\\d])(왼쪽|오른쪽)|(?<=[\\p{IsHan}\\p{IsHiragana}\\p{IsKatakana}\\p{IsHangul}])(l|r))$",
+		"(?:[\\s_-]*[（\\(\\[【](l|r|left|right|左|右|왼쪽|오른쪽|좌|우)[）\\)\\]】]|[\\s_-]+(l|r|left|right|左|右|왼쪽|오른쪽|좌|우)|(?<=[${UnicodeScripts.HAN}${UnicodeScripts.HIRAGANA}${UnicodeScripts.KATAKANA}\\d])(左|右)|(?<=[${UnicodeScripts.HANGUL}\\d])(왼쪽|오른쪽)|(?<=[${UnicodeScripts.HAN}${UnicodeScripts.HIRAGANA}${UnicodeScripts.KATAKANA}${UnicodeScripts.HANGUL}])(l|r))$",
 		RegexOption.IGNORE_CASE,
 	)
 	private val sidePrefix = Regex(
-		"^(?:(左|右)[-_.\\s]*|(왼쪽|오른쪽)[-_.\\s]*|(왼|오른)(?=\\p{IsHangul})|(l|r|left|right|좌|우)[-_.\\s]+|[（\\(\\[【](l|r|left|right|左|右|왼쪽|오른쪽|좌|우)[）\\)\\]】][\\s_-]*)",
+		"^(?:(左|右)[-_.\\s]*|(왼쪽|오른쪽)[-_.\\s]*|(왼|오른)(?=[${UnicodeScripts.HANGUL}])|(l|r|left|right|좌|우)[-_.\\s]+|[（\\(\\[【](l|r|left|right|左|右|왼쪽|오른쪽|좌|우)[）\\)\\]】][\\s_-]*)",
 		RegexOption.IGNORE_CASE,
 	)
-	private val variantSuffix = Regex("(?:[-_.\\s]+|(?<=[\\p{IsHan}\\p{IsHiragana}\\p{IsKatakana}\\p{IsHangul}a-zA-Z]))(\\d+)$")
+	private val variantSuffix = Regex("(?:[-_.\\s]+|(?<=[${UnicodeScripts.HAN}${UnicodeScripts.HIRAGANA}${UnicodeScripts.KATAKANA}${UnicodeScripts.HANGUL}a-zA-Z]))(\\d+)$")
 	private val copySuffix = Regex("\\s*(?:copy|のコピー|的副本|副本|복사)\\s*\\d*$", RegexOption.IGNORE_CASE)
 
 	fun classify(name: String): LayerSemantic {

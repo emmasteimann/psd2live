@@ -192,7 +192,7 @@ Sources are split into Gradle modules whose dependencies only point downward, wh
 | `io.github.psd2live.agent` | Local MCP server and public tool definitions |
 | `io.github.psd2live.render` | GPU rendering of the edit canvas and the p2lrt preview (`CanvasGpu`, `GlCanvasRenderer`, `P2lrtGlRenderer`, `SkiaGpu`) |
 | `io.github.psd2live.ui` | Compose UI: `state` (ViewModel, shortcut registry), `views` (workspaces and panels), `components` (dialogs and controls), `tutorial`; canvas editing and painting live in the `ui` root package |
-| `io.github.psd2live.i18n` | UI strings, with resources in `src/main/resources/i18n/` |
+| `io.github.psd2live.i18n` | UI strings, with resources in `rigger/src/main/resources/i18n/` |
 
 Keep generation and export logic in `core` / `project` / `application`, not in Compose code.
 

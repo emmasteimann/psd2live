@@ -146,6 +146,37 @@ class JavaLangParityTest {
 		}
 	}
 
+	/** The layer classifier's script classes: Java's \\p{IsHan}... patterns and the shared BMP ranges agree, supplementary characters included. */
+	@Test
+	fun scriptClassesMatchJavaScripts() {
+		val old = listOf(
+			"(?<=[\\p{IsHan}\\p{IsHiragana}\\p{IsKatakana}\\d])(左|右)$",
+			"(?<=[\\p{IsHan}\\p{IsHiragana}\\p{IsKatakana}\\p{IsHangul}a-zA-Z])(\\d+)$",
+			"^(왼|오른)(?=\\p{IsHangul})",
+		).map { Regex(it, RegexOption.IGNORE_CASE) }
+		val new = listOf(
+			"(?<=[${UnicodeScripts.HAN}${UnicodeScripts.HIRAGANA}${UnicodeScripts.KATAKANA}\\d])(左|右)$",
+			"(?<=[${UnicodeScripts.HAN}${UnicodeScripts.HIRAGANA}${UnicodeScripts.KATAKANA}${UnicodeScripts.HANGUL}a-zA-Z])(\\d+)$",
+			"^(왼|오른)(?=[${UnicodeScripts.HANGUL}])",
+		).map { Regex(it, RegexOption.IGNORE_CASE) }
+		// Every code point: the BMP ranges are each script's BMP members exactly.
+		for (cp in 0..0xFFFF) {
+			if (cp in 0xD800..0xDFFF) continue
+			val s = cp.toChar().toString() + "7"
+			assertEquals(old[1].containsMatchIn(s), new[1].containsMatchIn(s), "U+%04X".format(cp))
+		}
+		val pieces = listOf("漢", "\uD840\uDC00", "\uD86D\uDE00", "ひ", "\uD82C\uDC01", "カ", "\uD82C\uDD20", "한", "a", "Z", "1", "2", "07", "-", "_", " ",
+			"左", "右", "왼", "오른", "팔", "😀", "\uD800\uDC00", "(", "）", "l", "r")
+		repeat(30000) {
+			val text = (0 until random.nextInt(1, 7)).joinToString("") { pieces[random.nextInt(pieces.size)] }
+			for (k in old.indices) {
+				val a = old[k].find(text); val b = new[k].find(text)
+				assertEquals(a?.range, b?.range, "pattern $k on $text")
+				assertEquals(a?.groupValues, b?.groupValues, "pattern $k groups on $text")
+			}
+		}
+	}
+
 	@Test
 	fun bitSetBytesRoundTrip() {
 		val set = BitSet(300)

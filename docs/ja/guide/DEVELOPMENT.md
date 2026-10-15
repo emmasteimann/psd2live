@@ -192,7 +192,7 @@ PSD2LIVE_TOOLS=1 PSD2LIVE_SAMPLE=ds ./gradlew test --tests "io.github.psd2live.t
 | `io.github.psd2live.agent` | ローカル MCP サーバーと公開ツールの定義 |
 | `io.github.psd2live.render` | 編集キャンバスと p2lrt プレビューの GPU 描画（`CanvasGpu`、`GlCanvasRenderer`、`P2lrtGlRenderer`、`SkiaGpu`） |
 | `io.github.psd2live.ui` | Compose UI：`state`（ViewModel、ショートカット登録）、`views`（ワークスペースとパネル）、`components`（ダイアログと部品）、`tutorial`。キャンバス編集と描画は `ui` 直下 |
-| `io.github.psd2live.i18n` | UI 文言。リソースは `src/main/resources/i18n/` |
+| `io.github.psd2live.i18n` | UI 文言。リソースは `rigger/src/main/resources/i18n/` |
 
 生成と書き出しのロジックは `core` / `project` / `application` に置き、Compose のコードには書かないでください。
 

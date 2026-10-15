@@ -12,7 +12,7 @@ import kotlin.test.assertEquals
 
 /** The iPad reads and formats the desktop's bundles with shared code: it must give what Properties and MessageFormat give. */
 class TranslationsParityTest {
-	private val bundles = File("../src/main/resources/i18n").listFiles { f -> f.name.endsWith(".properties") }!!.sorted()
+	private val bundles = File("src/main/resources/i18n").listFiles { f -> f.name.endsWith(".properties") }!!.sorted()
 	private val locales = mapOf("Messages.properties" to Locale.ENGLISH, "Messages_ja.properties" to Locale.JAPANESE,
 		"Messages_ko.properties" to Locale.KOREAN, "Messages_zh_CN.properties" to Locale.SIMPLIFIED_CHINESE)
 

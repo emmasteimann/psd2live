@@ -33,7 +33,7 @@ The Windows packages whose names end in `-ffmpeg` include `ffmpeg.exe` from the 
 
 ## MHR joint reference cages
 
-`src/main/resources/skinning/mhr-joints.tsv` contains modified, sampled sagittal surface cages
+`rigger/src/main/resources/skinning/mhr-joints.tsv` contains modified, sampled sagittal surface cages
 derived from Meta's [MHR v1.0.1 model assets](https://github.com/facebookresearch/MHR/releases/tag/v1.0.1).
 The model and its assets are licensed under Apache-2.0; the asset license is reproduced in
 `licenses/MHR.txt`. The original model is not distributed with PSD2Live.

@@ -192,7 +192,7 @@ PSD2LIVE_TOOLS=1 PSD2LIVE_SAMPLE=ds ./gradlew test --tests "io.github.psd2live.t
 | `io.github.psd2live.agent` | 本地 MCP 服务与公开工具定义 |
 | `io.github.psd2live.render` | 编辑画布与 p2lrt 预览的 GPU 渲染（`CanvasGpu`、`GlCanvasRenderer`、`P2lrtGlRenderer`、`SkiaGpu`） |
 | `io.github.psd2live.ui` | Compose 界面：`state`（ViewModel、快捷键注册表）、`views`（工作区与面板）、`components`（对话框与控件）、`tutorial`（交互教程）；画布编辑与绘画位于 `ui` 根包 |
-| `io.github.psd2live.i18n` | 界面文案，资源在 `src/main/resources/i18n/` |
+| `io.github.psd2live.i18n` | 界面文案，资源在 `rigger/src/main/resources/i18n/` |
 
 生成与导出逻辑放在 `core` / `project` / `application`，不要写进 Compose 界面代码。
 

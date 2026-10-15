@@ -12,7 +12,7 @@ import torch
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', default='build/research/mhr_model.pt')
-parser.add_argument('--output', default='src/main/resources/skinning/mhr-joints.tsv')
+parser.add_argument('--output', default='rigger/src/main/resources/skinning/mhr-joints.tsv')
 args = parser.parse_args()
 model = torch.jit.load(args.model, map_location='cpu').eval()
 buffers = dict(model.named_buffers())

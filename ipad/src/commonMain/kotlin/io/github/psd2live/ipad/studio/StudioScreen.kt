@@ -295,6 +295,26 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 					}
 				}
 			}
+			Chip("Import PSD") {
+				Exchange.pick(setOf("psd"), multiple = false) { names ->
+					val file = names.firstOrNull() ?: return@pick
+					scope.launch(safe) {
+						busy = "Importing the layers of $file"
+						val made = withContext(Dispatchers.Default) { StudioPsd.import(RigFiles.read(file), file) }
+						replaceWith(made, "Imported ${made.parts.size} layers from $file."); busy = null
+					}
+				}
+			}
+			if (p != null) Chip("Export PSD") {
+				scope.launch(safe) {
+					flushMask(); val now = projectNow ?: return@launch
+					busy = "Writing the PSD"
+					val path = withContext(Dispatchers.Default) {
+						StudioStore.export((now.name.replace(Regex("[^a-zA-Z0-9_-]"), "_").ifEmpty { "Layerloom" }) + ".psd", StudioPsd.export(now))
+					}
+					busy = null; Exchange.share(listOf(path))
+				}
+			}
 			if (p != null) {
 				Chip("Save recovery checkpoint") {
 					scope.launch(safe) {
@@ -549,6 +569,25 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 						}
 					}
 					Text("The drawing's pixels under the mask become this part's own layer and leave the remaining artwork.", color = Muted, fontSize = 12.sp)
+					Chip("Import mask PNG", enabled = busy == null) {
+						Exchange.pick(setOf("png"), multiple = false) { names ->
+							val file = names.firstOrNull() ?: return@pick
+							val id = selected.id
+							scope.launch(safe) {
+								flushMask(); val now = projectNow ?: return@launch
+								val url = withContext(Dispatchers.Default) {
+									val px = decodeImage(RigFiles.read(file)) ?: throw IllegalArgumentException("That isn't a PNG.")
+									require(px.width == now.width && px.height == now.height) { "The mask must be ${now.width} × ${now.height}. It will not be silently resized." }
+									require(px.argb.any { (it ushr 24) != 0 }) { "This PNG is empty." }
+									pngDataUrl(encodePng(px.width, px.height, px.argb))
+								}
+								projectNow?.let { change(StudioEdits.setMask(it, id, url)) }
+								val latest = projectNow ?: return@launch
+								mask = withContext(worker) { MaskEdit(id, latest.width, latest.height, url) }; bump()
+								status = "Mask imported from $file."
+							}
+						}
+					}
 					Spacer(Modifier.height(4.dp))
 					Chip("Delete part", enabled = p.parts.size > 1) { val id = selected.id; selectedId = null; change(StudioEdits.delete(p, id)) }
 				}

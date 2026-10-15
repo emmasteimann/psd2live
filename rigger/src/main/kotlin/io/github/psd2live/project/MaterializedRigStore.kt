@@ -1,4 +1,5 @@
 package io.github.psd2live.project
+import io.github.psd2live.core.systemProperty
 import io.github.psd2live.core.addFolder
 import io.github.psd2live.core.writeTo
 import io.github.psd2live.core.AccessOrderMap
@@ -35,7 +36,7 @@ object MaterializedRigStore {
 	private val json = Json { ignoreUnknownKeys = true }
 
 	/** Off with `-Dpsd2live.materializedRigs=false`: builds neither use nor record authored rigs, saves write none. */
-	val enabled: Boolean get() = System.getProperty("psd2live.materializedRigs")?.equals("false", ignoreCase = true) != true
+	val enabled: Boolean get() = systemProperty("psd2live.materializedRigs")?.equals("false", ignoreCase = true) != true
 
 	/** A revision's authored rig and the binding key of the atlas it was bound to. */
 	class Entry(val authored: AuthoredRig, val bindingKey: String)

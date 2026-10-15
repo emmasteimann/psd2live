@@ -132,3 +132,28 @@ actual fun gunzipBytes(gzipped: ByteArray, limit: Int): ByteArray {
 	while (out.size < limit) { if (source.read(out, (limit - out.size).coerceAtMost(65536)) == -1L) break }
 	return out.readByteArray(minOf(out.size, limit.toLong()))
 }
+
+actual fun defaultStoreRoot(): Path {
+	val documents = platform.Foundation.NSSearchPathForDirectoriesInDomains(platform.Foundation.NSDocumentDirectory,
+		platform.Foundation.NSUserDomainMask, true).first() as String
+	return pathOf(documents, ".layerloom", "agent-workspaces")
+}
+
+actual fun encodeStoredPng(width: Int, height: Int, rgba: ByteArray): ByteArray = io.github.psd2live.format.compile.PngEncoder.encode(width, height,
+	IntArray(width * height) { i -> val o = i * 4
+		((rgba[o + 3].toInt() and 0xff) shl 24) or ((rgba[o].toInt() and 0xff) shl 16) or ((rgba[o + 1].toInt() and 0xff) shl 8) or (rgba[o + 2].toInt() and 0xff) })
+
+actual fun decodeStoredPng(encoded: ByteArray, width: Int, height: Int): ByteArray? =
+	runCatching { org.umamo.format.png.PngCodec.read(encoded) }.getOrNull()?.takeIf { it.width == width && it.height == height }?.rgba
+
+actual fun decodeAnyPng(encoded: ByteArray, width: Int, height: Int): ByteArray? {
+	val image = runCatching { org.umamo.format.png.PngCodec.read(encoded) }.getOrNull() ?: return null
+	require(image.width == width && image.height == height) { "Raster dimensions mismatch" }
+	return image.rgba
+}
+
+actual fun <K, V, R> loadInParallel(items: Map<K, V>, threads: Int, load: (V) -> R): Map<K, R> = items.mapValues { (_, item) -> load(item) }
+
+actual fun maxMemoryBytes(): Long = platform.Foundation.NSProcessInfo.processInfo.physicalMemory.toLong() / 2
+
+actual fun sleepMillis(millis: Long) { platform.posix.usleep((millis * 1000).toUInt()) }

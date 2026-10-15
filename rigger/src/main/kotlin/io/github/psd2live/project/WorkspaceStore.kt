@@ -1,4 +1,8 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package io.github.psd2live.project
+import io.github.psd2live.core.processorCount
+import io.github.psd2live.core.systemProperty
 import io.github.psd2live.core.addFolder
 import io.github.psd2live.core.writeTo
 import io.github.psd2live.core.toSortedMap
@@ -55,9 +59,6 @@ import org.umamo.format.art.SourceArt
 import org.umamo.format.art.SourceLayer
 import org.umamo.format.art.SourceLayerKind
 import org.umamo.runtime.model.ParameterKind
-import java.io.ByteArrayOutputStream
-import java.time.Instant
-import java.util.UUID
 
 /**
  * Disk repository for Agent workspace state. History node, snapshot, raster and staged-asset files
@@ -1011,8 +1012,7 @@ class WorkspaceStore(
         if (isStored(path)) return hash
         val existing = rasterSource?.projectRoot(project.fileName.toString())?.resolve("blobs/$name")
         if (existing != null && linkRaster(existing, path)) { stored.add(path); return hash }
-        val image = io.github.psd2live.core.PreviewRenderer.rasterImage(width, height, rgba)
-        val bytes = ByteArrayOutputStream().use { out -> javax.imageio.ImageIO.write(image, "png", out); out.toByteArray() }
+        val bytes = encodeStoredPng(width, height, rgba)
         writeImmutable(path, bytes)
 		stored.add(path)
 		return hash
@@ -1032,7 +1032,7 @@ class WorkspaceStore(
 		try { Files.createLink(target, source) }
 		catch (_: FileAlreadyExistsException) {}
 		catch (_: Exception) {
-			val temporary = target.resolveSibling(".${target.fileName}.${UUID.randomUUID()}.tmp")
+			val temporary = target.resolveSibling(".${target.fileName}.${kotlin.uuid.Uuid.random()}.tmp")
 			try {
 				ProjectArchive.copyKeepingTime(source, temporary)
 				try { Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE) }
@@ -1050,10 +1050,8 @@ class WorkspaceStore(
         if (Files.isRegularFile(png)) {
             val encoded = Files.readAllBytes(png)
             // The store's own RGBA PNGs decode directly; anything else, or a result that does not match, through ImageIO.
-            PngRgbaDecoder.decode(encoded, width, height)?.let { bytes -> if (sha256(bytes) == hash) return verifiedRaster(bytes, hash) }
-            val image = javax.imageio.ImageIO.read(javax.imageio.stream.MemoryCacheImageInputStream(java.io.ByteArrayInputStream(encoded))) ?: error("Invalid PNG: $hash")
-            require(image.width == width && image.height == height) { "Raster dimensions mismatch" }
-            val bytes = rgbaOf(image)
+            decodeStoredPng(encoded, width, height)?.let { bytes -> if (sha256(bytes) == hash) return verifiedRaster(bytes, hash) }
+            val bytes = decodeAnyPng(encoded, width, height) ?: error("Invalid PNG: $hash")
             require(sha256(bytes) == hash) { "Stored raster hash mismatch: $hash" }
             return verifiedRaster(bytes, hash)
         }
@@ -1085,25 +1083,10 @@ class WorkspaceStore(
 		}
 		if (blobs.isEmpty()) return emptyMap()
 		val largest = blobs.values.maxOf { it.width.toLong() * it.height * 4 }
-		val threads = minOf(Runtime.getRuntime().availableProcessors().toLong(), 8L, blobs.size.toLong(),
-			Runtime.getRuntime().maxMemory() / 4 / maxOf(1L, largest * 2)).toInt().coerceAtLeast(1)
+		val threads = minOf(processorCount().toLong(), 8L, blobs.size.toLong(),
+			maxMemoryBytes() / 4 / maxOf(1L, largest * 2)).toInt().coerceAtLeast(1)
 		if (threads == 1) return blobs.mapValues { (_, blob) -> loadRaster(project, blob.hash, blob.width, blob.height) }
-		val pool = java.util.concurrent.Executors.newFixedThreadPool(threads) { task -> Thread(task, "psd2live-raster-load").apply { isDaemon = true } }
-		try {
-			val futures = blobs.mapValues { (_, blob) -> pool.submit<ByteArray> { loadRaster(project, blob.hash, blob.width, blob.height) } }
-			return futures.mapValues { (_, future) ->
-				try { future.get() } catch (failure: java.util.concurrent.ExecutionException) {
-					futures.values.forEach { it.cancel(true) }
-					throw failure.cause ?: failure
-				} catch (interrupted: InterruptedException) {
-					futures.values.forEach { it.cancel(true) }
-					Thread.currentThread().interrupt()
-					throw interrupted
-				}
-			}
-		} finally {
-			pool.shutdownNow()
-		}
+		return loadInParallel(blobs, threads) { blob -> loadRaster(project, blob.hash, blob.width, blob.height) }
 	}
 
 	/** The raster digest is the SHA-256 just checked: the revision and rig-stage memos take it instead of hashing again. */
@@ -1154,7 +1137,7 @@ class WorkspaceStore(
 
 	private fun writeAtomic(path: Path, bytes: ByteArray, replace: Boolean = true, pretty: Boolean = true) {
 		Files.createDirectories(path.parent)
-		val temporary = path.parent.resolve(".${path.fileName}.${UUID.randomUUID()}.tmp")
+		val temporary = path.parent.resolve(".${path.fileName}.${kotlin.uuid.Uuid.random()}.tmp")
 		try {
 			val output = if (pretty && path.fileName.toString().endsWith(".json")) json.encodeToString(JsonElement.serializer(), json.parseToJsonElement(bytes.decodeToString())).encodeToByteArray() else bytes
             Files.write(temporary, output, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
@@ -1176,7 +1159,7 @@ class WorkspaceStore(
 					break
 				} catch (error: AccessDeniedException) {
 					if (!replace || ++attempt >= REPLACE_ATTEMPTS) throw error
-					Thread.sleep(10L * attempt)
+					sleepMillis(10L * attempt)
 				}
 			}
 		} finally {
@@ -1319,93 +1302,11 @@ class WorkspaceStore(
 			return JsonObject(snapshot + ("rigEdits" to JsonObject(rig + changes)))
 		}
 
-		/**
-		 * [image]'s pixels as non-premultiplied RGBA bytes, exactly as [BufferedImage.getRGB] gives them. 8-bit
-		 * sRGB interleaved rasters (what the PNG reader returns for RGB and RGBA files) and int ARGB images are read
-		 * from their buffer directly; any other layout goes through `getRGB` a block of rows at a time.
-		 */
-		fun rgbaOf(image: java.awt.image.BufferedImage): ByteArray {
-			val width = image.width
-			val height = image.height
-			val out = ByteArray(Math.multiplyExact(Math.multiplyExact(width, height), 4))
-			if (copyInterleaved(image, out) || copyIntArgb(image, out)) return out
-			val rows = maxOf(1, 65536 / maxOf(1, width))
-			val argb = IntArray(width * minOf(rows, height))
-			var y = 0
-			while (y < height) {
-				val count = minOf(rows, height - y)
-				image.getRGB(0, y, width, count, argb, 0, width)
-				var o = y * width * 4
-				for (i in 0 until width * count) {
-					val pixel = argb[i]
-					out[o] = (pixel ushr 16).toByte(); out[o + 1] = (pixel ushr 8).toByte()
-					out[o + 2] = pixel.toByte(); out[o + 3] = (pixel ushr 24).toByte()
-					o += 4
-				}
-				y += count
-			}
-			return out
-		}
-
-		/** An 8-bit sRGB RGB or non-premultiplied RGBA image with one interleaved byte buffer, copied into [out]. */
-		private fun copyInterleaved(image: java.awt.image.BufferedImage, out: ByteArray): Boolean {
-			val model = image.colorModel as? java.awt.image.ComponentColorModel ?: return false
-			val raster = image.raster
-			val sample = raster.sampleModel as? java.awt.image.PixelInterleavedSampleModel ?: return false
-			val buffer = raster.dataBuffer as? java.awt.image.DataBufferByte ?: return false
-			val bands = sample.numBands
-			val alpha = model.hasAlpha()
-			if (!model.colorSpace.isCS_sRGB || model.isAlphaPremultiplied || bands != (if (alpha) 4 else 3) ||
-				model.componentSize.any { it != 8 } || buffer.numBanks != 1 || raster.parent != null ||
-				raster.sampleModelTranslateX != 0 || raster.sampleModelTranslateY != 0) return false
-			val stride = sample.scanlineStride
-			val step = sample.pixelStride
-			val offsets = sample.bandOffsets
-			val base = buffer.offset
-			val data = buffer.data
-			val r = offsets[0]; val g = offsets[1]; val b = offsets[2]; val a = if (alpha) offsets[3] else -1
-			var o = 0
-			for (y in 0 until image.height) {
-				var i = base + y * stride
-				for (x in 0 until image.width) {
-					out[o] = data[i + r]; out[o + 1] = data[i + g]; out[o + 2] = data[i + b]
-					out[o + 3] = if (a >= 0) data[i + a] else -1
-					o += 4; i += step
-				}
-			}
-			return true
-		}
-
-		/** A `TYPE_INT_ARGB` image with one int buffer, copied into [out]. */
-		private fun copyIntArgb(image: java.awt.image.BufferedImage, out: ByteArray): Boolean {
-			if (image.type != java.awt.image.BufferedImage.TYPE_INT_ARGB) return false
-			val raster = image.raster
-			val sample = raster.sampleModel as? java.awt.image.SinglePixelPackedSampleModel ?: return false
-			val buffer = raster.dataBuffer as? java.awt.image.DataBufferInt ?: return false
-			if (buffer.numBanks != 1 || raster.parent != null || raster.sampleModelTranslateX != 0 || raster.sampleModelTranslateY != 0) return false
-			val data = buffer.data
-			var o = 0
-			for (y in 0 until image.height) {
-				var i = buffer.offset + y * sample.scanlineStride
-				for (x in 0 until image.width) {
-					val pixel = data[i++]
-					out[o] = (pixel ushr 16).toByte(); out[o + 1] = (pixel ushr 8).toByte()
-					out[o + 2] = pixel.toByte(); out[o + 3] = (pixel ushr 24).toByte()
-					o += 4
-				}
-			}
-			return true
-		}
 
 		/** Working-store folders holding content shared by snapshots; [expandSnapshot] reads them. */
 		val sharedContentFolders = listOf("history/journal", "history/payloads")
 
-		fun defaultRoot(): Path {
-			System.getProperty("psd2live.agent.store")?.takeIf(String::isNotBlank)?.let { return pathOf(it) }
-			val localAppData = System.getenv("LOCALAPPDATA")?.takeIf(String::isNotBlank)
-			return if (localAppData != null) pathOf(localAppData, "PSD2Live", "agent-workspaces")
-			else pathOf(System.getProperty("user.home"), ".psd2live", "agent-workspaces")
-		}
+		fun defaultRoot(): Path = defaultStoreRoot()
 
 		inline fun <reified T : Enum<T>> enumValue(raw: String): T =
 			runCatching { enumValueOf<T>(raw) }.getOrElse { invalid("enum value '$raw'") }

@@ -85,3 +85,23 @@ expect fun gzipBytes(bytes: ByteArray): ByteArray
 
 /** The first [limit] bytes [gzipped] decompresses to (GZIPInputStream.readNBytes on the desktop). */
 expect fun gunzipBytes(gzipped: ByteArray, limit: Int): ByteArray
+
+/** Where workspaces live by default: the psd2live.agent.store property, else the user's folder (desktop); Documents (iPad). */
+expect fun defaultStoreRoot(): Path
+
+/** [rgba] (straight alpha, [width] × [height]) as the PNG the store keeps (ImageIO's on the desktop). */
+expect fun encodeStoredPng(width: Int, height: Int, rgba: ByteArray): ByteArray
+
+/** The store's own RGBA PNG decoded directly (PngRgbaDecoder on the desktop); null when it is not one of those. */
+expect fun decodeStoredPng(encoded: ByteArray, width: Int, height: Int): ByteArray?
+
+/** Any PNG as straight RGBA of [width] × [height] (ImageIO on the desktop); null when it cannot be read. */
+expect fun decodeAnyPng(encoded: ByteArray, width: Int, height: Int): ByteArray?
+
+/** [load] for each value of [items] on [threads] threads, results by key (a fixed thread pool on the desktop). */
+expect fun <K, V, R> loadInParallel(items: Map<K, V>, threads: Int, load: (V) -> R): Map<K, R>
+
+/** The heap the process may use (Runtime.maxMemory on the desktop). */
+expect fun maxMemoryBytes(): Long
+
+expect fun sleepMillis(millis: Long)

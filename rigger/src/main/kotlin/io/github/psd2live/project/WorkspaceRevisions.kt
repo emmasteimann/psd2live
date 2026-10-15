@@ -1,8 +1,11 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package io.github.psd2live.project
+import java.security.MessageDigest
+import io.github.psd2live.core.identityHash
 import io.github.psd2live.core.putIfAbsent
 import io.github.psd2live.core.toSortedMap
 import io.github.psd2live.core.Collections
-import java.security.MessageDigest
 import io.github.psd2live.core.SoftReference
 import io.github.psd2live.core.WeakHashMap
 import io.github.psd2live.core.WeakReference
@@ -16,7 +19,6 @@ import org.umamo.format.art.SourceArt
 import java.lang.ref.ReferenceQueue
 import java.lang.reflect.Field
 import java.lang.reflect.Modifier
-import java.util.UUID
 
 /**
  * v1 revision identity, shared by GUI and application commands. Raster buffers are immutable.
@@ -172,7 +174,7 @@ object WorkspaceRevisions {
 			synchronized(recent) {
 				recent.firstOrNull { parts -> values.indices.all { same(parts.values[it], values[it]) } }?.let { return it }
 			}
-			val sentinel = JsonObject(mapOf("psd2live-journal-${UUID.randomUUID()}" to JsonNull))
+			val sentinel = JsonObject(mapOf("psd2live-journal-${kotlin.uuid.Uuid.random()}" to JsonNull))
 			val text = rig.copy(authoringJournal = listOf(sentinel)).toString()
 			val marker = "[$sentinel]"
 			val at = text.indexOf(marker)
@@ -226,7 +228,7 @@ object JournalEntryText {
 /** A thread-safe map from object identity to a value that does not keep its keys alive. */
 class IdentityWeakCache<K : Any, V : Any> {
 	private class Key(referent: Any, queue: ReferenceQueue<Any>?) : WeakReference<Any>(referent, queue) {
-		private val hash = System.identityHashCode(referent)
+		private val hash = identityHash(referent)
 		override fun hashCode(): Int = hash
 		override fun equals(other: Any?): Boolean {
 			if (other === this) return true

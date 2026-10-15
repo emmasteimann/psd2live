@@ -1,4 +1,5 @@
 package io.github.psd2live.project
+import io.github.psd2live.core.systemProperty
 import io.github.psd2live.core.hex
 import io.github.psd2live.core.MessageDigest
 
@@ -41,7 +42,7 @@ object ProjectHeadCache {
 	const val MAX_ENTRY_BYTES = 64 * 1024 * 1024
 
 	/** Off with `-Dpsd2live.headCache=false`: saves write no cache and opens ignore one. */
-	val enabled: Boolean get() = System.getProperty("psd2live.headCache")?.equals("false", ignoreCase = true) != true
+	val enabled: Boolean get() = systemProperty("psd2live.headCache")?.equals("false", ignoreCase = true) != true
 
 	private val logger = System.getLogger("io.github.psd2live.project.ProjectHeadCache")
 	private val json = Json { ignoreUnknownKeys = true }

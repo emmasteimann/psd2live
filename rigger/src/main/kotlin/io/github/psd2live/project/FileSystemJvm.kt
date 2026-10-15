@@ -62,3 +62,124 @@ actual fun gzipBytes(bytes: ByteArray): ByteArray =
 
 actual fun gunzipBytes(gzipped: ByteArray, limit: Int): ByteArray =
 	java.util.zip.GZIPInputStream(java.io.ByteArrayInputStream(gzipped)).use { it.readNBytes(limit) }
+
+actual fun defaultStoreRoot(): Path {
+	System.getProperty("psd2live.agent.store")?.takeIf(String::isNotBlank)?.let { return pathOf(it) }
+	val localAppData = System.getenv("LOCALAPPDATA")?.takeIf(String::isNotBlank)
+	return if (localAppData != null) pathOf(localAppData, "PSD2Live", "agent-workspaces")
+	else pathOf(System.getProperty("user.home"), ".psd2live", "agent-workspaces")
+}
+
+actual fun encodeStoredPng(width: Int, height: Int, rgba: ByteArray): ByteArray {
+	val image = io.github.psd2live.core.PreviewRenderer.rasterImage(width, height, rgba)
+	return java.io.ByteArrayOutputStream().use { out -> javax.imageio.ImageIO.write(image, "png", out); out.toByteArray() }
+}
+
+actual fun decodeStoredPng(encoded: ByteArray, width: Int, height: Int): ByteArray? = PngRgbaDecoder.decode(encoded, width, height)
+
+actual fun decodeAnyPng(encoded: ByteArray, width: Int, height: Int): ByteArray? {
+	val image = javax.imageio.ImageIO.read(javax.imageio.stream.MemoryCacheImageInputStream(java.io.ByteArrayInputStream(encoded))) ?: return null
+	require(image.width == width && image.height == height) { "Raster dimensions mismatch" }
+	return rgbaOf(image)
+}
+
+actual fun <K, V, R> loadInParallel(items: Map<K, V>, threads: Int, load: (V) -> R): Map<K, R> {
+	val pool = java.util.concurrent.Executors.newFixedThreadPool(threads) { task -> Thread(task, "psd2live-raster-load").apply { isDaemon = true } }
+	try {
+		val futures = items.mapValues { (_, item) -> pool.submit<R> { load(item) } }
+		return futures.mapValues { (_, future) ->
+			try { future.get() } catch (failure: java.util.concurrent.ExecutionException) {
+				futures.values.forEach { it.cancel(true) }
+				throw failure.cause ?: failure
+			} catch (interrupted: InterruptedException) {
+				futures.values.forEach { it.cancel(true) }
+				Thread.currentThread().interrupt()
+				throw interrupted
+			}
+		}
+	} finally {
+		pool.shutdownNow()
+	}
+}
+
+actual fun maxMemoryBytes(): Long = Runtime.getRuntime().maxMemory()
+
+actual fun sleepMillis(millis: Long) = Thread.sleep(millis)
+
+/**
+ * [image]'s pixels as non-premultiplied RGBA bytes, exactly as [BufferedImage.getRGB] gives them. 8-bit
+ * sRGB interleaved rasters (what the PNG reader returns for RGB and RGBA files) and int ARGB images are read
+ * from their buffer directly; any other layout goes through `getRGB` a block of rows at a time.
+ */
+internal fun rgbaOf(image: java.awt.image.BufferedImage): ByteArray {
+	val width = image.width
+	val height = image.height
+	val out = ByteArray(Math.multiplyExact(Math.multiplyExact(width, height), 4))
+	if (copyInterleaved(image, out) || copyIntArgb(image, out)) return out
+	val rows = maxOf(1, 65536 / maxOf(1, width))
+	val argb = IntArray(width * minOf(rows, height))
+	var y = 0
+	while (y < height) {
+		val count = minOf(rows, height - y)
+		image.getRGB(0, y, width, count, argb, 0, width)
+		var o = y * width * 4
+		for (i in 0 until width * count) {
+			val pixel = argb[i]
+			out[o] = (pixel ushr 16).toByte(); out[o + 1] = (pixel ushr 8).toByte()
+			out[o + 2] = pixel.toByte(); out[o + 3] = (pixel ushr 24).toByte()
+			o += 4
+		}
+		y += count
+	}
+	return out
+}
+
+/** An 8-bit sRGB RGB or non-premultiplied RGBA image with one interleaved byte buffer, copied into [out]. */
+private fun copyInterleaved(image: java.awt.image.BufferedImage, out: ByteArray): Boolean {
+	val model = image.colorModel as? java.awt.image.ComponentColorModel ?: return false
+	val raster = image.raster
+	val sample = raster.sampleModel as? java.awt.image.PixelInterleavedSampleModel ?: return false
+	val buffer = raster.dataBuffer as? java.awt.image.DataBufferByte ?: return false
+	val bands = sample.numBands
+	val alpha = model.hasAlpha()
+	if (!model.colorSpace.isCS_sRGB || model.isAlphaPremultiplied || bands != (if (alpha) 4 else 3) ||
+		model.componentSize.any { it != 8 } || buffer.numBanks != 1 || raster.parent != null ||
+		raster.sampleModelTranslateX != 0 || raster.sampleModelTranslateY != 0) return false
+	val stride = sample.scanlineStride
+	val step = sample.pixelStride
+	val offsets = sample.bandOffsets
+	val base = buffer.offset
+	val data = buffer.data
+	val r = offsets[0]; val g = offsets[1]; val b = offsets[2]; val a = if (alpha) offsets[3] else -1
+	var o = 0
+	for (y in 0 until image.height) {
+		var i = base + y * stride
+		for (x in 0 until image.width) {
+			out[o] = data[i + r]; out[o + 1] = data[i + g]; out[o + 2] = data[i + b]
+			out[o + 3] = if (a >= 0) data[i + a] else -1
+			o += 4; i += step
+		}
+	}
+	return true
+}
+
+/** A `TYPE_INT_ARGB` image with one int buffer, copied into [out]. */
+private fun copyIntArgb(image: java.awt.image.BufferedImage, out: ByteArray): Boolean {
+	if (image.type != java.awt.image.BufferedImage.TYPE_INT_ARGB) return false
+	val raster = image.raster
+	val sample = raster.sampleModel as? java.awt.image.SinglePixelPackedSampleModel ?: return false
+	val buffer = raster.dataBuffer as? java.awt.image.DataBufferInt ?: return false
+	if (buffer.numBanks != 1 || raster.parent != null || raster.sampleModelTranslateX != 0 || raster.sampleModelTranslateY != 0) return false
+	val data = buffer.data
+	var o = 0
+	for (y in 0 until image.height) {
+		var i = buffer.offset + y * sample.scanlineStride
+		for (x in 0 until image.width) {
+			val pixel = data[i++]
+			out[o] = (pixel ushr 16).toByte(); out[o + 1] = (pixel ushr 8).toByte()
+			out[o + 2] = pixel.toByte(); out[o + 3] = (pixel ushr 24).toByte()
+			o += 4
+		}
+	}
+	return true
+}

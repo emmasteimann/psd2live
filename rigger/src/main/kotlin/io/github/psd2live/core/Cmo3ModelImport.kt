@@ -235,7 +235,7 @@ object Cmo3ModelImport {
         }
     }
 
-    const val PAINT_SOURCE_ID = "cmo3-painted-art"
+    const val PAINT_SOURCE_ID = CMO3_PAINT_SOURCE_ID
 
     /** Canvas-space preparation is temporary; unrelated imported texture addresses stay durable. */
     fun paintingPreview(pipeline: PSD2LivePipeline, source: SourceArt, config: PipelineConfig): RigPreviewModel {

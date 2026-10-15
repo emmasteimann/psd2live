@@ -1,4 +1,5 @@
 package io.github.psd2live.tools
+import io.github.psd2live.core.buildPreview
 
 import com.sun.jna.Library
 import com.sun.jna.Memory

@@ -1,4 +1,5 @@
 package io.github.psd2live.tools
+import io.github.psd2live.core.buildPreview
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box

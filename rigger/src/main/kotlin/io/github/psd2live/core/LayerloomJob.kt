@@ -9,8 +9,6 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.floatOrNull
 import org.umamo.format.art.SourceArt
-import java.nio.file.Files
-import java.nio.file.Path
 
 /**
  * Layerloom patch: a Layerloom rig job, everything Layerloom's studio asks of a rig beyond the PSD. It's written beside
@@ -46,10 +44,7 @@ data class LayerloomJob(
 		const val SUFFIX = ".layerloom.json"
 
 		/** The job beside [psd] (`quill.psd` → `quill.layerloom.json`), if there is one. */
-		fun besidePsd(psd: Path): Path? = psd.resolveSibling(psd.fileName.toString().substringBeforeLast('.') + SUFFIX)
-			.takeIf { Files.isRegularFile(it) }
 
-		fun read(path: Path): LayerloomJob = parse(Json.parseToJsonElement(Files.readString(path)) as JsonObject)
 
 		fun parse(root: JsonObject): LayerloomJob {
 			fun obj(key: String) = root[key] as? JsonObject

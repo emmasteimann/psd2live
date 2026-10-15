@@ -5,8 +5,6 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.jsonArray
-import org.umamo.format.cmo3.Cmo3
-import org.umamo.format.cmo3.model.custom.CModelSource
 import org.umamo.format.art.SourceArt
 import org.umamo.format.moc3.Moc3
 import org.umamo.format.moc3.json.FileReferences
@@ -15,8 +13,6 @@ import org.umamo.format.moc3.json.Model3Json
 import org.umamo.format.moc3.json.Model3Motion
 import org.umamo.format.psd.PsdReader
 import org.umamo.interop.ExportNotice
-import org.umamo.interop.cmo3.Cmo3Conversion
-import org.umamo.interop.cmo3.Cmo3Import
 import org.umamo.interop.cmo3FileFormatVersion
 import org.umamo.interop.cmo3TargetVersionNo
 import org.umamo.interop.mocVersion
@@ -27,24 +23,11 @@ import org.umamo.render.restMeshesToCanvasSpace
 import org.umamo.runtime.model.PuppetModel
 import org.umamo.runtime.model.DrawableId
 import org.umamo.edit.withDrawablesDeleted
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.StandardOpenOption
 import io.github.psd2live.core.legacy.RigGenerationMigration
 
 class PSD2LivePipeline {
 	val meshCache = PreviewMeshCache()
 	private val generatedGeometry = GeneratedGeometryCache()
-	fun inspect(psd: Path, config: PipelineConfig = PipelineConfig()): PipelineAnalysis {
-		require(Files.isRegularFile(psd)) { tr("error.psdMissing", psd) }
-		val bytes = Files.readAllBytes(psd)
-		require(PsdReader.matches(bytes)) { tr("error.invalidPsd", psd) }
-		return RigGenerationSource.analyze(PsdReader.read(bytes), config)
-	}
-
-	fun buildPreview(psd: Path, config: PipelineConfig = PipelineConfig()): RigPreviewModel =
-		buildPreview(inspect(psd, config), config)
-
 	/**
 	 * The preview of [source] under [config]. [previousAtlas] - the atlas of the model a commit starts from - only
 	 * lends its unchanged pages and preview PNG strips ([AtlasLayout]); the layout and pixels are the same without it.
@@ -54,7 +37,7 @@ class PSD2LivePipeline {
 		config: PipelineConfig = PipelineConfig(),
 		progress: ProgressListener = ProgressListener { _, _ -> },
 		previousAtlas: PackedAtlas? = null,
-	): RigPreviewModel = buildPreview(if (config.rigEdits.importedCmo3 != null) Cmo3ModelImport.analysis(source, config)
+	): RigPreviewModel = buildPreview(if (config.rigEdits.importedCmo3 != null) ImportedCmo3.analysis(source, config)
 		else RigBuildProfile.stage("pipeline: analyze") { RigGenerationSource.analyze(source, config) }, config, progress, previousAtlas)
 
 	fun buildPreview(
@@ -67,8 +50,8 @@ class PSD2LivePipeline {
             return RigLayerDeletion.preview(buildPreview(analysis.source, RigLayerDeletion.generationConfig(config), progress, previousAtlas), config, previousAtlas)
         }
         if (config.rigEdits.importedCmo3 != null) {
-            val importedAnalysis = Cmo3ModelImport.analysis(analysis.source, config)
-            val (atlas, baseRig) = Cmo3ModelImport.baseRig(analysis.source, config)
+            val importedAnalysis = ImportedCmo3.analysis(analysis.source, config)
+            val (atlas, baseRig) = ImportedCmo3.baseRig(analysis.source, config)
             val rig = baseRig.withRigEdits(config.rigEdits, config.layerVisibility, config.drawOrderOverrides)
             val bundle = buildRuntimeBundle("psd2live-preview", importedAnalysis, atlas, rig, config).first
             return RigPreviewModel(importedAnalysis, atlas, rig, config, bundle, PreviewRigSources.of(baseRig))
@@ -217,7 +200,7 @@ class PSD2LivePipeline {
 		override fun equals(other: Any?) = other is BoundBaseKey && geometry === other.geometry && geometryPlacements == other.geometryPlacements &&
 			geometryPages == other.geometryPages && placements == other.placements &&
 			pages == other.pages && layers == other.layers && created == other.created
-		override fun hashCode() = java.util.Objects.hash(System.identityHashCode(geometry), geometryPlacements, geometryPages, placements, pages, layers, created)
+		override fun hashCode() = listOf(identityHash(geometry), geometryPlacements, geometryPages, placements, pages, layers, created).hashCode()
 	}
 
 	private val boundBases = object : AccessOrderMap<BoundBaseKey, BuiltRig>(8, 0.75f, true) {
@@ -293,7 +276,7 @@ class PSD2LivePipeline {
                 buildPreview(current.analysis.source, fullConfig, ProgressListener { message, fraction -> progress.update(message, fraction * 0.15) })
             else {
                 progress.update("Preparing imported mesh textures", 0.0)
-                Cmo3ModelImport.paintingPreview(this, current.analysis.source, fullConfig).also {
+                ImportedCmo3.paintingPreview(this, current.analysis.source, fullConfig).also {
                     progress.update("Prepared imported mesh textures", 0.15)
                 }
             }
@@ -559,32 +542,6 @@ class PSD2LivePipeline {
 		return current.config.copy(rigEdits = config.rigEdits) == config
 	}
 
-	fun run(
-		psd: Path,
-		outputDirectory: Path,
-		config: PipelineConfig = PipelineConfig(),
-		progress: ProgressListener = ProgressListener { _, _ -> },
-	): PipelineResult {
-		progress.update(tr("progress.readPsd"), 0.04)
-		require(Files.isRegularFile(psd)) { tr("error.psdMissing", psd) }
-		val bytes = Files.readAllBytes(psd)
-		require(PsdReader.matches(bytes)) { tr("error.invalidPsd", psd) }
-		val model = layerloomPreview(PsdReader.read(bytes), config, building(progress))
-		return export(model, psd.fileName.toString(), outputDirectory, progress)
-	}
-
-	/** Export the current authoritative source, including Agent-created layers, without rereading the PSD. */
-	fun run(
-		source: SourceArt,
-		sourceName: String,
-		outputDirectory: Path,
-		config: PipelineConfig = PipelineConfig(),
-		progress: ProgressListener = ProgressListener { _, _ -> },
-	): PipelineResult {
-		progress.update(tr("progress.readPsd"), 0.04)
-		return export(layerloomPreview(source, config, building(progress)), sourceName, outputDirectory, progress)
-	}
-
 	/**
 	 * Layerloom patch: the preview with Layerloom's per-layer options applied around the ordinary build. Named
 	 * toggles become the editor's own per-layer toggle overrides (keeping the tag the name gives, e.g. "face detail"
@@ -592,7 +549,7 @@ class PSD2LivePipeline {
 	 * its Skeleton tool does. Per-layer swings become ordinary rig edits, so physics3 and CMO3 see them. Without
 	 * any of them this is exactly [buildPreview].
 	 */
-	private fun layerloomPreview(source: SourceArt, requested: PipelineConfig, progress: ProgressListener): RigPreviewModel {
+	internal fun layerloomPreview(source: SourceArt, requested: PipelineConfig, progress: ProgressListener): RigPreviewModel {
 		val config = if (requested.layerToggles.isEmpty()) requested
 			else requested.copy(layerOverrides = requested.layerOverrides + LayerloomJob.toggleOverrides(source, requested.layerToggles))
 		val model = buildPreview(source, config, progress)
@@ -601,14 +558,18 @@ class PSD2LivePipeline {
 	}
 
 	/** The build's own progress, in the part of an export before the model is written. */
-	private fun building(progress: ProgressListener) = ProgressListener { stage, fraction -> progress.update(stage, 0.04 + fraction * 0.54) }
+	internal fun building(progress: ProgressListener) = ProgressListener { stage, fraction -> progress.update(stage, 0.04 + fraction * 0.54) }
+
+	/** What [exportFiles] made: what [write] returned for each file, and the warnings of every check. */
+	class ExportOutcome<T>(val files: List<T>, val warnings: List<String>)
 
 	/**
-	 * Writes [model] - the rig the editor shows, as built - as the formats its config enables, each read back and
-	 * checked. The workspace exports its committed model this way, so the files are the preview, never a rebuild.
+	 * [model] - the rig the editor shows, as built - as the formats its config enables, each read back and checked;
+	 * every file goes to [write] (its path relative to the output, its bytes). The desktop writes them to a folder
+	 * (export); the workspace exports its committed model this way, so the files are the preview, never a rebuild.
 	 */
-	fun export(model: RigPreviewModel, sourceName: String, outputDirectory: Path,
-	           progress: ProgressListener = ProgressListener { _, _ -> }): PipelineResult {
+	fun <T> exportFiles(model: RigPreviewModel, sourceName: String, progress: ProgressListener = ProgressListener { _, _ -> },
+	                    write: (relativeName: String, bytes: ByteArray) -> T): ExportOutcome<T> {
 		val (analysis, atlas, rig, config) = model
 		val baseName = safeBaseName(sourceName.substringBeforeLast('.'))
 		val imported = config.rigEdits.importedCmo3 != null
@@ -622,14 +583,12 @@ class PSD2LivePipeline {
 		// Evaluating the mouth at MOUTH_OPEN=1.0f keeps the base mesh in its initial open state matching
 		// the authored PSD layer artwork and atlas UV coordinates, avoiding singular affine transforms in CMO3.
 		val exportPuppet = restMeshesToCanvasSpace(rig.puppet, if (imported) emptyMap() else mapOf(StandardParameters.MOUTH_OPEN to 1.0f))
-		val outputRoot = outputDirectory.toAbsolutePath().normalize()
-		Files.createDirectories(outputRoot)
-		val files = mutableListOf<ExportedFile>()
+		val files = mutableListOf<T>()
 		val warnings = (analysis.warnings + rig.warnings + neutralRig.warnings + generatedAngleWarnings + generatedWarpWarnings).toMutableList()
 		val (runtimeBundle, runtimeReport) = buildRuntimeBundle(baseName, analysis, atlas, rig, config, validate = true, preview = false)
 
 		if (config.exportMoc3) {
-			for (file in runtimeBundle.assets) files += writeContained(outputRoot, file.path, file.bytes)
+			for (file in runtimeBundle.assets) files += write(file.path, file.bytes)
 			warnings += runtimeReport.notices.map { noticeText("MOC3", it) }
 			val mocBytes = runtimeBundle.assets.first { it.path.endsWith(".moc3") }.bytes
 			val reimported = Moc3Import.fromMocDocument(Moc3.read(mocBytes), null)
@@ -642,36 +601,16 @@ class PSD2LivePipeline {
 		}
 		progress.update(tr("progress.exportMoc3"), 0.77)
 
-		if (config.exportCmo3) {
-			val ir = RigIrCompiler.compile(analysis, atlas, rig, config, tileArt = true)
-			val cmo3 = io.github.psd2live.targets.cubism.Cmo3Target { BezierWarp.configureEditor(it, config.rigEdits) }
-			val cmo3Options = io.github.psd2live.format.compile.ExportOptions(baseName, settings = mapOf("clips" to config.exportCan3.toString()))
-			val converted = cmo3.convert(ir, cmo3Options)
-			val bytes = Cmo3.write(converted.model)
-			files += writeContained(outputRoot, "$baseName.cmo3", bytes)
-			warnings += converted.report.notices.map { noticeText("CMO3", it) }
-			// One line for every layer held above canvas resolution, not one per layer.
-			cmo3.textureLossSummary(ir, cmo3Options)?.let { warnings += "CMO3: $it" }
-			cmo3.can3(ir, cmo3Options, converted)?.let { files += writeContained(outputRoot, "$baseName.can3", it) }
-			warnings += cmo3.can3Losses(ir, cmo3Options).map { "CAN3: ${it.objectId}: ${it.note}" }
-			val source = Cmo3.read(bytes).root as? CModelSource ?: error(tr("error.cmo3Root"))
-			val reimported = Cmo3Import.fromModelSource(source)
-			warnings += validateRigShape("CMO3", converted.puppet, reimported)
-			val cmo3Label = tr("validation.cmo3Readback")
-			val cmoNeutral = RigIntegrityValidator.validateNeutralPose(cmo3Label, reimported, rig.sourceBoundsByDrawableId)
-			warnings += cmoNeutral.warnings
-			warnings += RigIntegrityValidator.validateHeadAnglePoses(cmo3Label, reimported, cmoNeutral.boundsByDrawableId)
-			warnings += RigIntegrityValidator.validateDirectionalWarpDimensions(cmo3Label, reimported)
-		}
+		if (config.exportCmo3) exportCmo3(baseName, model, warnings) { name, bytes -> files += write(name, bytes) }
 		progress.update(tr("progress.exportCmo3"), 0.91)
 
 		if (config.exportJson) {
 			val report = projectReport(baseName, analysis, rig, atlas, config, warnings)
 			Json.parseToJsonElement(report)
-			files += writeContained(outputRoot, "$baseName.psd2live.json", report.encodeToByteArray())
+			files += write("$baseName.psd2live.json", report.encodeToByteArray())
 		}
 		progress.update(tr("progress.validated"), 1.0)
-		return PipelineResult(analysis, files, warnings, model)
+		return ExportOutcome(files, warnings)
 	}
 
 	/**
@@ -713,7 +652,7 @@ class PSD2LivePipeline {
 	 * otherwise whenever assertions are on (the test JVMs), so a malformed sidecar still fails in tests.
 	 */
 	fun validatesPreviewBundles(): Boolean =
-		System.getProperty("psd2live.validatePreviewBundles")?.toBooleanStrictOrNull() ?: PSD2LivePipeline::class.java.desiredAssertionStatus()
+		previewBundleValidationDefault()
 
 	private fun validateBundle(bundle: Moc3Sidecars.Bundle) {
 		val byName = bundle.files.associateBy { it.name }
@@ -739,7 +678,7 @@ class PSD2LivePipeline {
 		}
 	}
 
-	private fun validateRigShape(label: String, expected: PuppetModel, actual: PuppetModel): List<String> {
+	internal fun validateRigShape(label: String, expected: PuppetModel, actual: PuppetModel): List<String> {
 		val warnings = mutableListOf<String>()
 		fun <T> checkSame(kind: String, left: Set<T>, right: Set<T>) {
 			if (left != right) {
@@ -752,20 +691,12 @@ class PSD2LivePipeline {
 		return warnings
 	}
 
-	private fun writeContained(root: Path, relativeName: String, bytes: ByteArray): ExportedFile {
-		val target = root.resolve(relativeName.replace('/', java.io.File.separatorChar)).normalize()
-		require(target.startsWith(root)) { tr("error.outputEscapesRoot", relativeName) }
-		Files.createDirectories(target.parent)
-		Files.write(target, bytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)
-		return ExportedFile(target, bytes.size.toLong())
-	}
-
 	private fun safeBaseName(raw: String): String = raw
 		.replace(Regex("[^A-Za-z0-9._-]+"), "_")
 		.trim('_', '.')
 		.ifEmpty { "model" }
 
-	private fun noticeText(format: String, notice: ExportNotice): String =
+	internal fun noticeText(format: String, notice: ExportNotice): String =
 		when (notice) {
 			is ExportNotice.MissingSourceArt ->
 				tr("warning.sourceArtRebuilt", format, notice.pageCount)

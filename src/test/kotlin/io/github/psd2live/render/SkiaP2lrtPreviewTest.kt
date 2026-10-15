@@ -1,4 +1,5 @@
 package io.github.psd2live.render
+import io.github.psd2live.core.buildPreview
 
 import io.github.psd2live.core.PSD2LivePipeline
 import io.github.psd2live.core.RigIrCompiler

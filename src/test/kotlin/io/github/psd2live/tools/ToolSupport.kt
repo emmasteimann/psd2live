@@ -1,4 +1,5 @@
 package io.github.psd2live.tools
+import io.github.psd2live.core.buildPreview
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.ImageComposeScene

@@ -1,4 +1,5 @@
 package io.github.psd2live.tools
+import io.github.psd2live.core.buildPreview
 
 import io.github.psd2live.core.AdaptiveMeshGenerator
 import io.github.psd2live.core.CanvasDensity

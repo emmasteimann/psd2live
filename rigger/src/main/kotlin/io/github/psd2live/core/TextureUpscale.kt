@@ -8,69 +8,6 @@ import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 import javax.imageio.ImageIO
 
-/** Local, optional nunif runtime. Paths are explicit: never silently select/download a model. */
-@Serializable
-data class TextureUpscaleConfig(
-    val scale: Int = 1,
-    val python: String = "python",
-    val nunifDirectory: String = "",
-    val modelDirectory: String = "",
-    val tileSize: Int = 256,
-    val noiseLevel: Int = 1,
-    val neuralAlpha: Boolean = true,
-) {
-    init {
-        require(scale in listOf(1, 2, 4)) { "Texture scale must be 1, 2 or 4" }
-        require(tileSize in 64..512) { "Upscale tile size must be 64..512" }
-        require(noiseLevel in -1..3) { "Noise level must be -1..3" }
-    }
-
-    companion object {
-        private val isWindows = System.getProperty("os.name").lowercase().contains("win")
-
-        /** The interpreter command to try by name: macOS and most Linux distributions have no `python`. */
-        val defaultPython: String get() = if (isWindows) "python" else "python3"
-
-        fun detectAvailablePython(): String {
-            val root = Path.of(System.getProperty("user.home"), ".psd2live", "runtime")
-            val localPython = root.resolve(if (isWindows) "python/Scripts/python.exe" else "python/bin/python")
-            if (Files.isRegularFile(localPython)) return localPython.toString()
-
-            val portablePython = Path.of("runtime", if (isWindows) "python/Scripts/python.exe" else "python/bin/python")
-            if (Files.isRegularFile(portablePython)) return portablePython.toAbsolutePath().toString()
-
-            val candidates = if (isWindows) listOf("python", "python3") else listOf("python3", "python")
-            for (cmd in candidates) {
-                try {
-                    val proc = ProcessBuilder(cmd, "--version").redirectErrorStream(true).start()
-                    val exited = proc.waitFor(2, TimeUnit.SECONDS)
-                    // A stalled probe (such as the Windows Store alias) must not outlive the check.
-                    if (!exited) proc.destroyForcibly()
-                    if (exited && proc.exitValue() == 0) {
-                        return cmd
-                    }
-                } catch (_: Exception) {}
-            }
-            return defaultPython
-        }
-
-        /** Explicit UI shortcut for the conventional optional runtime installation. */
-        fun localRuntime(): TextureUpscaleConfig? {
-            val root = Path.of(System.getProperty("user.home"), ".psd2live", "runtime")
-            val localPython = root.resolve(if (isWindows) "python/Scripts/python.exe" else "python/bin/python")
-            val repo = root.resolve("nunif")
-            val models = listOf(
-                repo.resolve("waifu2x/pretrained_models/swin_unet_v3/art"),
-                repo.resolve("waifu2x/pretrained_models/swin_unet/art"),
-            ).firstOrNull { Files.isDirectory(it) } ?: repo.resolve("waifu2x/pretrained_models/swin_unet_v3/art")
-
-            val python = if (Files.isRegularFile(localPython)) localPython.toString() else detectAvailablePython()
-            return if (Files.isDirectory(models) && Files.isDirectory(repo.resolve("waifu2x")))
-                TextureUpscaleConfig(python = python, nunifDirectory = repo.toString(), modelDirectory = models.toString())
-            else null
-        }
-    }
-}
 
 /**
  * Accepts a Python interpreter command. Settings and MCP may point at an interpreter, not an arbitrary program.
@@ -236,4 +173,46 @@ object TextureUpscale {
             } finally { reader.dispose() }
         }
     }.getOrDefault(false)
+}
+
+private val isWindows = System.getProperty("os.name").lowercase().contains("win")
+
+internal actual fun platformDefaultPython(): String = if (isWindows) "python" else "python3"
+
+internal actual fun platformDetectPython(): String {
+    val root = Path.of(System.getProperty("user.home"), ".psd2live", "runtime")
+    val localPython = root.resolve(if (isWindows) "python/Scripts/python.exe" else "python/bin/python")
+    if (Files.isRegularFile(localPython)) return localPython.toString()
+
+    val portablePython = Path.of("runtime", if (isWindows) "python/Scripts/python.exe" else "python/bin/python")
+    if (Files.isRegularFile(portablePython)) return portablePython.toAbsolutePath().toString()
+
+    val candidates = if (isWindows) listOf("python", "python3") else listOf("python3", "python")
+    for (cmd in candidates) {
+        try {
+            val proc = ProcessBuilder(cmd, "--version").redirectErrorStream(true).start()
+            val exited = proc.waitFor(2, TimeUnit.SECONDS)
+            // A stalled probe (such as the Windows Store alias) must not outlive the check.
+            if (!exited) proc.destroyForcibly()
+            if (exited && proc.exitValue() == 0) {
+                return cmd
+            }
+        } catch (_: Exception) {}
+    }
+    return platformDefaultPython()
+}
+
+internal actual fun platformLocalTextureRuntime(): TextureUpscaleConfig? {
+    val root = Path.of(System.getProperty("user.home"), ".psd2live", "runtime")
+    val localPython = root.resolve(if (isWindows) "python/Scripts/python.exe" else "python/bin/python")
+    val repo = root.resolve("nunif")
+    val models = listOf(
+        repo.resolve("waifu2x/pretrained_models/swin_unet_v3/art"),
+        repo.resolve("waifu2x/pretrained_models/swin_unet/art"),
+    ).firstOrNull { Files.isDirectory(it) } ?: repo.resolve("waifu2x/pretrained_models/swin_unet_v3/art")
+
+    val python = if (Files.isRegularFile(localPython)) localPython.toString() else platformDetectPython()
+    return if (Files.isDirectory(models) && Files.isDirectory(repo.resolve("waifu2x")))
+        TextureUpscaleConfig(python = python, nunifDirectory = repo.toString(), modelDirectory = models.toString())
+    else null
 }

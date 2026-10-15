@@ -69,7 +69,7 @@ object MaterializedMeshRebuild {
             }
             val replacement = requireNotNull(converted.puppet.drawables.single { it.id == id }.mesh)
             val checkpoint = { progress.update("Migrating mesh bindings", (index + 0.75) / changed.size) }
-            val imported = config.rigEdits.importedCmo3?.let { Cmo3ModelImport.decode(it).puppet.drawables.singleOrNull { it.id == id } }
+            val imported = config.rigEdits.importedCmo3?.let { ImportedCmo3.puppet(it).drawables.singleOrNull { it.id == id } }
             val previousPositions = imported?.takeIf { it.parentDeformerId == previous.parentDeformerId &&
                 it.mesh?.positions?.contentEquals(requireNotNull(previous.mesh).positions) == true }
                 ?.let { canvasToParentSpaceFor(model)(id, requireNotNull(previous.mesh).positions) }

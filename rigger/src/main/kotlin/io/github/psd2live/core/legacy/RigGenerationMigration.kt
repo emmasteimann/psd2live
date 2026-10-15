@@ -1,4 +1,5 @@
 package io.github.psd2live.core.legacy
+import io.github.psd2live.core.ImportedCmo3
 
 import io.github.psd2live.core.*
 
@@ -29,7 +30,7 @@ object RigGenerationMigration {
         var preceding = if (full.rigEdits.importedCmo3 == null)
             pipeline.buildPreview(source, full, segment(progress, 0.0, 0.1)) else {
             progress.update("Preparing imported generation textures", 0.0)
-            Cmo3ModelImport.paintingPreview(pipeline, source, full).also { progress.update("Prepared imported generation textures", 0.1) }
+            ImportedCmo3.paintingPreview(pipeline, source, full).also { progress.update("Prepared imported generation textures", 0.1) }
         }
         var activationOverlay = full.rigEdits
         val inputs = meshInput(source, requested).layers.associateBy { it.id.raw }
@@ -59,7 +60,7 @@ object RigGenerationMigration {
         val activated = full.copy(rigEdits = activationOverlay)
         if (activationOverlay != full.rigEdits) preceding = if (full.rigEdits.importedCmo3 == null)
             pipeline.buildPreview(source, activated, ProgressListener { message, _ -> progress.update(message, 0.1) }) else
-            Cmo3ModelImport.paintingPreview(pipeline, source, activated)
+            ImportedCmo3.paintingPreview(pipeline, source, activated)
         val desiredLayers = MouthLipLayers.prepare(CharacterAnalyzer.analyze(meshInput(source, requested),
             requested.copy(deletedLayerIds = emptySet())), requested.copy(deletedLayerIds = emptySet())).layers.associateBy { it.source.id.raw }
         val oldLayers = current.analysis.layers.associateBy { it.source.id.raw }
@@ -80,7 +81,7 @@ object RigGenerationMigration {
         // relative to the migrated base; taking their already materialized forms here would bake twice.
         val withoutLateForms = remeshed.copy(rigEdits = remeshed.rigEdits.copy(simEdits = emptyList(), swingEdits = emptyList()))
         val authored = if (full.rigEdits.importedCmo3 == null) pipeline.buildPreview(source, withoutLateForms, segment(progress, 0.4, 0.5))
-            else Cmo3ModelImport.paintingPreview(pipeline, source, withoutLateForms).also { progress.update("Prepared authored generation bindings", 0.5) }
+            else ImportedCmo3.paintingPreview(pipeline, source, withoutLateForms).also { progress.update("Prepared authored generation bindings", 0.5) }
         val stable = remeshed.rigEdits.splitDrawableIds + authored.rig.layerIdByDrawableId.entries.associate { it.value to it.key }
         fun generated(input: SourceArt, config: PipelineConfig, start: Double, end: Double): BuiltRig =
             generatedRig(pipeline, input, config, stable, segment(progress, start, end))
@@ -121,7 +122,7 @@ object RigGenerationMigration {
         }
         authoredParameters += existing.values.filter { actual -> previous.parameters.singleOrNull { it.id == actual.id } != actual }.map { it.id }
         current.config.rigEdits.importedCmo3?.let { baseline ->
-            authoredParameters += Cmo3ModelImport.decode(baseline).puppet.parameters.map { it.id }
+            authoredParameters += ImportedCmo3.puppet(baseline).parameters.map { it.id }
         }
         for (parameter in desired.parameters.filter { it.id in suppressed }) desired = desired.withParameterDeleted(parameter.id)
         desired = desired.copy(parameters = desired.parameters.map { generated ->

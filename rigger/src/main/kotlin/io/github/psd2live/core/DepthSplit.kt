@@ -283,7 +283,7 @@ object DepthSplit {
             put("layer_id", frontId); put("back_name", backName); put("front_name", frontName)
             put("back_order", backOrder); put("front_order", frontOrder)
             put("glue_id", glueId)
-            if (config.rigEdits.importedCmo3 != null) put("texture_source_id", Cmo3ModelImport.PAINT_SOURCE_ID)
+            if (config.rigEdits.importedCmo3 != null) put("texture_source_id", CMO3_PAINT_SOURCE_ID)
         }
         val inherited = config.layerOverrides[layerId] ?: layer.semantic.let {
             LayerClassificationOverride(it.type, it.tag, it.side, it.parameter, it.switchId)
@@ -334,7 +334,7 @@ object DepthSplit {
         val to = toTile.placement ?: return model
         val clone = source.copy(atlasTileId = tileId, texturePage = to.pageIndex)
         val sourceTexture = RasterMeshJournal.TextureCoordinates(model, source)
-        val canvas = if (command["texture_source_id"] != null && sourceTexture.sourceId.raw != Cmo3ModelImport.PAINT_SOURCE_ID)
+        val canvas = if (command["texture_source_id"] != null && sourceTexture.sourceId.raw != CMO3_PAINT_SOURCE_ID)
             mesh.positions.copyOf() else sourceTexture.toCanvas(mesh.uvs)
         val uvs = RasterMeshJournal.TextureCoordinates(model, clone).toUvs(canvas)
         fun atOrder(drawable: Drawable, order: Float): Drawable = drawable.copy(drawOrder = order,

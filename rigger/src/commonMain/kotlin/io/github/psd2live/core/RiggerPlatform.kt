@@ -138,3 +138,10 @@ fun formatFixedRoot(value: Double, decimals: Int): String {
 	val text = if (decimals == 0) whole else whole + "." + all.takeLast(decimals)
 	return if (value < 0 || (value == 0.0 && 1.0 / value < 0)) "-$text" else text
 }
+
+/** Whether preview bundles are read back ([PSD2LivePipeline.validatesPreviewBundles]): on the desktop a system property, else
+ * whether assertions are on (the test JVMs); off on the iPad. */
+expect fun previewBundleValidationDefault(): Boolean
+
+/** System.identityHashCode. */
+expect fun identityHash(value: Any?): Int

@@ -11,6 +11,7 @@ import kotlinx.cinterop.sizeOf
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.usePinned
 import okio.Buffer
+import kotlin.native.identityHashCode
 import org.umamo.format.art.isEffectivelyVisible
 import platform.zlib.Z_DEFAULT_STRATEGY
 import platform.zlib.Z_DEFLATED
@@ -255,3 +256,12 @@ actual fun legacyPaddedRaster(current: org.umamo.format.art.SourceLayer, bounds:
 }
 
 actual fun <T> parallelMap(count: Int, parallel: Boolean, body: (Int) -> T): List<T> = List(count) { body(it) }
+
+internal actual fun platformDefaultPython(): String = "python3"
+internal actual fun platformDetectPython(): String = "python3"
+internal actual fun platformLocalTextureRuntime(): TextureUpscaleConfig? = null
+
+actual fun previewBundleValidationDefault(): Boolean = false
+
+@OptIn(kotlin.experimental.ExperimentalNativeApi::class)
+actual fun identityHash(value: Any?): Int = value?.identityHashCode() ?: 0

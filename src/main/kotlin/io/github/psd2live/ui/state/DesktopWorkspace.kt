@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.state
+import io.github.psd2live.core.inspect
 
 import io.github.psd2live.project.ParameterSnapshot
 

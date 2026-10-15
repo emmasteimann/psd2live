@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.state
+import io.github.psd2live.core.concurrentMapOf
 import io.github.psd2live.core.Math
 
 import androidx.compose.runtime.Immutable
@@ -8,7 +9,6 @@ import io.github.psd2live.application.WorkspaceImageFit
 import io.github.psd2live.application.WorkspaceLayerTexture
 import io.github.psd2live.application.WorkspaceTextureView
 import io.github.psd2live.core.RigPreviewModel
-import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.ln
 import kotlin.math.pow
 
@@ -102,7 +102,7 @@ class TextureSnapshot(private val view: WorkspaceTextureView) {
 	val revision: String get() = view.revision
 	val atlas: WorkspaceAtlasSnapshot = view.atlas()
 	val tilesByLayer: Map<String, WorkspaceAtlasTile> = atlas.tiles.associateBy { it.layerId }
-	private val layers = ConcurrentHashMap<String, Result<WorkspaceLayerTexture>>()
+	private val layers = concurrentMapOf<String, Result<WorkspaceLayerTexture>>()
 
 	/** The layer's committed texture, or null when the id names no texture layer of this version. */
 	fun layer(layerId: String): WorkspaceLayerTexture? =
@@ -133,7 +133,7 @@ class TextureSnapshot(private val view: WorkspaceTextureView) {
 
 	// A drag asks for the standing tiles' shapes on every pointer move; they are the same each time.
 	private data class ShapeKey(val layerId: String, val x: Int, val y: Int, val width: Int, val height: Int, val rotation: Float)
-	private val collisionShapes = ConcurrentHashMap<ShapeKey, io.github.psd2live.core.AtlasArrange.Shape>()
+	private val collisionShapes = concurrentMapOf<ShapeKey, io.github.psd2live.core.AtlasArrange.Shape>()
 
 	private fun cachedShape(tile: io.github.psd2live.application.WorkspaceAtlasPlacements.Placed): io.github.psd2live.core.AtlasArrange.Shape {
 		val key = ShapeKey(tile.layerId, tile.x, tile.y, tile.width, tile.height, tile.rotation)

@@ -247,3 +247,26 @@ actual fun atlasPagePixels(png: ByteArray): IntArray? = AtlasPagePixels.pixelsOf
 
 actual fun <E> setFromMap(map: MutableMap<E, Boolean>): MutableSet<E> = java.util.Collections.newSetFromMap(map)
 actual fun <T> readOnlyList(list: List<T>): List<T> = java.util.Collections.unmodifiableList(list)
+
+actual fun <K : Any, V : Any> concurrentMapOf(): MutableMap<K, V> = java.util.concurrent.ConcurrentHashMap()
+
+actual typealias AtomicReference<V> = java.util.concurrent.atomic.AtomicReference<V>
+
+/** A java.util.prefs node: the editor's settings stay where they always were. */
+class JavaPreferences(val node: java.util.prefs.Preferences) : Preferences() {
+	override fun get(key: String, def: String?): String? = node.get(key, def)
+	override fun put(key: String, value: String) = node.put(key, value)
+	override fun remove(key: String) = node.remove(key)
+	override fun getBoolean(key: String, def: Boolean): Boolean = node.getBoolean(key, def)
+	override fun putBoolean(key: String, value: Boolean) = node.putBoolean(key, value)
+	override fun getInt(key: String, def: Int): Int = node.getInt(key, def)
+	override fun putInt(key: String, value: Int) = node.putInt(key, value)
+	override fun getFloat(key: String, def: Float): Float = node.getFloat(key, def)
+	override fun putFloat(key: String, value: Float) = node.putFloat(key, value)
+	override fun keys(): Array<String> = node.keys()
+	override fun clear() = node.clear()
+	override fun flush() = node.flush()
+	override fun node(pathName: String): Preferences = JavaPreferences(node.node(pathName))
+}
+
+actual fun userPreferencesRoot(): Preferences = JavaPreferences(java.util.prefs.Preferences.userRoot())

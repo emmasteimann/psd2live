@@ -7,10 +7,8 @@ import io.github.psd2live.render.P2lrtGlRenderer
 import io.github.psd2live.render.WindowGpu
 import io.github.psd2live.targets.runtime.P2lrt
 import org.umamo.runtime.model.ParameterId
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
-import java.util.concurrent.atomic.AtomicReference
 import javax.swing.SwingUtilities
 
 /**
@@ -43,7 +41,7 @@ class P2lrtPreviewSession(
 
 	private val compiler = Executors.newSingleThreadExecutor { Thread(it, "p2lrt-preview-compile").apply { isDaemon = true } }
 	private val latestRender = CanvasLatestQueue<PreviewRenderRequest>()
-	private val renderScheduled = ConcurrentHashMap<WindowGpu, AtomicBoolean>()
+	private val renderScheduled = concurrentMapOf<WindowGpu, AtomicBoolean>()
 	private val latestDelivery = CanvasLatestQueue<PreviewFrame>()
 	private val deliveryScheduled = AtomicBoolean(false)
 	private val pendingModel = AtomicReference<RigPreviewModel?>(null)

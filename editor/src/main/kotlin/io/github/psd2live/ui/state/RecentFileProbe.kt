@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.state
+import io.github.psd2live.core.concurrentMapOf
 import io.github.psd2live.project.Files
 import io.github.psd2live.project.pathOf
 
@@ -12,7 +13,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Whether recent files still exist, checked off the UI thread: a path on an unplugged drive or an
@@ -20,7 +20,7 @@ import java.util.concurrent.ConcurrentHashMap
  * so the start screen and the File menu show what is known at once and settle when the check returns.
  */
 object RecentFileProbe {
-	private val seen = ConcurrentHashMap<String, Boolean>()
+	private val seen = concurrentMapOf<String, Boolean>()
 
 	fun lastSeen(path: String): Boolean? = seen[path]
 

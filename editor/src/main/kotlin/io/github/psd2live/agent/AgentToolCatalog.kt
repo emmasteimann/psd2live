@@ -1,4 +1,5 @@
 package io.github.psd2live.agent
+import io.github.psd2live.core.concurrentMapOf
 import io.github.psd2live.core.MessageDigest
 import io.github.psd2live.core.base64Decode
 import io.github.psd2live.core.base64Encode
@@ -9,7 +10,6 @@ import io.github.psd2live.project.MutationAuthor
 import io.modelcontextprotocol.kotlin.sdk.types.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.*
-import java.util.concurrent.ConcurrentHashMap
 
 /** Which operations a session lists as tools. Every operation stays callable; the profile changes publication only. */
 enum class AgentToolProfile(val key: String) {
@@ -211,8 +211,8 @@ class AgentToolCatalog(
 
     // Executed requests keep their outcome, failures included. An identical call after a failed or cancelled attempt
     // is a new attempt with the next derived ID; a retry of a call whose outcome was never seen recovers that outcome.
-    private val attempts = ConcurrentHashMap<String, Int>()
-    private val derivedJobs = ConcurrentHashMap<String, String>()
+    private val attempts = concurrentMapOf<String, Int>()
+    private val derivedJobs = concurrentMapOf<String, String>()
 
     private fun retire(digest: String) { attempts.merge(digest, 1, Int::plus) }
 

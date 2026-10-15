@@ -292,3 +292,37 @@ actual fun <T> readOnlyList(list: List<T>): List<T> = object : AbstractList<T>()
 	override val size: Int get() = list.size
 	override fun get(index: Int): T = list[index]
 }
+
+actual fun <K : Any, V : Any> concurrentMapOf(): MutableMap<K, V> = synchronizedMapOf(HashMap())
+
+actual class AtomicReference<V> actual constructor(initialValue: V) {
+	private var value = initialValue
+	actual fun get(): V = synchronized(this) { value }
+	actual fun set(newValue: V) = synchronized(this) { value = newValue }
+	actual fun compareAndSet(expectedValue: V, newValue: V): Boolean = synchronized(this) { if (value === expectedValue) { value = newValue; true } else false }
+	actual fun getAndSet(newValue: V): V = synchronized(this) { val old = value; value = newValue; old }
+}
+
+
+/** A preferences node kept in NSUserDefaults as "prefs:<path>/<key>" strings, as Java stores every value as text. */
+private class DefaultsPreferences(private val path: String) : Preferences() {
+	private val defaults = platform.Foundation.NSUserDefaults.standardUserDefaults
+	private fun k(key: String) = "prefs:$path/$key"
+	override fun get(key: String, def: String?): String? = defaults.stringForKey(k(key)) ?: def
+	override fun put(key: String, value: String) = defaults.setObject(value, k(key))
+	override fun remove(key: String) = defaults.removeObjectForKey(k(key))
+	override fun getBoolean(key: String, def: Boolean): Boolean = get(key, null)?.let { it.equals("true", ignoreCase = true) } ?: def
+	override fun putBoolean(key: String, value: Boolean) = put(key, value.toString())
+	override fun getInt(key: String, def: Int): Int = get(key, null)?.toIntOrNull() ?: def
+	override fun putInt(key: String, value: Int) = put(key, value.toString())
+	override fun getFloat(key: String, def: Float): Float = get(key, null)?.toFloatOrNull() ?: def
+	override fun putFloat(key: String, value: Float) = put(key, value.toString())
+	override fun keys(): Array<String> = defaults.dictionaryRepresentation().keys.mapNotNull { it as? String }
+		.filter { it.startsWith("prefs:$path/") && '/' !in it.removePrefix("prefs:$path/") }.map { it.removePrefix("prefs:$path/") }.toTypedArray()
+	override fun clear() = keys().forEach(::remove)
+	override fun flush() {}
+	override fun node(pathName: String): Preferences =
+		DefaultsPreferences(if (pathName.startsWith("/")) pathName.trimEnd('/') else "${path.trimEnd('/')}/$pathName")
+}
+
+actual fun userPreferencesRoot(): Preferences = DefaultsPreferences("")

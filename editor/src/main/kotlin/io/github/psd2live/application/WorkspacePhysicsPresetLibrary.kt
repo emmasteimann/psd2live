@@ -1,6 +1,8 @@
 @file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
 
 package io.github.psd2live.application
+import io.github.psd2live.core.Preferences
+import io.github.psd2live.core.userPreferencesRoot
 import io.github.psd2live.core.Collections
 import io.github.psd2live.core.MessageDigest
 import io.github.psd2live.core.nameUuidFromBytes
@@ -12,7 +14,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.*
-import java.util.prefs.Preferences
 
 data class WorkspacePhysicsPresetEntry(val id: String, val preset: PhysicsPresets.Preset)
 data class WorkspacePhysicsPresetSnapshot(val state: String, val entries: List<WorkspacePhysicsPresetEntry>)
@@ -122,7 +123,7 @@ class WorkspacePhysicsPresetLibrary constructor(private val storage: WorkspacePh
 
     companion object {
         val shared: WorkspacePhysicsPresetLibrary by lazy {
-            WorkspacePhysicsPresetLibrary(PreferencesPhysicsPresetStorage(Preferences.userRoot().node("io.github.psd2live.settings/physics-presets")))
+            WorkspacePhysicsPresetLibrary(PreferencesPhysicsPresetStorage(userPreferencesRoot().node("io.github.psd2live.settings/physics-presets")))
         }
     }
 }

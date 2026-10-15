@@ -1,11 +1,12 @@
 package io.github.psd2live.agent
+import io.github.psd2live.core.Preferences
+import io.github.psd2live.core.userPreferencesRoot
 
 import io.github.psd2live.application.WorkspaceBackend
 import io.github.psd2live.application.WorkspaceOperations
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import java.util.prefs.Preferences
 
 /** The user's MCP endpoint settings; the token doubles as the stdio proxy's credential. */
 data class AgentMcpSettings(
@@ -31,7 +32,7 @@ interface AgentMcpSettingsStore {
 
 /** Per-user Java preferences. The stdio proxy reads the token and port keys from the same node. */
 class PreferencesAgentMcpSettingsStore(
-    private val preferences: Preferences = Preferences.userNodeForPackage(AgentMcpCredentials::class.java),
+    private val preferences: Preferences = userPreferencesRoot().node("/io/github/psd2live/agent"),
 ) : AgentMcpSettingsStore {
     override fun load(): AgentMcpSettings {
         val token = preferences.get(TOKEN_KEY, null)?.takeIf(AgentMcpCredentials::isValidToken)

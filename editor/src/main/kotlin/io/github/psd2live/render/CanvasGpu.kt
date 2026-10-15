@@ -1,8 +1,8 @@
 package io.github.psd2live.render
+import io.github.psd2live.core.concurrentMapOf
 import io.github.psd2live.core.AtomicInteger
 
 import java.awt.Window
-import java.util.concurrent.ConcurrentHashMap
 
 /**
  * The editing canvases' and the texture atlas page's GPU drawing, inside the canvas's own draw: [draw] renders
@@ -15,9 +15,9 @@ import java.util.concurrent.ConcurrentHashMap
 object CanvasGpu {
 	private class Drawn(val key: List<Any?>, val window: WindowGpu)
 
-	private val drawn = ConcurrentHashMap<String, Drawn>()
+	private val drawn = concurrentMapOf<String, Drawn>()
 	/** Frames rendered per view since start, for the development tools. */
-	val framesDrawn = ConcurrentHashMap<String, AtomicInteger>()
+	val framesDrawn = concurrentMapOf<String, AtomicInteger>()
 
 	/** Whether canvases in [window] can draw on the GPU. */
 	fun available(window: Window?): Boolean = SkiaGpu.of(window) != null

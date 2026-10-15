@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.state
+import io.github.psd2live.core.concurrentMapOf
 import io.github.psd2live.project.Files
 import io.github.psd2live.project.Path
 import io.github.psd2live.project.StandardCopyOption
@@ -140,7 +141,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.nio.charset.StandardCharsets
-import java.util.concurrent.ConcurrentHashMap
 
 
 
@@ -552,7 +552,7 @@ class DesktopWorkspace(
 	private val persistence = io.github.psd2live.application.WorkspacePersistenceCoordinator()
 	@Volatile private var persistenceReadError: String? = null
 	@Volatile private var recoveringProjectId: String? = null
-	private val spatialByViewId = ConcurrentHashMap<String, WorkspaceViewSpatialMetadata>()
+	private val spatialByViewId = concurrentMapOf<String, WorkspaceViewSpatialMetadata>()
 	private var taskProjectId: String? = null
 	private val previewBuilder = WorkspacePreviewBuilder()
     private val runtime = WorkspaceRuntime<io.github.psd2live.core.RigPreviewModel>({ document ->

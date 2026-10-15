@@ -254,3 +254,48 @@ class PolygonPath(private val xs: DoubleArray, private val ys: DoubleArray) {
 		return if (y0 < y1) 1 else -1
 	}
 }
+
+/** A map for concurrent use: java.util.concurrent.ConcurrentHashMap on the desktop; a locked map on the iPad. */
+expect fun <K : Any, V : Any> concurrentMapOf(): MutableMap<K, V>
+
+/** java.util.Map.getOrDefault (the JVM map's own member wins there). */
+fun <K, V> Map<K, V>.getOrDefault(key: K, defaultValue: V): V = if (containsKey(key)) @Suppress("UNCHECKED_CAST") (get(key) as V) else defaultValue
+
+/** java.util.concurrent.atomic.AtomicReference. */
+expect class AtomicReference<V>(initialValue: V) {
+	fun get(): V
+	fun set(newValue: V)
+	fun compareAndSet(expectedValue: V, newValue: V): Boolean
+	fun getAndSet(newValue: V): V
+}
+
+/**
+ * java.util.prefs.Preferences, the subset the editor's settings use: Java's own on the desktop (the same stored
+ * values), NSUserDefaults under the node's path on the iPad. Nodes come from [userPreferencesRoot].
+ */
+abstract class Preferences {
+	abstract fun get(key: String, def: String?): String?
+	/** With a non-null default the value is never null (as Java's platform-typed get is used). */
+	@kotlin.jvm.JvmName("getWithDefault")
+	fun get(key: String, def: String): String = get(key, def as String?) ?: def
+	abstract fun put(key: String, value: String)
+	abstract fun remove(key: String)
+	abstract fun getBoolean(key: String, def: Boolean): Boolean
+	abstract fun putBoolean(key: String, value: Boolean)
+	abstract fun getInt(key: String, def: Int): Int
+	abstract fun putInt(key: String, value: Int)
+	abstract fun getFloat(key: String, def: Float): Float
+	abstract fun putFloat(key: String, value: Float)
+	abstract fun keys(): Array<String>
+	abstract fun clear()
+	abstract fun flush()
+	abstract fun node(pathName: String): Preferences
+
+	companion object {
+		/** java.util.prefs.Preferences.MAX_VALUE_LENGTH. */
+		const val MAX_VALUE_LENGTH = 8 * 1024
+	}
+}
+
+/** Preferences.userRoot(). */
+expect fun userPreferencesRoot(): Preferences

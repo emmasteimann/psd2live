@@ -1,4 +1,5 @@
 package io.github.psd2live.application
+import io.github.psd2live.core.concurrentMapOf
 import io.github.psd2live.core.MessageDigest
 import io.github.psd2live.core.base64Decode
 import io.github.psd2live.core.putIfAbsent
@@ -35,11 +36,10 @@ import org.umamo.format.art.SourceLayer
 import org.umamo.format.art.SourceLayerKind
 import java.awt.image.BufferedImage
 import java.util.Base64
-import java.util.concurrent.ConcurrentHashMap
 import javax.imageio.ImageIO
 
 class WorkspacePngAssetStore(private val checkCancelled: () -> Unit = {}) {
-	private val assets = ConcurrentHashMap<String, WorkspacePngAsset>()
+	private val assets = concurrentMapOf<String, WorkspacePngAsset>()
 
 	fun import(request: WorkspacePngImportRequest, spatial: WorkspaceViewSpatialMetadata): WorkspaceImportedPngAsset {
 		require(request.png.size >= PNG_SIGNATURE.size && request.png.copyOfRange(0, PNG_SIGNATURE.size).contentEquals(PNG_SIGNATURE)) {

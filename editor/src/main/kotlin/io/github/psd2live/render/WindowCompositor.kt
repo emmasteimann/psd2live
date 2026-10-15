@@ -1,4 +1,5 @@
 package io.github.psd2live.render
+import io.github.psd2live.core.concurrentMapOf
 import io.github.psd2live.core.AtomicBoolean
 import io.github.psd2live.core.AtomicLong
 import kotlin.concurrent.Volatile
@@ -19,7 +20,6 @@ import org.jetbrains.skia.SurfaceOrigin
 import org.jetbrains.skia.SurfaceProps
 import org.jetbrains.skiko.SkikoRenderDelegate
 import java.lang.reflect.Field
-import java.util.concurrent.ConcurrentHashMap
 
 /**
  * A view the window draws itself under its Compose picture, every frame: a playing preview. Its canvas leaves a
@@ -49,7 +49,7 @@ class CompositedView(
  * the window draws as it always did ([active] is false and canvases draw their frames themselves).
  */
 class WindowCompositor(private val gpu: WindowGpu, private val inner: SkikoRenderDelegate) {
-	private val views = ConcurrentHashMap<String, CompositedView>()
+	private val views = concurrentMapOf<String, CompositedView>()
 	private val invalidated = AtomicBoolean(true)
 	private var hooked: Boolean? = null
 	private var sceneLazy: Lazy<*>? = null

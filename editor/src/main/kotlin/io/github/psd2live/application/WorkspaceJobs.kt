@@ -1,6 +1,7 @@
-@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+@file:OptIn(kotlin.time.ExperimentalTime::class, kotlin.uuid.ExperimentalUuidApi::class)
 
 package io.github.psd2live.application
+import io.github.psd2live.core.AtomicReference
 import io.github.psd2live.core.synchronized
 
 import kotlinx.coroutines.*
@@ -8,8 +9,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.put
-import java.time.Instant
-import java.util.concurrent.atomic.AtomicReference
+import kotlin.time.Clock
+import kotlin.time.Instant
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 
@@ -72,7 +73,7 @@ class WorkspaceJobContext constructor(private val update: (Float, String) -> Uni
 /** Actual coroutine jobs, distinct from the old persisted agent plan/checkpoint records. */
 class WorkspaceJobs(
     dispatcher: CoroutineDispatcher = Dispatchers.Default,
-    private val clock: () -> Instant = Instant::now,
+    private val clock: () -> Instant = { Clock.System.now() },
 ) : AutoCloseable {
     private companion object { const val RETAINED_FINISHED = 256 }
     private data class Entry(val state: MutableStateFlow<WorkspaceJobSnapshot>, val job: Job)

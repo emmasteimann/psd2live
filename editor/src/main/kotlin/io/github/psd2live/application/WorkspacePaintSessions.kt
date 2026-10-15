@@ -1,6 +1,7 @@
 @file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
 
 package io.github.psd2live.application
+import io.github.psd2live.core.concurrentMapOf
 import io.github.psd2live.core.synchronized
 
 import io.github.psd2live.core.*
@@ -10,7 +11,6 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.json.*
 import java.awt.Rectangle
 import java.awt.image.BufferedImage
-import java.util.concurrent.ConcurrentHashMap
 
 data class WorkspacePaintStroke(val id: String, val name: String)
 
@@ -172,7 +172,7 @@ class WorkspacePaintSession constructor(
 
 /** Process resources are captured from committed document/model once; only commit enters history. */
 class WorkspacePaintSessions(private val runtime: WorkspaceRuntime<RigPreviewModel>) {
-    private val sessions = ConcurrentHashMap<String, WorkspacePaintSession>()
+    private val sessions = concurrentMapOf<String, WorkspacePaintSession>()
     private val commands = WorkspaceRasterCommands(runtime)
     fun begin(state: String, layerId: String): WorkspacePaintSession = synchronized(sessions) {
         val captured = runtime.capture()

@@ -1,4 +1,6 @@
 package io.github.psd2live.ui.state
+import io.github.psd2live.core.Preferences
+import io.github.psd2live.core.userPreferencesRoot
 import io.github.psd2live.project.toAbsolutePath
 import io.github.psd2live.project.normalize
 import io.github.psd2live.project.startsWith
@@ -9,7 +11,6 @@ import io.github.psd2live.ui.theme.CustomTheme
 import io.github.psd2live.ui.theme.ThemeCatalog
 import io.github.psd2live.ui.theme.ThemeCodec
 import java.awt.GraphicsEnvironment
-import java.util.prefs.Preferences
 
 /**
  * Global user preferences and display scaling configuration.
@@ -23,7 +24,7 @@ object AppSettings {
 	private const val KEY_DARK_THEME = "dark_theme"
 
 	private val preferences by lazy {
-		Preferences.userRoot().node(PREFS_NODE_NAME)
+		userPreferencesRoot().node(PREFS_NODE_NAME)
 	}
 
 	/** The window's size in dp and whether it was maximized when it last closed; 1280 x 820 the first time. */

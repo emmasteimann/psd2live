@@ -1,6 +1,9 @@
 @file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
 
 package io.github.psd2live.ui.state
+import io.github.psd2live.core.Preferences
+import io.github.psd2live.core.concurrentMapOf
+import io.github.psd2live.core.userPreferencesRoot
 import io.github.psd2live.project.Files
 import io.github.psd2live.project.Path
 import io.github.psd2live.project.resolve
@@ -140,7 +143,6 @@ import io.github.psd2live.ui.keyformAxesFor
 import io.github.psd2live.ui.EditHierarchyMode
 import org.umamo.format.art.SourceArt
 import java.io.File
-import java.util.prefs.Preferences
 import kotlin.math.PI
 import kotlin.math.roundToInt
 import io.github.psd2live.ui.theme.CustomTheme
@@ -2104,7 +2106,7 @@ class PSD2LiveViewModel : AutoCloseable {
     }
 	private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 	val pipeline = PSD2LivePipeline()
-	private val preferences by lazy { Preferences.userNodeForPackage(PSD2LiveViewModel::class.java) }
+	private val preferences by lazy { userPreferencesRoot().node("/io/github/psd2live/ui/state") }
 	private var workspaceBackend: WorkspaceBackend? = null
     private var pendingDestructiveAction: (() -> Unit)? = null
     var confirmUnsavedChanges: (() -> Int)? = null
@@ -2789,7 +2791,7 @@ class PSD2LiveViewModel : AutoCloseable {
      * a pan still in flight), by [pendingCameraKey]. A mode or workspace switch folds them into the same
      * update, so the view neither jumps back nor loses the zoom when the viewport goes away first.
      */
-    private val pendingCanvasCameras = java.util.concurrent.ConcurrentHashMap<String, TabCamera>()
+    private val pendingCanvasCameras = concurrentMapOf<String, TabCamera>()
 
     private fun pendingCameraKey(generation: Long, workspaceId: String, canvasId: String) = "$generation/$workspaceId/$canvasId"
 

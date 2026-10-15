@@ -1,8 +1,8 @@
 package io.github.psd2live.ui.state
+import io.github.psd2live.core.AtomicReference
 import kotlin.concurrent.Volatile
 
 import kotlinx.coroutines.*
-import java.util.concurrent.atomic.AtomicReference
 
 /** UI-owned check: dismissal immediately releases ownership; a late result cannot reopen a dialog. */
 class MeshSplitCheck(private val scope: CoroutineScope, private val timeoutMillis: Long = 60_000L) {

@@ -87,10 +87,14 @@ internal fun applyRigConfig(outcome: RigOutcome, config: PipelineConfig, progres
 		next = config.copy(rigEdits = remeshed.config.rigEdits, generationSource = remeshed.config.generationSource, meshSource = remeshed.config.meshSource)
 		base = remeshed
 	}
-	// Physics and expressions shape only what is exported from the rig, not the rig: no rebuild for them.
-	val exportOnly = next.copy(rigEdits = next.rigEdits.copy(physicsEdits = base.config.rigEdits.physicsEdits,
-		disabledPhysicsIds = base.config.rigEdits.disabledPhysicsIds, expressions = base.config.rigEdits.expressions),
-		physicsFrontHair = base.config.physicsFrontHair, physicsBackHair = base.config.physicsBackHair, physicsEyeJelly = base.config.physicsEyeJelly) == base.config
+	// Physics, expressions and motions shape only what is exported from the rig, not the rig: no rebuild for them.
+	val b = base.config
+	val exportOnly = next.copy(rigEdits = next.rigEdits.copy(physicsEdits = b.rigEdits.physicsEdits,
+		disabledPhysicsIds = b.rigEdits.disabledPhysicsIds, expressions = b.rigEdits.expressions,
+		motionPresets = b.rigEdits.motionPresets, motionClips = b.rigEdits.motionClips),
+		physicsFrontHair = b.physicsFrontHair, physicsBackHair = b.physicsBackHair, physicsEyeJelly = b.physicsEyeJelly,
+		motionIdle = b.motionIdle, motionBlink = b.motionBlink, motionNod = b.motionNod, motionShake = b.motionShake,
+		motionSkeleton = b.motionSkeleton) == b
 	return when {
 		next == base.config -> writeRig(outcome.name, outcome.source, next, base, started, progress)
 		exportOnly -> writeRig(outcome.name, outcome.source, next, PSD2LivePipeline().updateRuntimeBundle(base, next), started, progress)

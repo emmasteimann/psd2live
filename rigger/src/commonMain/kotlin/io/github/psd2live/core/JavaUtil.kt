@@ -179,3 +179,6 @@ expect class ThreadLocal<T>() {
 	fun set(value: T)
 	fun remove()
 }
+
+/** java.util.Map.putIfAbsent: [value] under [key] unless it holds one; returns what it held. The JVM map's own wins there. */
+fun <K, V> MutableMap<K, V>.putIfAbsent(key: K, value: V): V? = get(key) ?: run { put(key, value); null }

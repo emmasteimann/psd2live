@@ -206,3 +206,28 @@ actual fun rasterizeLipTriangles(width: Int, height: Int, positions: FloatArray,
 	g2.dispose()
 	return image.getRGB(0, 0, width, height, null, 0, width)
 }
+
+actual class Flight<T> actual constructor() {
+	private val future = java.util.concurrent.CompletableFuture<T>()
+	actual fun complete(value: T) { future.complete(value) }
+	actual fun fail(failure: Throwable) { future.completeExceptionally(failure) }
+	actual fun await(): T = try { future.get() } catch (_: java.util.concurrent.ExecutionException) { throw FlightFailed() }
+}
+
+/** Mesh generation threads shared by every pipeline; idle ones expire. */
+private val meshWorkers = java.util.concurrent.ThreadPoolExecutor(meshWorkerCount(), meshWorkerCount(), 30, java.util.concurrent.TimeUnit.SECONDS,
+	java.util.concurrent.LinkedBlockingQueue()) { task -> Thread(task, "psd2live-mesh").apply { isDaemon = true } }
+	.apply { allowCoreThreadTimeOut(true) }
+
+private fun meshWorkerCount() = (Runtime.getRuntime().availableProcessors() - 1).coerceIn(1, 8)
+
+actual fun runMeshTasks(tasks: List<() -> Unit>) {
+	val cancelled = java.util.concurrent.atomic.AtomicBoolean()
+	val futures = tasks.map { task -> java.util.concurrent.CompletableFuture.runAsync({ if (!cancelled.get()) task() }, meshWorkers) }
+	try {
+		java.util.concurrent.CompletableFuture.allOf(*futures.toTypedArray()).get()
+	} catch (interrupted: InterruptedException) {
+		cancelled.set(true)
+		throw interrupted
+	}
+}

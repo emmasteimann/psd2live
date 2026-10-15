@@ -153,3 +153,20 @@ expect fun identityHash(value: Any?): Int
  * Returns [width] × [height] ARGB, straight alpha.
  */
 expect fun rasterizeLipTriangles(width: Int, height: Int, positions: FloatArray, indices: IntArray, rgb: Int): IntArray
+
+/** One computation other callers wait for ([PreviewMeshCache]): CompletableFuture on the desktop. */
+expect class Flight<T>() {
+	fun complete(value: T)
+	fun fail(failure: Throwable)
+	/** The value, once [complete]d; throws [FlightFailed] when the computing caller failed instead. */
+	fun await(): T
+}
+
+/** The caller computing a [Flight] failed or was cancelled; a waiter tries for itself. */
+class FlightFailed : Exception()
+
+/**
+ * Runs [tasks] in parallel on the mesh workers and returns when all are done (desktop); one after another on the iPad.
+ * Interrupting the caller stops the tasks not started yet and rethrows.
+ */
+expect fun runMeshTasks(tasks: List<() -> Unit>)

@@ -1,8 +1,5 @@
 package io.github.psd2live.core
 
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.ExecutionException
-
 /**
  * Per-pipeline, bounded cache of raster-local geometry; never caches parent coordinates.
  *
@@ -22,8 +19,8 @@ class PreviewMeshCache(private val capacity: Int = 1024) {
     )
 
     private val lock = Any()
-    private val entries = LinkedHashMap<Key, AdaptiveMeshGenerator.Result?>(16, 0.75f, true)
-    private val pending = HashMap<Key, CompletableFuture<AdaptiveMeshGenerator.Result?>>()
+    private val entries = AccessOrderMap<Key, AdaptiveMeshGenerator.Result?>(16, 0.75f, true)
+    private val pending = HashMap<Key, Flight<AdaptiveMeshGenerator.Result?>>()
 
     fun generate(
         width: Int, height: Int, rgba: ByteArray, alphaThreshold: Int, settings: MeshSettings,
@@ -31,22 +28,22 @@ class PreviewMeshCache(private val capacity: Int = 1024) {
     ): AdaptiveMeshGenerator.Result? {
         val key = key(width, height, rgba, alphaThreshold, settings, unitScale, detail)
         while (true) {
-            var owned: CompletableFuture<AdaptiveMeshGenerator.Result?>? = null
+            var owned: Flight<AdaptiveMeshGenerator.Result?>? = null
             val waiting = synchronized(lock) {
                 if (entries.containsKey(key)) return entries[key]?.detached()
-                pending[key] ?: run { owned = CompletableFuture(); pending[key] = owned!!; null }
+                pending[key] ?: run { owned = Flight(); pending[key] = owned!!; null }
             }
             if (waiting != null) {
                 try {
-                    return waiting.get()?.detached()
-                } catch (_: ExecutionException) {
+                    return waiting.await()?.detached()
+                } catch (_: FlightFailed) {
                     // The generating caller failed or was cancelled; this one tries for itself.
                     continue
                 }
             }
             val future = owned!!
             try {
-                if (Thread.currentThread().isInterrupted) throw InterruptedException()
+                checkInterrupted()
                 val result = RigBuildProfile.stage("mesh cache: adaptive mesh (miss)") {
                     AdaptiveMeshGenerator.generate(width, height, rgba, alphaThreshold, settings, unitScale, detail)
                 }
@@ -59,7 +56,7 @@ class PreviewMeshCache(private val capacity: Int = 1024) {
                 return result?.detached()
             } catch (failure: Throwable) {
                 synchronized(lock) { pending.remove(key) }
-                future.completeExceptionally(failure)
+                future.fail(failure)
                 throw failure
             }
         }
@@ -75,31 +72,13 @@ class PreviewMeshCache(private val capacity: Int = 1024) {
         for ((input, settings) in inputs) {
             val key = key(input.width, input.height, input.rgba, alphaThreshold, settings, input.unitScale, input.detail)
             if (synchronized(lock) { entries.containsKey(key) || key in pending }) continue
-            missing.putIfAbsent(key, input to settings)
+            if (key !in missing) missing[key] = input to settings
         }
         if (missing.size < 2) return
-        val cancelled = AtomicBoolean()
-        val tasks = missing.values.map { (input, settings) ->
-            CompletableFuture.runAsync({
-                if (!cancelled.get()) runCatching {
-                    generate(input.width, input.height, input.rgba, alphaThreshold, settings, input.unitScale, input.detail)
-                }
-            }, workers)
-        }
-        try {
-            CompletableFuture.allOf(*tasks.toTypedArray()).get()
-        } catch (interrupted: InterruptedException) {
-            cancelled.set(true)
-            throw interrupted
-        }
-    }
-
-    private companion object {
-        /** Mesh generation threads shared by every pipeline; idle ones expire. */
-        val workers = java.util.concurrent.ThreadPoolExecutor(WORKERS, WORKERS, 30, java.util.concurrent.TimeUnit.SECONDS,
-            java.util.concurrent.LinkedBlockingQueue()) { task -> Thread(task, "psd2live-mesh").apply { isDaemon = true } }
-            .apply { allowCoreThreadTimeOut(true) }
-        val WORKERS get() = (Runtime.getRuntime().availableProcessors() - 1).coerceIn(1, 8)
+        runMeshTasks(missing.values.map { (input, settings) -> {
+            runCatching { generate(input.width, input.height, input.rgba, alphaThreshold, settings, input.unitScale, input.detail) }
+            Unit
+        } })
     }
 
     private fun key(

@@ -308,3 +308,25 @@ actual fun rasterizeLipTriangles(width: Int, height: Int, positions: FloatArray,
 		}
 	}
 }
+
+actual class Flight<T> actual constructor() {
+	private val condition = platform.Foundation.NSCondition()
+	private var done = false
+	private var failed = false
+	private var value: T? = null
+
+	actual fun complete(value: T) { condition.lock(); this.value = value; done = true; condition.broadcast(); condition.unlock() }
+	actual fun fail(failure: Throwable) { condition.lock(); failed = true; done = true; condition.broadcast(); condition.unlock() }
+
+	@Suppress("UNCHECKED_CAST")
+	actual fun await(): T {
+		condition.lock()
+		try {
+			while (!done) condition.wait()
+			if (failed) throw FlightFailed()
+			return value as T
+		} finally { condition.unlock() }
+	}
+}
+
+actual fun runMeshTasks(tasks: List<() -> Unit>) { for (task in tasks) task() }

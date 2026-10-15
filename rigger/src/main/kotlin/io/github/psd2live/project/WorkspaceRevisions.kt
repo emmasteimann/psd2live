@@ -1,4 +1,5 @@
 package io.github.psd2live.project
+import io.github.psd2live.core.putIfAbsent
 import io.github.psd2live.core.toSortedMap
 import io.github.psd2live.core.Collections
 import java.security.MessageDigest

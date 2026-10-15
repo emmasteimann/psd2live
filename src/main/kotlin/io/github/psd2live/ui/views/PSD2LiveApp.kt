@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.views
+import io.github.psd2live.core.transparentRasterFiles
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background

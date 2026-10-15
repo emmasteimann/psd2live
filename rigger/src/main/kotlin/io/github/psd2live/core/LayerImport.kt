@@ -12,9 +12,6 @@ import org.umamo.format.art.LayerRaster
 import org.umamo.format.art.SourceLayerKind
 import org.umamo.format.raster.RasterCodec
 import org.umamo.format.raster.RasterImage
-import java.io.File
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import org.umamo.format.tiff.parseFirstDirectory
 import org.umamo.format.webp.parseVp8lHeader
 import kotlin.math.abs
@@ -34,49 +31,23 @@ object LayerImport {
 		FileKind.Bmp,
 	)
 
-	private val TRANSPARENT_EXTENSIONS = setOf("png", "webp", "tif", "tiff", "bmp")
+	internal val TRANSPARENT_EXTENSIONS = setOf("png", "webp", "tif", "tiff", "bmp")
 
-	fun isTransparentRasterFile(file: File): Boolean {
-		if (!file.isFile) return false
-		if (file.extension.lowercase() in TRANSPARENT_EXTENSIONS) return true
-		return runCatching {
-			val head = file.inputStream().use { stream ->
-				stream.readNBytes(64)
-			}
-			val kind = FormatRegistry.detect(head, file.name)?.kind
-			kind in TRANSPARENT_KINDS
-		}.getOrDefault(false)
-	}
-
-	fun transparentRasterFiles(files: List<File>): List<File> =
-		files.filter(::isTransparentRasterFile)
-
-	fun decodeRasterFile(file: File, checkCancelled: () -> Unit = {}): RasterImage {
+	/** [bytes] - an image file named [name] - decoded, after its header passes the size limits (the file reading is the platform's). */
+	fun decodeRasterBytes(bytes: ByteArray, name: String, checkCancelled: () -> Unit = {}): RasterImage {
 		checkCancelled()
-		require(file.isFile && file.length() in 1..MAX_BYTES.toLong()) { "Image must be a readable file of at most 64 MiB" }
-		val bytes = file.inputStream().use { input ->
-			val output = java.io.ByteArrayOutputStream()
-			val buffer = ByteArray(8192)
-			while (true) {
-				checkCancelled()
-				val count = input.read(buffer)
-				if (count < 0) break
-				require(output.size().toLong() + count <= MAX_BYTES) { "Image exceeds 64 MiB" }
-				output.write(buffer, 0, count)
-			}
-			output.toByteArray()
-		}
-		val codec = FormatRegistry.detect(bytes, file.name) as? RasterCodec
-			?: error("Unsupported raster format: ${file.name}")
-		require(codec.kind in TRANSPARENT_KINDS) { "Not a transparent raster: ${file.name}" }
+		require(bytes.size in 1..MAX_BYTES) { "Image must be a readable file of at most 64 MiB" }
+		val codec = FormatRegistry.detect(bytes, name) as? RasterCodec
+			?: error("Unsupported raster format: ${name}")
+		require(codec.kind in TRANSPARENT_KINDS) { "Not a transparent raster: ${name}" }
 		val (width, height) = when (codec.kind) {
 			FileKind.Png -> {
 				require(bytes.size >= 24 && bytes.copyOfRange(12, 16).decodeToString() == "IHDR") { "Invalid PNG header" }
-				ByteBuffer.wrap(bytes).let { it.getInt(16).toLong() to it.getInt(20).toLong() }
+				bigEndianInt(bytes, 16).toLong() to bigEndianInt(bytes, 20).toLong()
 			}
 			FileKind.Bmp -> {
 				require(bytes.size >= 54) { "Invalid BMP header" }
-				ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).let { it.getInt(18).toLong() to kotlin.math.abs(it.getInt(22).toLong()) }
+				littleEndianInt(bytes, 18).toLong() to kotlin.math.abs(littleEndianInt(bytes, 22).toLong())
 			}
 			FileKind.WebP -> parseVp8lHeader(bytes).let { it.width.toLong() to it.height.toLong() }
 			FileKind.Tiff -> parseFirstDirectory(bytes).let { it.int(256, -1).toLong() to it.int(257, -1).toLong() }
@@ -87,7 +58,19 @@ object LayerImport {
 		return codec.read(bytes).also { checkCancelled() }
 	}
 
-	private const val MAX_BYTES = 67_108_864
+	/** Whether [head] (a file's first bytes) or [name]'s extension says a raster with transparency. */
+	fun isTransparentRaster(head: ByteArray, name: String): Boolean {
+		if (name.substringAfterLast('.', "").lowercase() in TRANSPARENT_EXTENSIONS) return true
+		return runCatching { FormatRegistry.detect(head, name)?.kind in TRANSPARENT_KINDS }.getOrDefault(false)
+	}
+
+	private fun bigEndianInt(b: ByteArray, at: Int): Int =
+		((b[at].toInt() and 0xff) shl 24) or ((b[at + 1].toInt() and 0xff) shl 16) or ((b[at + 2].toInt() and 0xff) shl 8) or (b[at + 3].toInt() and 0xff)
+
+	private fun littleEndianInt(b: ByteArray, at: Int): Int =
+		((b[at + 3].toInt() and 0xff) shl 24) or ((b[at + 2].toInt() and 0xff) shl 16) or ((b[at + 1].toInt() and 0xff) shl 8) or (b[at].toInt() and 0xff)
+
+	internal const val MAX_BYTES = 67_108_864
 	private const val MAX_PIXELS = LayerSizeBudget.MAX_PIXELS
 
 	/**
@@ -133,7 +116,6 @@ object LayerImport {
 		)
 	}
 
-	fun displayNameOf(file: File): String = file.nameWithoutExtension.ifBlank { file.name }
 
 	private fun trimTransparent(image: RasterImage, checkCancelled: () -> Unit): RasterImage? {
 		var minX = image.width

@@ -1,7 +1,6 @@
 package org.umamo.format
 
 import org.umamo.format.bmp.BmpCodec
-import org.umamo.format.cmo3.Cmo3
 import org.umamo.format.jpeg.JpegReader
 import org.umamo.format.moc3.Moc3
 import org.umamo.format.png.PngCodec
@@ -13,12 +12,12 @@ import org.umamo.format.webp.WebPReader
  * The registry of binary container codecs Umamo can read/write, and the entry point for dispatching
  * an unknown file to the right one.
  *
- * EN: Lives in `jvmAndroidMain` because it references [Cmo3], whose JDOM/reflection serializer is
- *     JVM-only (it still sees the commonMain [Moc3]). Holds heterogeneous `FormatCodec<*>` since the
+ * EN: Shared code (Layerloom iPad plan): the platform adds the codecs only it has ([platformLeadingCodecs]:
+ *     CMO3, whose JDOM/reflection serializer is JVM-only), ahead of the rest. Holds heterogeneous `FormatCodec<*>` since the
  *     models share no supertype; a caller does `detect(bytes)?.read(bytes)` and then branches on the
  *     returned model type or the codec's [FormatCodec.kind]. Text sidecars (`model3.json` etc.) are
  *     not registered here - they are `String`-shaped and live as helpers on [Moc3].
- * JA: バイナリ形式コーデックの一覧と判定窓口。Cmo3 が JVM 専用のためこのソースセットに置く。
+ * JA: バイナリ形式コーデックの一覧と判定窓口。Cmo3 は JVM 専用のためプラットフォーム側で追加する。
  */
 public object FormatRegistry {
 	/**
@@ -29,7 +28,7 @@ public object FormatRegistry {
 	 * raster codecs sit last; BMP's short 2-byte "BM" magic is checked after the longer signatures.
 	 */
 	private val codecs: List<FormatCodec<*>> =
-		listOf(Cmo3, Moc3, PsdReader, PngCodec, BmpCodec, JpegReader, WebPReader, TiffReader)
+		platformLeadingCodecs + listOf(Moc3, PsdReader, PngCodec, BmpCodec, JpegReader, WebPReader, TiffReader)
 
 	/**
 	 * Identifies the codec for [bytes], preferring a reliable magic-byte match and falling back to the
@@ -70,3 +69,6 @@ public object FormatRegistry {
 	public fun readableExtensions(): List<String> =
 		codecs.filter { codec -> codec.kind.readable }.map { codec -> codec.kind.extension }.distinct()
 }
+
+/** Codecs only this platform has, checked first: CMO3 on the JVM, none on the iPad. */
+internal expect val platformLeadingCodecs: List<FormatCodec<*>>

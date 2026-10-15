@@ -127,6 +127,25 @@ class JavaLangParityTest {
 		for (f in floats) assertEquals("%.6g".format(java.util.Locale.ROOT, f).toFloat(), roundSignificant(f.toDouble(), 6).toFloat(), "%.6g of $f")
 	}
 
+	/** Partition pieces take their side from PolygonPath: Path2D's answer, edges and vertices included. */
+	@Test
+	fun polygonContainsMatchesPath2d() {
+		repeat(400) {
+			val n = random.nextInt(3, 12)
+			// Integer-ish corners so many probes fall exactly on edges and vertices.
+			val points = List(n) { random.nextInt(0, 12).toDouble() to random.nextInt(0, 12).toDouble() }
+			val path = java.awt.geom.Path2D.Double().apply {
+				moveTo(points[0].first, points[0].second); points.drop(1).forEach { (x, y) -> lineTo(x, y) }; closePath()
+			}
+			val ours = PolygonPath(points)
+			for (k in 0 until 300) {
+				val x = if (k % 2 == 0) random.nextInt(-1, 13).toDouble() else random.nextDouble(-1.0, 13.0)
+				val y = if (k % 3 == 0) random.nextInt(-1, 13).toDouble() else random.nextDouble(-1.0, 13.0)
+				assertEquals(path.contains(x, y), ours.contains(x, y), "($x, $y) in $points")
+			}
+		}
+	}
+
 	@Test
 	fun bitSetBytesRoundTrip() {
 		val set = BitSet(300)

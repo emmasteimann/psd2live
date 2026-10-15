@@ -1,4 +1,5 @@
 package io.github.psd2live.tools
+import io.github.psd2live.core.decodeRasterFile
 
 import io.github.psd2live.application.*
 import io.github.psd2live.core.PipelineConfig

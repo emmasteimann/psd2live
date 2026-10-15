@@ -2,7 +2,6 @@ package io.github.psd2live.core
 
 import org.umamo.edit.VertexSource
 import org.umamo.runtime.model.DrawableMesh
-import java.awt.geom.Path2D
 import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.roundToLong
@@ -20,11 +19,7 @@ object SourcePartitionGeometry {
                 checkpoint: () -> Unit = {}): Plan {
         validate(mesh, canvas)
         require(polygon.size in 3..32 && polygon.all { it.first.isFinite() && it.second.isFinite() })
-        val path = Path2D.Double().apply {
-            moveTo(polygon.first().first, polygon.first().second)
-            polygon.drop(1).forEach { (x, y) -> lineTo(x, y) }
-            closePath()
-        }
+        val path = PolygonPath(polygon)
         val builders = List(2) { Builder(mesh, canvas) }
         for (offset in mesh.indices.indices step 3) {
             checkpoint()

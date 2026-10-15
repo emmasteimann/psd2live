@@ -211,3 +211,31 @@ expect class JavaRandom(seed: Long) {
 	fun nextDouble(): Double
 	fun nextFloat(): Float
 }
+
+/**
+ * A closed polygon's inside, as java.awt.geom.Path2D.Double's contains(x, y) decides it (non-zero winding, the
+ * edge rules of java.awt.geom.Curve.pointCrossingsForLine), so points on edges land on the same side everywhere.
+ */
+class PolygonPath(private val xs: DoubleArray, private val ys: DoubleArray) {
+	constructor(points: List<Pair<Double, Double>>) : this(DoubleArray(points.size) { points[it].first }, DoubleArray(points.size) { points[it].second })
+
+	fun contains(x: Double, y: Double): Boolean {
+		if (!(x * 0.0 + y * 0.0 == 0.0) || xs.size < 2) return false
+		var crossings = 0
+		for (i in xs.indices) {
+			val j = if (i + 1 == xs.size) 0 else i + 1
+			crossings += crossingsForLine(x, y, xs[i], ys[i], xs[j], ys[j])
+		}
+		return crossings != 0
+	}
+
+	private fun crossingsForLine(px: Double, py: Double, x0: Double, y0: Double, x1: Double, y1: Double): Int {
+		if (py < y0 && py < y1) return 0
+		if (py >= y0 && py >= y1) return 0
+		if (px >= x0 && px >= x1) return 0
+		if (px < x0 && px < x1) return if (y0 < y1) 1 else -1
+		val xIntercept = x0 + (py - y0) * (x1 - x0) / (y1 - y0)
+		if (px >= xIntercept) return 0
+		return if (y0 < y1) 1 else -1
+	}
+}

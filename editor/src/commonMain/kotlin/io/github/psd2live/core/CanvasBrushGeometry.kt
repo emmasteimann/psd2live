@@ -129,7 +129,7 @@ private fun walkBrush(s: CanvasBrushSurface, starts: Set<Int>, from: CanvasBrush
         }
         while (queue.isNotEmpty()) {
             canvasWeightCheckpoint()
-            val (d, i) = queue.poll()
+            val (d, i) = queue.poll()!!
             if (d > distance[i]) continue
             for (n in neighbors[i]) {
                 if (n >= s.points.size) continue
@@ -163,7 +163,7 @@ private fun walkBrush(s: CanvasBrushSurface, starts: Set<Int>, from: CanvasBrush
 
 /** runInterruptible can stop large public candidates without importing a host coroutine context. */
 fun canvasWeightCheckpoint() {
-    if (Thread.currentThread().isInterrupted) throw CancellationException("Canvas weight edit cancelled")
+    if (currentThreadInterrupted()) throw CancellationException("Canvas weight edit cancelled")
 }
 
 private fun insideTriangle(p: CanvasBrushPoint, a: CanvasBrushPoint, b: CanvasBrushPoint, c: CanvasBrushPoint): Boolean {

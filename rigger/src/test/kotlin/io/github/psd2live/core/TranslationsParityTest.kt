@@ -50,6 +50,22 @@ class TranslationsParityTest {
 		check(checked > 1000) { "only $checked formatted" }
 	}
 
+	/**
+	 * A lone apostrophe in a pattern with slots starts MessageFormat quoting and swallows the slots after it
+	 * ("layer's own pixels, up to {0}x" showed "{0}"). Every slot must fill and every apostrophe must show.
+	 */
+	@Test
+	fun everySlotFillsAndApostrophesShow() {
+		for (file in bundles) {
+			for ((key, pattern) in parseProperties(file.readText(Charsets.UTF_8))) {
+				if (!Regex("\\{\\d").containsMatchIn(pattern)) continue
+				val text = MessageFormat(pattern, locales.getValue(file.name)).format(Array(10) { 7 })
+				assertEquals(false, Regex("\\{\\d").containsMatchIn(text), "${file.name}: $key leaves a slot unfilled: $text")
+				assertEquals(pattern.replace("''", "'").count { it == '\'' }, text.count { it == '\'' }, "${file.name}: $key loses an apostrophe: $text")
+			}
+		}
+	}
+
 	@Test
 	fun numbersRoundAsDecimalFormat() {
 		val random = Random(5)

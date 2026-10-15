@@ -1,0 +1,6 @@
+build/
+.gradle/
+.kotlin/
+iosApp/studio/
+iosApp/Layerloom.xcodeproj/
+iosApp/build/

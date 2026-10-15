@@ -125,6 +125,8 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 	val encoder = remember { Dispatchers.Default.limitedParallelism(1) }
 	val safe = remember { CoroutineExceptionHandler { _, e -> scope.launch(Dispatchers.Main) { busy = null; status = "Something went wrong: ${e.message ?: e::class.simpleName}" } } }
 	var pendingCommit by remember { mutableStateOf<Job?>(null) }
+	// The part being fitted by hand (Fit mode takes the whole screen), or null.
+	var fitting by remember { mutableStateOf<String?>(null) }
 
 	val projectNow by rememberUpdatedState(project)
 	val maskNow by rememberUpdatedState(mask)
@@ -363,6 +365,18 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 			}
 			return@Column
 		}
+		val fitId = fitting
+		if (fitId != null && p.part(fitId) != null) {
+			FitScreen(p, fitId, pencilOnly, onPencilOnly = { pencilOnly = it; if (it) pencilSeen = true },
+				onApply = { id, changes, event, stay ->
+					projectNow?.let { change(it.updatePart(id, changes, event)) }
+					if (!stay) fitting = null
+					status = "$event. Saved into the layer."
+				},
+				onSelect = { id -> fitting = id; selectedId = id },
+				onClose = { fitting = null })
+			return@Column
+		}
 		val selected = p.part(selectedId)
 		// Read on every stroke, so undo, redo and Extract follow the mask.
 		@Suppress("UNUSED_VARIABLE") val strokes = maskTick
@@ -569,6 +583,8 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 						}
 					}
 					Text("The drawing's pixels under the mask become this part's own layer and leave the remaining artwork.", color = Muted, fontSize = 12.sp)
+					Chip("Fit by hand", true, enabled = busy == null && selected.cutout != null) { scope.launch { flushMask(); fitting = selected.id } }
+					if (selected.cutout == null) Text("Fit by hand works on a part's art: extract it (or import a PSD) first.", color = Muted, fontSize = 12.sp)
 					Chip("Import mask PNG", enabled = busy == null) {
 						Exchange.pick(setOf("png"), multiple = false) { names ->
 							val file = names.firstOrNull() ?: return@pick

@@ -50,7 +50,7 @@ expect fun <T> parallelMap(count: Int, parallel: Boolean, body: (Int) -> T): Lis
 expect fun checkInterrupted()
 
 /** A warning line for whoever runs the rigger (System.err on the desktop, the console on the iPad). */
-expect fun warn(message: String)
+expect fun warn(message: Any?)
 
 /** A monotonic clock in nanoseconds (System.nanoTime on the desktop), for timings only. */
 expect fun nanoTime(): Long

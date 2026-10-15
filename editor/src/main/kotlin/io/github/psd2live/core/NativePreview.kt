@@ -8,10 +8,7 @@ import org.umamo.runtime.model.DrawableId
 import org.umamo.runtime.model.ParameterId
 import org.umamo.runtime.model.PuppetModel
 import org.umamo.runtime.model.visibleDrawableIds
-import java.util.Collections
-import java.util.WeakHashMap
 import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * The software preview's deformation through the Rust runtime: one runtime session per preview model,

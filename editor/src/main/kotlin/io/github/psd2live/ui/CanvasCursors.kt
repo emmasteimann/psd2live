@@ -1,4 +1,5 @@
 package io.github.psd2live.ui
+import io.github.psd2live.core.Math
 
 import java.awt.BasicStroke
 import java.awt.Color

@@ -1,4 +1,5 @@
 package io.github.psd2live.render
+import io.github.psd2live.core.Math
 
 import io.github.psd2live.core.CanvasViewport
 import io.github.psd2live.core.RigCanvasSupport

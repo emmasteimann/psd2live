@@ -1,4 +1,5 @@
 package io.github.psd2live.application
+import io.github.psd2live.core.base64Decode
 
 import io.github.psd2live.application.validateOperationSchema
 
@@ -13,7 +14,6 @@ import io.github.psd2live.core.Side
 import io.github.psd2live.core.MotionClips
 import io.github.psd2live.core.sim.SimMaterialPreset
 import kotlinx.serialization.json.*
-import java.util.UUID
 
 /** Domain operations call application commands directly; no transport handler is constructed. */
 fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, workspace: WorkspaceBackend, commands: WorkspaceCommands, jobs: WorkspaceJobs) {
@@ -658,7 +658,7 @@ fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, workspace:
             if (mode == "preview") {
                 val preview = WorkspacePathEdits.preview(puppet, input)
                 val base64 = preview["previewImage"]?.jsonPrimitive?.contentOrNull
-                WorkspaceOperationOutput(JsonObject(preview - "previewImage"), listOfNotNull(base64?.let { java.util.Base64.getDecoder().decode(it) }))
+                WorkspaceOperationOutput(JsonObject(preview - "previewImage"), listOfNotNull(base64?.let { base64Decode(it) }))
             } else {
                 val result = when (mode) {
                     "get", "list" -> WorkspacePathEdits.inspect(puppet, input)

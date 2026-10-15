@@ -1,4 +1,10 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package io.github.psd2live.application
+import io.github.psd2live.core.Collections
+import io.github.psd2live.core.MessageDigest
+import io.github.psd2live.core.nameUuidFromBytes
+import io.github.psd2live.core.synchronized
 
 import io.github.psd2live.core.PhysicsPresets
 import io.github.psd2live.core.RigPhysicsEdit
@@ -6,9 +12,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.*
-import java.security.MessageDigest
-import java.util.UUID
-import java.util.Collections
 import java.util.prefs.Preferences
 
 data class WorkspacePhysicsPresetEntry(val id: String, val preset: PhysicsPresets.Preset)
@@ -32,7 +35,7 @@ class PreferencesPhysicsPresetStorage(private val node: Preferences) : Workspace
             val fields = Json.parseToJsonElement(payload).jsonObject
             val preset = PhysicsPresets.Preset.fromJson(fields)
             WorkspacePhysicsPresetEntry(fields["library_id"]?.jsonPrimitive?.content
-                ?: UUID.nameUUIDFromBytes("${preset.kind}:${preset.name}".toByteArray(Charsets.UTF_8)).toString(), preset)
+                ?: nameUuidFromBytes("${preset.kind}:${preset.name}".encodeToByteArray()), preset)
         }.getOrNull()
     }
     override fun write(entries: List<WorkspacePhysicsPresetEntry>) {
@@ -60,7 +63,7 @@ class PreferencesPhysicsPresetStorage(private val node: Preferences) : Workspace
 /** Process-owned reusable physics presets; UI and MCP share persistence, notifications and CAS. */
 class WorkspacePhysicsPresetLibrary constructor(private val storage: WorkspacePhysicsPresetStorage) {
     private val lock = Any()
-    private val instance = UUID.randomUUID().toString()
+    private val instance = kotlin.uuid.Uuid.random().toString()
     private var version = 0L
     private val changes = MutableStateFlow(snapshotOf(storage.load().mapNotNull { entry -> runCatching {
         require(entry.id.isNotBlank() && !entry.id.startsWith("builtin:") && !entry.preset.builtin)
@@ -75,7 +78,7 @@ class WorkspacePhysicsPresetLibrary constructor(private val storage: WorkspacePh
         require(!preset.builtin) { "Built-in presets cannot be overwritten" }
         mutate(expectedState) { entries ->
             val existing = entries.firstOrNull { it.preset.kind == preset.kind && it.preset.name == preset.name }
-            val entry = WorkspacePhysicsPresetEntry(existing?.id ?: UUID.randomUUID().toString(), freeze(preset))
+            val entry = WorkspacePhysicsPresetEntry(existing?.id ?: kotlin.uuid.Uuid.random().toString(), freeze(preset))
             (if (existing == null) entries + entry else entries.map { if (it.id == existing.id) entry else it }) to entry
         }
     }
@@ -113,7 +116,7 @@ class WorkspacePhysicsPresetLibrary constructor(private val storage: WorkspacePh
     private fun snapshotOf(entries: List<WorkspacePhysicsPresetEntry>): WorkspacePhysicsPresetSnapshot {
         val frozen = entries.map { it.copy(preset = freeze(it.preset)) }
         val payload = JsonArray(frozen.map { JsonObject(it.preset.toJson() + ("id" to JsonPrimitive(it.id))) }).toString()
-        val hash = MessageDigest.getInstance("SHA-256").digest(payload.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+        val hash = MessageDigest.getInstance("SHA-256").digest(payload.encodeToByteArray()).joinToString("") { "%02x".format(it) }
         return WorkspacePhysicsPresetSnapshot("physics-presets:$instance:$version:$hash", Collections.unmodifiableList(frozen))
     }
 

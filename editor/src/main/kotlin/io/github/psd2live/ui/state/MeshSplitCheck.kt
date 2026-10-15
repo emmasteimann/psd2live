@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.state
+import kotlin.concurrent.Volatile
 
 import kotlinx.coroutines.*
 import java.util.concurrent.atomic.AtomicReference

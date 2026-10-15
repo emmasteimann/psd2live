@@ -1,4 +1,7 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package io.github.psd2live.application
+import io.github.psd2live.core.synchronized
 
 import io.github.psd2live.core.*
 import io.github.psd2live.project.MutationAuthor
@@ -6,7 +9,6 @@ import io.github.psd2live.project.WorkspaceMutationResult
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.*
-import java.util.UUID
 
 /** A skeleton draft as its editors see it. [state] is the session's own lineage, not the live workspace. */
 data class WorkspaceSkeletonDraft(
@@ -57,7 +59,7 @@ class WorkspaceSkeletonDraftSessions(private val runtime: WorkspaceRuntime<RigPr
         val lineage = runtime.updateAuxiliary(before.projectId, before.state, auxiliary, projectUnchanged = true) { captured, _ ->
             project(captured, rest, changed)
         }
-        val session = Session(UUID.randomUUID().toString(), workspaceId, lineage, spec)
+        val session = Session(kotlin.uuid.Uuid.random().toString(), workspaceId, lineage, spec)
         synchronized(lock) {
             // One draft per workspace: the older one could otherwise commit over the newer one's lineage.
             sessions.replaceAll { _, other -> if (other.workspace == workspaceId && other.status == "active") other.copy(status = "superseded") else other }

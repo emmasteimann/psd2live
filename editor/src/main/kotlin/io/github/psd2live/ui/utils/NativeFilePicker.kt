@@ -1,4 +1,6 @@
 package io.github.psd2live.ui.utils
+import io.github.psd2live.core.AtomicBoolean
+import kotlin.concurrent.Volatile
 
 import io.github.psd2live.i18n.tr
 import java.awt.Component
@@ -11,7 +13,6 @@ import java.awt.Toolkit
 import java.awt.Window
 import java.io.File
 import java.nio.file.Path
-import java.util.concurrent.atomic.AtomicBoolean
 import javax.swing.JDialog
 import javax.swing.JFileChooser
 import javax.swing.UIManager

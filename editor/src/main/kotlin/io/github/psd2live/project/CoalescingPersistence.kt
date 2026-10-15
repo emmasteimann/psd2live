@@ -1,4 +1,5 @@
 package io.github.psd2live.project
+import io.github.psd2live.core.synchronized
 
 /** Complete snapshots supersede pending snapshots of the same destination; unrelated writes keep their order. */
 class CoalescingPersistence(private val schedule: (() -> Unit) -> Unit) {

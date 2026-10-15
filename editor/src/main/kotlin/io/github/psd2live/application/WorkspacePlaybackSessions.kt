@@ -1,4 +1,6 @@
 package io.github.psd2live.application
+import io.github.psd2live.core.AtomicLong
+import io.github.psd2live.core.nanoTime
 
 import io.github.psd2live.core.*
 import kotlinx.serialization.json.*
@@ -12,7 +14,7 @@ class WorkspacePlaybackSessions(private val runtime: WorkspaceRuntime<RigPreview
     private data class Session(val projectId: String, val generation: String, val clipId: String? = null, val time: Float = 0f,
                                val playing: Boolean = false, val tracking: Boolean = false,
                                val smoothTracking: Boolean = false, val trackingClock: PreviewAnimationClock = PreviewAnimationClock(),
-                               val pointer: Pair<Float, Float>? = null, val clockNanos: Long = System.nanoTime(),
+                               val pointer: Pair<Float, Float>? = null, val clockNanos: Long = nanoTime(),
                                val animation: Boolean = false, val animationClock: PreviewAnimationClock = PreviewAnimationClock(),
                                val motionId: String? = null, val motionTime: Float = 0f, val activeMotion: String? = null,
                                val physics: WorkspacePreviewPhysics = WorkspacePreviewPhysics())
@@ -95,7 +97,7 @@ class WorkspacePlaybackSessions(private val runtime: WorkspaceRuntime<RigPreview
             }
             else -> error("Unknown playback mode: $mode")
         }
-        sessions[workspaceId] = next.copy(clockNanos = System.nanoTime())
+        sessions[workspaceId] = next.copy(clockNanos = nanoTime())
         sequenceByWorkspace[workspaceId] = sequences.incrementAndGet()
         return result(capture, workspaceId, next)
     }
@@ -140,7 +142,7 @@ class WorkspacePlaybackSessions(private val runtime: WorkspaceRuntime<RigPreview
         val capture = runtime.capture()
         val generation = capture.state.substringBeforeLast(':')
         var session = sessions[workspaceId]?.takeIf { it.projectId == capture.projectId && it.generation == generation } ?: Session(capture.projectId, generation)
-        val now = System.nanoTime()
+        val now = nanoTime()
         val delta = dt ?: ((now - session.clockNanos).coerceAtLeast(0L) / 1_000_000_000.0).toFloat()
         val clip = session.clipId?.let { clip(capture, it) }
         if (clip == null && session.clipId != null) session = session.copy(clipId = null, playing = false, time = 0f)
@@ -219,7 +221,7 @@ class WorkspacePlaybackSessions(private val runtime: WorkspaceRuntime<RigPreview
          * Rises with every change a command or restart makes to a session, across every session in the process. A
          * result carries the value its session had, so whoever shows them can drop one that arrives after a newer one.
          */
-        private val sequences = java.util.concurrent.atomic.AtomicLong()
+        private val sequences = AtomicLong()
 
         /** GUI scrubbing and process sessions use the same bounded, lock-aware frame composition. */
         fun sample(model: RigPreviewModel, pose: WorkspacePose, clip: MotionClip?, time: Float,

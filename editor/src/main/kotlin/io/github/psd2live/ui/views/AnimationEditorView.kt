@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.views
+import io.github.psd2live.core.nanoTime
 
 import io.github.psd2live.ui.parameterKeyMarks
 
@@ -881,7 +882,7 @@ private fun Timeline(
 									val picked = MotionTimelineGeometry.boxSelect(latestKeyPoints, area.first, area.second)
 									editor.selection = if (additive || toggle) editor.selection + picked else picked
 								} else {
-									val now = System.nanoTime()
+									val now = nanoTime()
 									val doubleClick = now - lastClickNanos < 400_000_000L && (start - lastClickPosition).getDistance() < 6.dp.toPx()
 									lastClickNanos = now
 									lastClickPosition = start

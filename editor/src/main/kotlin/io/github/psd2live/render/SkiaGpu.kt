@@ -1,4 +1,9 @@
 package io.github.psd2live.render
+import io.github.psd2live.core.WeakHashMap
+import kotlin.concurrent.Volatile
+import io.github.psd2live.core.nanoTime
+import io.github.psd2live.core.synchronized
+import io.github.psd2live.core.warn
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -12,7 +17,6 @@ import java.awt.Container
 import java.awt.Window
 import java.lang.reflect.Field
 import java.lang.reflect.Method
-import java.util.WeakHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.coroutines.resume
 
@@ -271,7 +275,7 @@ class WindowGpu constructor(
 			try {
 				task(resources)
 			} catch (failure: Throwable) {
-				System.err.println("GPU task failed: $failure")
+				warn("GPU task failed: $failure")
 			}
 		}
 	}
@@ -321,13 +325,13 @@ class WindowGpu constructor(
 			override fun onRender(canvas: org.jetbrains.skia.Canvas, width: Int, height: Int, nanoTime: Long) {
 				// Replaced by a wrapper around this one (another delegate wrapped it meanwhile): that one does the work.
 				if (compositor !== composer) return inner.onRender(canvas, width, height, nanoTime)
-				pacing.frame(System.nanoTime())
+				pacing.frame(nanoTime())
 				resumeFrameWaiters(nanoTime)
 				if (tasks.isNotEmpty()) turn { }
 				if (compositor !== composer) return inner.onRender(canvas, width, height, nanoTime)
 				val skia = if (COMPOSITING && makeCurrent()) directContext() else null
 				val composited = skia != null && runCatching { composer.render(canvas, width, height, nanoTime, skia) }
-					.onFailure { System.err.println("Window compositor failed: $it") }.getOrDefault(false)
+					.onFailure { warn("Window compositor failed: $it") }.getOrDefault(false)
 				if (!composited && !multisampled.render(canvas, width, height) { inner.onRender(it, width, height, nanoTime) })
 					inner.onRender(canvas, width, height, nanoTime)
 				if (composited != _composited.value) {

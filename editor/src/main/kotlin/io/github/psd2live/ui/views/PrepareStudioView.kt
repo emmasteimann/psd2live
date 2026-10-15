@@ -1,4 +1,7 @@
 package io.github.psd2live.ui.views
+import io.github.psd2live.core.Math
+import io.github.psd2live.core.identityHash
+import kotlin.concurrent.Volatile
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -185,7 +188,7 @@ private class StudioPanel : javax.swing.JPanel() {
 			"onPaint" -> { if (args[1] != true) paint(args[3] as java.nio.ByteBuffer, args[4] as Int, args[5] as Int); null }
 			"onCursorChange" -> { runCatching { cursor = java.awt.Cursor.getPredefinedCursor(args[1] as Int) }; true }
 			"startDragging" -> false
-			"hashCode" -> System.identityHashCode(proxy)
+			"hashCode" -> identityHash(proxy)
 			"equals" -> proxy === args?.get(0)
 			"toString" -> "StudioPanel.handler"
 			else -> when (method.returnType) {

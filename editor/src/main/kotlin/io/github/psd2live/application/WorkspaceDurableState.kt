@@ -1,4 +1,5 @@
 package io.github.psd2live.application
+import io.github.psd2live.core.synchronized
 
 import io.github.psd2live.core.PipelineConfig
 import io.github.psd2live.project.HistoryAnnotation

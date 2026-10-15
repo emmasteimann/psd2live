@@ -1,4 +1,5 @@
 package io.github.psd2live.application
+import io.github.psd2live.core.base64Encode
 
 import io.github.psd2live.core.StableIds
 import io.github.psd2live.core.DeformPathTools
@@ -450,7 +451,7 @@ object WorkspacePathEdits {
                 null
             }
         } else null
-        val base64 = pngBytes?.let { java.util.Base64.getEncoder().encodeToString(it) }
+        val base64 = pngBytes?.let { base64Encode(it) }
 
         return buildJsonObject {
             put("vertexCount", count)

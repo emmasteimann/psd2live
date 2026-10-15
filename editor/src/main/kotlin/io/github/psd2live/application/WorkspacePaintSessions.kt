@@ -1,4 +1,7 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package io.github.psd2live.application
+import io.github.psd2live.core.synchronized
 
 import io.github.psd2live.core.*
 import io.github.psd2live.project.*
@@ -7,7 +10,6 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.json.*
 import java.awt.Rectangle
 import java.awt.image.BufferedImage
-import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 data class WorkspacePaintStroke(val id: String, val name: String)
@@ -180,7 +182,7 @@ class WorkspacePaintSessions(private val runtime: WorkspaceRuntime<RigPreviewMod
         val painting = captured.document.layerPaintImage(layer.id.raw)
         require(sessions.values.count { !it.finished } < 32) { "Close a paint session before opening another" }
         sessions.entries.removeIf { it.value.finished }
-        val session = WorkspacePaintSession(UUID.randomUUID().toString(), captured.projectId, state,
+        val session = WorkspacePaintSession(kotlin.uuid.Uuid.random().toString(), captured.projectId, state,
             layerId, layer.name, painting.image, painting.space,
             captured.document.source.widthPx, captured.document.source.heightPx) {
             val now = runtime.capture()

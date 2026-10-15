@@ -1,4 +1,8 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package io.github.psd2live.application
+import kotlin.concurrent.Volatile
+import io.github.psd2live.core.synchronized
 
 import io.github.psd2live.history.WorkspaceHistoryState
 import io.github.psd2live.history.WorkspaceHistoryTree
@@ -11,7 +15,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.JsonObject
-import java.util.UUID
 
 /** A conflict is recoverable by inspecting the current workspace, never by overwriting it. */
 class WorkspaceConflict(val expectedState: String, val actualState: String) :
@@ -66,7 +69,7 @@ data class WorkspacePreparedDraft<M>(val before: WorkspaceCapture<M>, val draft:
  */
 class WorkspaceRuntime<M>(
     private val rebuild: suspend (WorkspaceDocument) -> M,
-    private val newId: () -> String = { UUID.randomUUID().toString() },
+    private val newId: () -> String = { kotlin.uuid.Uuid.random().toString() },
     /**
      * Builds a draft's next candidate from the candidate before it, when the builder can use it: entries added to the
      * journal act on its rig, and a regeneration merges onto it. [rebuild] otherwise.

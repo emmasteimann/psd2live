@@ -1,10 +1,10 @@
 package io.github.psd2live.application
+import io.github.psd2live.core.nameUuidFromBytes
 
 import io.github.psd2live.core.*
 import io.github.psd2live.project.*
 import kotlinx.serialization.json.*
 import org.umamo.runtime.model.DrawableId
-import java.util.UUID
 
 /** Document side of materialized splits: the parts replace the original layer, and old references name the parts. */
 object WorkspaceArtPrimitives {
@@ -140,7 +140,7 @@ object WorkspaceArtPrimitives {
         val assigned = RigBuilder.assignSplitDrawableIds(analysis, existing)
         return layers.map { layer ->
             assigned[layer.id.raw]?.raw ?: run {
-                val base = "ArtMeshPart" + UUID.nameUUIDFromBytes(layer.id.raw.toByteArray(Charsets.UTF_8)).toString().replace("-", "")
+                val base = "ArtMeshPart" + nameUuidFromBytes(layer.id.raw.encodeToByteArray()).replace("-", "")
                 var candidate = base; var suffix = 2
                 while (candidate in reserved) candidate = "$base${suffix++}"
                 candidate

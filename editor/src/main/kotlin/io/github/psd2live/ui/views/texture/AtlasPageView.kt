@@ -1,4 +1,11 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package io.github.psd2live.ui.views.texture
+import io.github.psd2live.core.AtomicInteger
+import io.github.psd2live.core.Math
+import io.github.psd2live.core.WeakHashMap
+import kotlin.concurrent.Volatile
+import io.github.psd2live.core.synchronized
 
 import androidx.compose.foundation.Canvas
 import io.github.psd2live.ui.state.effectiveButton
@@ -170,8 +177,8 @@ object AtlasPageProbe {
 	@Volatile var origin: Offset = Offset.Zero
 	@Volatile var camera: FloatArray = floatArrayOf(0f, 0f, 1f)
 	/** Draws that showed a tile a gesture lifts, and of those the ones whose GPU frame already had it lifted. */
-	val liftedDraws = java.util.concurrent.atomic.AtomicInteger()
-	val liftedGpuFrames = java.util.concurrent.atomic.AtomicInteger()
+	val liftedDraws = AtomicInteger()
+	val liftedGpuFrames = AtomicInteger()
 }
 
 /** Page-to-view mapping: a texture pixel (x, y) shows at (left + x * scale, top + y * scale). */
@@ -260,7 +267,7 @@ private fun AtlasPageCanvas(state: PSD2LiveState, vm: PSD2LiveViewModel, snapsho
 		if (!snapshot.upscaled) null else state.previewModel?.atlas?.takeIf(snapshot::matches)?.pages?.getOrNull(page)?.image
 	}
 	val gpuReady = !softwareCanvas && gpuAvailable && (!snapshot.upscaled || livePage != null)
-	val renderKey = remember { "atlas-page-" + java.util.UUID.randomUUID() }
+	val renderKey = remember { "atlas-page-" + kotlin.uuid.Uuid.random() }
 	DisposableEffect(renderKey) { onDispose { CanvasGpu.release(renderKey) } }
 	val tileImages = rememberTileImages(snapshot, enabled = !gpuReady)
 	val pageImage = rememberPageImage(state, snapshot, page, enabled = snapshot.upscaled && !gpuReady)
@@ -1134,7 +1141,7 @@ private fun rememberTileImages(snapshot: TextureSnapshot, enabled: Boolean): Map
 	return value
 }
 
-private val tileImageCache = java.util.WeakHashMap<ByteArray, ImageBitmap>()
+private val tileImageCache = WeakHashMap<ByteArray, ImageBitmap>()
 
 /** The cells of a tile arranged by its meshes, in page pixels: the only part of its rectangle it shows. */
 private fun maskPath(shape: io.github.psd2live.core.AtlasArrange.Shape): Path = Path().apply {

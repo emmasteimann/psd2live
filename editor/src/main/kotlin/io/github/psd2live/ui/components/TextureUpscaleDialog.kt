@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.components
+import io.github.psd2live.core.AtomicBoolean
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -23,7 +24,6 @@ import io.github.psd2live.i18n.tr
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
 import kotlinx.coroutines.launch
-import java.util.concurrent.atomic.AtomicBoolean
 
 /** Consistent dialog matching PSD2Live compact dark IDE design system. */
 @Composable

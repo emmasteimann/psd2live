@@ -1,4 +1,6 @@
 package io.github.psd2live.agent
+import io.github.psd2live.core.AtomicBoolean
+import io.github.psd2live.core.MessageDigest
 
 import io.github.psd2live.application.WorkspaceBackend
 import io.github.psd2live.application.WorkspaceOperations
@@ -37,8 +39,6 @@ import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
 import io.modelcontextprotocol.kotlin.sdk.types.TextResourceContents
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
-import java.util.concurrent.atomic.AtomicBoolean
-import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
 
@@ -144,8 +144,8 @@ object AgentMcpCredentials {
 
 /** Compares bearer tokens without leaking the match through a short-circuiting string compare. */
 fun bearerMatches(provided: String, expected: String): Boolean {
-	val providedDigest = MessageDigest.getInstance("SHA-256").digest(provided.toByteArray(Charsets.UTF_8))
-	val expectedDigest = MessageDigest.getInstance("SHA-256").digest(expected.toByteArray(Charsets.UTF_8))
+	val providedDigest = MessageDigest.getInstance("SHA-256").digest(provided.encodeToByteArray())
+	val expectedDigest = MessageDigest.getInstance("SHA-256").digest(expected.encodeToByteArray())
 	return MessageDigest.isEqual(providedDigest, expectedDigest)
 }
 

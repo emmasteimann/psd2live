@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.components
+import io.github.psd2live.core.nanoTime
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
@@ -102,7 +103,7 @@ object MenuShortcutGuard {
 	private val last = HashMap<ShortcutAction, Pair<Boolean, Long>>()
 
 	@Synchronized
-	fun allow(action: ShortcutAction, fromMenu: Boolean, now: Long = System.nanoTime()): Boolean {
+	fun allow(action: ShortcutAction, fromMenu: Boolean, now: Long = nanoTime()): Boolean {
 		val previous = last[action]
 		if (previous != null && previous.first != fromMenu && now - previous.second < WINDOW_NANOS) {
 			last.remove(action)

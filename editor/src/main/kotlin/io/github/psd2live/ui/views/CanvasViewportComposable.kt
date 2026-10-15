@@ -1,4 +1,9 @@
 package io.github.psd2live.ui.views
+import io.github.psd2live.core.AtomicBoolean
+import io.github.psd2live.core.AtomicLong
+import io.github.psd2live.core.Math
+import io.github.psd2live.core.nanoTime
+import io.github.psd2live.core.warn
 
 import io.github.psd2live.ui.SELECTION_TOOLS
 import io.github.psd2live.ui.state.effectiveButton
@@ -155,7 +160,6 @@ import java.awt.Cursor
 import java.awt.Graphics2D
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
-import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.pow
 
 /** How long a paused preview keeps rendering after a pointer change, so the eased follow settles. */
@@ -471,7 +475,7 @@ fun CanvasViewportComposable(
 				fpsCounter.reset()
 				fps = 0f
 			} else {
-				val measured = fpsCounter.record(System.nanoTime())
+				val measured = fpsCounter.record(nanoTime())
 				if (measured != null) fps = measured
 			}
 		}
@@ -487,7 +491,7 @@ fun CanvasViewportComposable(
 		}
 	}
 	fun notePointerActivity() {
-		lastPointerActivityNanos.set(System.nanoTime())
+		lastPointerActivityNanos.set(nanoTime())
 		pointerActivity.trySend(Unit)
 	}
 
@@ -584,8 +588,8 @@ fun CanvasViewportComposable(
 	// Read where the canvas draws: each requested frame redraws it, and the draw runs the GPU work first. Not while
 	// the window composites the canvas's frame under its picture ([previewHole]): a frame then draws nothing here.
 	val previewTick = remember { androidx.compose.runtime.mutableIntStateOf(0) }
-	val previewHole = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
-	val skiaPreviewFailed = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+	val previewHole = remember { AtomicBoolean(false) }
+	val skiaPreviewFailed = remember { AtomicBoolean(false) }
 	DisposableEffect(renderKey, previewGpu) { onDispose { previewHole.set(false); previewGpu?.hideView(renderKey) } }
 	val runtimeSimulates = previewBackend == io.github.psd2live.core.PreviewBackend.P2LRT && previewAdvanced &&
 		canvasState.generatePhysics && !canvasState.meshOnly
@@ -636,13 +640,13 @@ fun CanvasViewportComposable(
 					// Paused with physics on: the pose the user sets swings it, so render until it comes to rest.
 					// At rest the motion clock keeps stepping physics without frames; a slider edit or the pointer
 					// moves it again, and this wakes on that without rendering in between.
-					val started = System.nanoTime()
+					val started = nanoTime()
 					val pacer = FramePacer(pumpInterval)
 					var lastPose = viewModel.state.value.previewPanelState().parameterValues
 					while (isActive) {
 						// p2lrt's advanced mode simulates on its own clock: it never reports rest, so it keeps rendering.
-						while (isActive && !runtimeSimulates && !viewModel.parameterScrubActive && System.nanoTime() - started > PAUSED_PHYSICS_WARMUP_NANOS && viewModel.previewSettled &&
-							System.nanoTime() - lastPointerActivityNanos.get() > PAUSED_TRACKING_SETTLE_NANOS) {
+						while (isActive && !runtimeSimulates && !viewModel.parameterScrubActive && nanoTime() - started > PAUSED_PHYSICS_WARMUP_NANOS && viewModel.previewSettled &&
+							nanoTime() - lastPointerActivityNanos.get() > PAUSED_TRACKING_SETTLE_NANOS) {
 							val pose = viewModel.state.value.previewPanelState().parameterValues
 							if (pose != lastPose) { lastPose = pose; break }
 							delay(PAUSED_PHYSICS_POLL_MILLIS)
@@ -652,7 +656,7 @@ fun CanvasViewportComposable(
 						requestFrame(0f, frameNanos)
 					}
 				} else {
-					requestFrame(0f, System.nanoTime())
+					requestFrame(0f, nanoTime())
 					// Pausing stops the motion, not the follow: Cubism applies the pointer's look
 					// offsets without advancing the clock, and the UI eases them in over ~0.5s. So
 					// render until that settle window closes instead of the single frame a pause
@@ -662,7 +666,7 @@ fun CanvasViewportComposable(
 						pointerActivity.receive()
 						val pacer = FramePacer(pumpInterval)
 						while (isActive &&
-							System.nanoTime() - lastPointerActivityNanos.get() <= PAUSED_TRACKING_SETTLE_NANOS
+							nanoTime() - lastPointerActivityNanos.get() <= PAUSED_TRACKING_SETTLE_NANOS
 						) {
 							val frameNanos = frame()
 							if (!pacer.due(frameNanos)) continue
@@ -1276,7 +1280,7 @@ fun CanvasViewportComposable(
 							skiaPreview.scale, skiaPreview.offsetX, skiaPreview.offsetY)
 					}.onFailure { failure ->
 						if (skiaPreviewFailed.compareAndSet(false, true)) {
-							System.err.println("Skia preview frame failed: $failure"); failure.printStackTrace()
+							warn("Skia preview frame failed: $failure"); failure.printStackTrace()
 						}
 					}
 				}

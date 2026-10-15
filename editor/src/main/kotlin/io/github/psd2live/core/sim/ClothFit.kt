@@ -1,9 +1,9 @@
 package io.github.psd2live.core.sim
+import io.github.psd2live.core.PriorityQueue
 
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.umamo.format.art.LayerRaster
-import java.util.PriorityQueue
 import kotlin.math.ceil
 import kotlin.math.sqrt
 

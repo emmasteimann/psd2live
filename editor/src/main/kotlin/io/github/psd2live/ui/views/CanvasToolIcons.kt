@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.views
+import io.github.psd2live.core.Math
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.size

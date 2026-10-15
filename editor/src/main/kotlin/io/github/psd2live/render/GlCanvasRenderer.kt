@@ -1,4 +1,6 @@
 package io.github.psd2live.render
+import io.github.psd2live.core.Collections
+import io.github.psd2live.core.IdentityHashMap
 
 import io.github.psd2live.core.CanvasViewport
 import org.jetbrains.skia.Bitmap
@@ -17,7 +19,6 @@ import org.lwjgl.system.MemoryUtil
 import org.umamo.runtime.model.DrawableId
 import java.awt.image.BufferedImage
 import java.awt.image.DataBufferInt
-import java.util.IdentityHashMap
 
 /**
  * Draws canvas scenes with OpenGL. Every method runs with its context current: in the app Skia's own, during a
@@ -69,7 +70,7 @@ class GlCanvasRenderer(
 		var paintHeight = 0
 		/** Layer rasters the atlas page draws, by array; those a frame no longer draws are freed after it. */
 		val rasters = IdentityHashMap<ByteArray, Int>()
-		val rastersDrawn: MutableSet<ByteArray> = java.util.Collections.newSetFromMap(IdentityHashMap())
+		val rastersDrawn: MutableSet<ByteArray> = Collections.newSetFromMap(IdentityHashMap())
 		/** The page images of the last scene drawn: their textures stay while this view may draw them again. */
 		var pages: List<BufferedImage> = emptyList()
 	}
@@ -251,7 +252,7 @@ class GlCanvasRenderer(
 	/** Deletes the page textures no view holds; two views can show two atlases at once. */
 	private fun dropUnusedTextures() {
 		if (textures.isEmpty()) return
-		val held = java.util.Collections.newSetFromMap(IdentityHashMap<BufferedImage, Boolean>())
+		val held = Collections.newSetFromMap(IdentityHashMap<BufferedImage, Boolean>())
 		for (view in views.values) held += view.pages
 		val iterator = textures.entries.iterator()
 		while (iterator.hasNext()) {

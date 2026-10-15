@@ -186,7 +186,7 @@ actual inline fun <R> synchronized(lock: Any, block: () -> R): R {
 	try { return block() } finally { monitor.unlock() }
 }
 
-actual fun warn(message: String) = println(message)
+actual fun warn(message: Any?) = println(message)
 
 private val clockStart = kotlin.time.TimeSource.Monotonic.markNow()
 

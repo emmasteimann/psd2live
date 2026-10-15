@@ -1,4 +1,8 @@
 package io.github.psd2live.ui.utils
+import io.github.psd2live.core.AtomicInteger
+import io.github.psd2live.core.Collections
+import io.github.psd2live.core.WeakHashMap
+import io.github.psd2live.core.synchronized
 
 import io.github.psd2live.i18n.tr
 import java.awt.Component
@@ -17,9 +21,6 @@ import java.awt.event.ContainerEvent
 import java.awt.event.HierarchyEvent
 import java.io.File
 import java.net.URI
-import java.util.Collections
-import java.util.WeakHashMap
-import java.util.concurrent.atomic.AtomicInteger
 import javax.swing.RootPaneContainer
 import javax.swing.SwingUtilities
 

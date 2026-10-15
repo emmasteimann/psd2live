@@ -1,4 +1,6 @@
 package io.github.psd2live.render
+import io.github.psd2live.core.Collections
+import io.github.psd2live.core.IdentityHashMap
 
 import io.github.psd2live.core.CanvasViewport
 import io.github.psd2live.ui.utils.toSkiaImage
@@ -21,7 +23,6 @@ import org.jetbrains.skia.PathFillMode
 import org.jetbrains.skia.Rect
 import org.jetbrains.skia.SamplingMode
 import org.jetbrains.skia.VertexMode
-import java.util.IdentityHashMap
 
 /**
  * Draws an [OverlayScene] - the guide geometry the OpenGL renderer draws in its frame - with Skia, on whatever
@@ -36,8 +37,8 @@ import java.util.IdentityHashMap
 class SkiaOverlayPainter : AutoCloseable {
 	private val rasters = IdentityHashMap<ByteArray, Image>()
 	private val pages = IdentityHashMap<java.awt.image.BufferedImage, Image>()
-	private val usedRasters: MutableSet<ByteArray> = java.util.Collections.newSetFromMap(IdentityHashMap())
-	private val usedPages: MutableSet<java.awt.image.BufferedImage> = java.util.Collections.newSetFromMap(IdentityHashMap())
+	private val usedRasters: MutableSet<ByteArray> = Collections.newSetFromMap(IdentityHashMap())
+	private val usedPages: MutableSet<java.awt.image.BufferedImage> = Collections.newSetFromMap(IdentityHashMap())
 
 	fun paint(canvas: Canvas, overlay: OverlayScene, viewport: CanvasViewport) {
 		if (overlay.items.isEmpty()) return

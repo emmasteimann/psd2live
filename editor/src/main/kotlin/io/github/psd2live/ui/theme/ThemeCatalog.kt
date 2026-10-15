@@ -1,3 +1,5 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package io.github.psd2live.ui.theme
 
 import androidx.compose.runtime.Immutable
@@ -5,7 +7,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
-import java.util.UUID
 
 /** The groups the theme editor lists the tokens under, in display order. */
 enum class ColorTokenGroup(val labelKey: String) {
@@ -320,7 +321,7 @@ object ThemeCatalog {
 	fun resolve(id: String, customThemes: List<CustomTheme>): ToolColors =
 		customThemes.firstOrNull { it.id == id }?.resolve() ?: builtIn(id).colors
 
-	fun newCustomId(): String = "custom-" + UUID.randomUUID().toString().substring(0, 8)
+	fun newCustomId(): String = "custom-" + kotlin.uuid.Uuid.random().toString().substring(0, 8)
 }
 
 /**

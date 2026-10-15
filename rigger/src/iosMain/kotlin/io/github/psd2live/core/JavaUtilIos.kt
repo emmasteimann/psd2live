@@ -278,3 +278,17 @@ actual class JavaRandom actual constructor(seed: Long) {
 	actual fun nextDouble(): Double = ((next(26).toLong() shl 27) + next(27)) * (1.0 / (1L shl 53))
 	actual fun nextFloat(): Float = next(24) / (1 shl 24).toFloat()
 }
+
+/** The map's keys as a set, as java.util.Collections.newSetFromMap: adding maps a key to true, removing unmaps it. */
+actual fun <E> setFromMap(map: MutableMap<E, Boolean>): MutableSet<E> = object : AbstractMutableSet<E>() {
+	override val size: Int get() = map.size
+	override fun contains(element: E): Boolean = map.containsKey(element)
+	override fun add(element: E): Boolean = map.put(element, true) == null
+	override fun remove(element: E): Boolean = map.remove(element) != null
+	override fun iterator(): MutableIterator<E> = map.keys.iterator()
+}
+
+actual fun <T> readOnlyList(list: List<T>): List<T> = object : AbstractList<T>() {
+	override val size: Int get() = list.size
+	override fun get(index: Int): T = list[index]
+}

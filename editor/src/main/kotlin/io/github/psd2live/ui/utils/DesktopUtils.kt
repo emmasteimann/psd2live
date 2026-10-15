@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.utils
+import io.github.psd2live.core.synchronized
 
 import java.awt.Desktop
 import java.awt.Toolkit

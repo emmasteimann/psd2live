@@ -2,7 +2,6 @@ package io.github.psd2live.application
 
 
 import kotlinx.serialization.json.*
-import java.util.Base64
 
 fun registerAssetCommands(catalog: WorkspaceCommands, workspace: WorkspaceAssetPort) {
     val descriptions = mapOf(

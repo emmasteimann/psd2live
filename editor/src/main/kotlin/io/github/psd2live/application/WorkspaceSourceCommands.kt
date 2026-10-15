@@ -10,7 +10,6 @@ import org.umamo.format.art.*
 import java.awt.geom.Path2D
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.UUID
 import javax.imageio.ImageIO
 
 fun registerSourceCommands(catalog: WorkspaceCommands, workspace: WorkspaceSourcePort) {

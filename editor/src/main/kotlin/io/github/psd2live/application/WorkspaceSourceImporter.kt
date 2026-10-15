@@ -1,4 +1,8 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package io.github.psd2live.application
+import io.github.psd2live.core.toSortedMap
+import io.github.psd2live.core.warn
 import io.github.psd2live.core.besidePsd
 
 import io.github.psd2live.core.*
@@ -9,7 +13,6 @@ import org.umamo.format.art.SourceArt
 import org.umamo.format.psd.PsdReader
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.UUID
 
 /** New source projects use one isolated read/rebuild/install boundary in both adapters. */
 class WorkspaceSourceImporter(
@@ -23,7 +26,7 @@ class WorkspaceSourceImporter(
     private val readArtwork: suspend (JsonObject) -> Pair<WorkspaceSourceArt, Map<String, LayerClassificationOverride>> = {
         runInterruptible(Dispatchers.IO) { sourceArtwork(it) }
     },
-    private val newProjectId: () -> String = { UUID.randomUUID().toString() },
+    private val newProjectId: () -> String = { kotlin.uuid.Uuid.random().toString() },
     private val initialWorkspaceIds: () -> List<String> = { emptyList() },
 ) {
     suspend fun importPsd(path: Path, projectId: String?, state: String, discardUnsaved: Boolean = false,
@@ -36,7 +39,7 @@ class WorkspaceSourceImporter(
         // inputs go into the project settings, its toggles become layer overrides, and its skeleton and swings
         // become rig edits after the first build (LayerloomJob).
         val job = runCatching { LayerloomJob.besidePsd(jobFrom)?.let(LayerloomJob::read) }
-            .onFailure { System.err.println("Warning: Layerloom job beside ${path.fileName}: ${it.message}") }.getOrNull()
+            .onFailure { warn("Warning: Layerloom job beside ${path.fileName}: ${it.message}") }.getOrNull()
             ?.takeUnless { it.isEmpty }
         return install(projectId, state, discardUnsaved, job?.configure(initialConfig) ?: initialConfig, "Imported PSD ${path.fileName}",
             prepare = {

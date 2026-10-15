@@ -1,4 +1,5 @@
 package io.github.psd2live.application
+import io.github.psd2live.core.synchronized
 
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel

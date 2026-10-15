@@ -105,7 +105,7 @@ actual fun <T> synchronizedListOf(list: MutableList<T>): MutableList<T> = java.u
 actual fun normalizeNfkc(text: String): String = java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFKC)
 
 
-actual fun warn(message: String) = System.err.println(message)
+actual fun warn(message: Any?) = System.err.println(message)
 
 actual fun nanoTime(): Long = System.nanoTime()
 
@@ -244,3 +244,6 @@ actual fun rigResourceText(path: String): String =
 	checkNotNull(PSD2LivePipeline::class.java.getResourceAsStream("/$path")) { "Missing rig resource: $path" }.use { it.readBytes().decodeToString() }
 
 actual fun atlasPagePixels(png: ByteArray): IntArray? = AtlasPagePixels.pixelsOf(png)
+
+actual fun <E> setFromMap(map: MutableMap<E, Boolean>): MutableSet<E> = java.util.Collections.newSetFromMap(map)
+actual fun <T> readOnlyList(list: List<T>): List<T> = java.util.Collections.unmodifiableList(list)

@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.views.texture
+import io.github.psd2live.core.Math
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background

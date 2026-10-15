@@ -13,7 +13,7 @@ object PhysicsSimulation {
 
     fun run(groups: List<PhysicsGroup>, parameters: List<Parameter>, arguments: JsonObject, physicsEnabled: Boolean,
         physicsFps: Int = RigEditOverlay.DEFAULT_PHYSICS_FPS, progress: (Float) -> Unit = {}, cancelled: () -> Boolean = { false }): JsonObject {
-        fun check() { if (cancelled()) throw java.util.concurrent.CancellationException("Physics sampling cancelled") }
+        fun check() { if (cancelled()) throw kotlin.coroutines.cancellation.CancellationException("Physics sampling cancelled") }
         check(); progress(0f)
         val ids = arguments["ids"]?.jsonArray?.map { it.jsonPrimitive.content }
         val chosen = groups.filter { if (ids == null) it.active else it.id in ids }
@@ -107,7 +107,7 @@ object PhysicsResponse {
 
     fun trace(setting: RigPhysicsEdit, ranges: Map<String, PhysicsEngine.Range>, physicsFps: Int = RigEditOverlay.DEFAULT_PHYSICS_FPS,
         hold: Float = 1f, duration: Float = 3.5f, progress: (Float) -> Unit = {}, cancelled: () -> Boolean = { false }): Trace {
-        fun check() { if (cancelled()) throw java.util.concurrent.CancellationException("Physics fitting cancelled") }
+        fun check() { if (cancelled()) throw kotlin.coroutines.cancellation.CancellationException("Physics fitting cancelled") }
         check(); progress(0f)
         val fps = 60
         val frames = (duration * fps).toInt()

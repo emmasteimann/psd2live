@@ -537,7 +537,7 @@ object GeometrySafetyEvaluator {
         return null
     }
 
-    private fun checkpoint() { if (Thread.currentThread().isInterrupted) throw java.util.concurrent.CancellationException("Geometry evaluation cancelled") }
+    private fun checkpoint() { if (Thread.currentThread().isInterrupted) throw kotlin.coroutines.cancellation.CancellationException("Geometry evaluation cancelled") }
 
     private fun invertibleAffine(before: FloatArray, after: FloatArray, triangles: IntArray): Boolean {
         val triangle = triangles.asSequence().chunked(3).firstOrNull { ids ->

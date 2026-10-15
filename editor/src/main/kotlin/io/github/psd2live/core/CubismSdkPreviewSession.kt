@@ -1,4 +1,5 @@
 package io.github.psd2live.core
+import kotlin.concurrent.Volatile
 
 import com.sun.jna.Library
 import com.sun.jna.Memory
@@ -17,7 +18,6 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import javax.swing.SwingUtilities
 import kotlin.coroutines.resume
@@ -376,7 +376,7 @@ class CubismSdkPreviewSession constructor(
         val queued = onNativeThread {
             try {
                 fun checkpoint() {
-                    if (closed || result.isCancelled || cancelled()) throw java.util.concurrent.CancellationException("Motion sampling cancelled")
+                    if (closed || result.isCancelled || cancelled()) throw kotlin.coroutines.cancellation.CancellationException("Motion sampling cancelled")
                 }
                 checkpoint(); progress(0f)
                 val native = (binding ?: initializeBinding {}).api

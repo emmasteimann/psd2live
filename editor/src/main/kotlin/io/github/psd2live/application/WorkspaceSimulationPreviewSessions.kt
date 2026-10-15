@@ -1,4 +1,7 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package io.github.psd2live.application
+import io.github.psd2live.core.synchronized
 
 import io.github.psd2live.core.RigPreviewModel
 import io.github.psd2live.core.sim.*
@@ -7,7 +10,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.*
 import org.umamo.runtime.model.ParameterId
-import java.util.UUID
 
 data class WorkspaceSimulationPreview(val report: JsonObject, val model: RigPreviewModel,
     val frame: SimulatedFrame, val values: Map<ParameterId, Float>, val notes: List<String>)
@@ -37,7 +39,7 @@ class WorkspaceSimulationPreviewSessions(private val runtime: WorkspaceRuntime<R
                     progress = { context.ensureActive(); context[WorkspaceJobContext]?.progress(0.05f + 0.85f * it, "Calibrating simulation") },
                     cancelled = { context.ensureActive(); false })
             }
-            Session(UUID.randomUUID().toString(), workspace, capture, edit, engine, pose, notes, engine.frame())
+            Session(kotlin.uuid.Uuid.random().toString(), workspace, capture, edit, engine, pose, notes, engine.frame())
         } else owned(projectId, workspace, request.getValue("session_id").jsonPrimitive.content).also {
             require(mode == "stop" || it.status == "running") { "Simulation preview is stopped" }
             if (mode != "stop") requireCurrent(it, capture)

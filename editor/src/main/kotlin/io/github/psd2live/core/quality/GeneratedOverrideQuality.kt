@@ -1,4 +1,5 @@
 package io.github.psd2live.core.quality
+import io.github.psd2live.core.toSortedMap
 
 import io.github.psd2live.core.GeneratedOverrideIssue
 import io.github.psd2live.core.GeneratedOverrideIssueKind

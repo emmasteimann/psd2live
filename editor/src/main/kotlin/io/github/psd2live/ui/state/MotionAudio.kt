@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.state
+import io.github.psd2live.core.warn
 
 import java.io.File
 import javax.sound.sampled.AudioSystem
@@ -28,7 +29,7 @@ object MotionAudio {
 			next.microsecondPosition = (fromSeconds.coerceAtLeast(0f) * 1_000_000).toLong().coerceAtMost(next.microsecondLength)
 			next.start()
 			clip = next
-		}.onFailure { System.err.println("Motion sound: ${it.message}") }
+		}.onFailure { warn("Motion sound: ${it.message}") }
 	}
 
 	@Synchronized

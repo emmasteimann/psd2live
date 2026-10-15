@@ -1,4 +1,5 @@
 package io.github.psd2live.agent
+import io.github.psd2live.core.putIfAbsent
 
 enum class AgentSessionEventKind { INITIALIZED, INITIALIZED_REPEATED, DELETE_REQUESTED, CLOSED }
 

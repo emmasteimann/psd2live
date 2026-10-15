@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.state
+import io.github.psd2live.core.AtomicBoolean
 
 import io.github.psd2live.ui.state.DesktopWorkspace
 import io.github.psd2live.project.ProjectRepository
@@ -29,7 +30,7 @@ class ProjectController(private val viewModel: PSD2LiveViewModel,
 
     suspend fun saveCapture(workspace: DesktopWorkspace, path: Path, actor: String = "user"): DesktopWorkspace.ProjectCapture = saves.withLock {
         var capturedState = viewModel.state.value
-        val committed = java.util.concurrent.atomic.AtomicBoolean()
+        val committed = AtomicBoolean()
         val completion = currentCoroutineContext()[WorkspaceJobCompletion]
         viewModel.projectSaveStarted()
         progress("project.progress.capturing", path, 0f, 0.15f)

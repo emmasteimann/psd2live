@@ -1,8 +1,8 @@
 package io.github.psd2live.render
+import io.github.psd2live.core.AtomicInteger
 
 import java.awt.Window
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * The editing canvases' and the texture atlas page's GPU drawing, inside the canvas's own draw: [draw] renders

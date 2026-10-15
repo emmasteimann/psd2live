@@ -1,4 +1,6 @@
 package io.github.psd2live.application
+import io.github.psd2live.core.Math
+import io.github.psd2live.core.MessageDigest
 
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -7,7 +9,6 @@ import kotlinx.serialization.json.*
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
-import java.security.MessageDigest
 import javax.imageio.ImageIO
 
 /** Strict request and result contracts of the texture operations. */

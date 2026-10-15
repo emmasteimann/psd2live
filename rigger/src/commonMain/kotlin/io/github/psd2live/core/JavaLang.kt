@@ -74,6 +74,8 @@ object Math {
 	fun atan2(y: Double, x: Double): Double = kotlin.math.atan2(y, x)
 	fun pow(a: Double, b: Double): Double = a.pow(b)
 	fun floor(a: Double): Double = kotlin.math.floor(a)
+	/** Java's Math.rint: the nearest whole number, ties to even (Kotlin's round). */
+	fun rint(a: Double): Double = kotlin.math.round(a)
 	fun ceil(a: Double): Double = kotlin.math.ceil(a)
 	fun copySign(magnitude: Double, sign: Double): Double = magnitude.withSign(sign)
 	fun nextUp(f: Float): Float = f.kNextUp()

@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.components
+import io.github.psd2live.core.Math
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color

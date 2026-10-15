@@ -1,4 +1,6 @@
 package io.github.psd2live.render
+import io.github.psd2live.core.Collections
+import io.github.psd2live.core.IdentityHashMap
 
 import io.github.psd2live.format.eval.P2lRuntime
 import org.lwjgl.opengl.GL11
@@ -12,7 +14,6 @@ import org.lwjgl.system.MemoryUtil
 import org.umamo.render.glsl.desktopCompositeShaderSources
 import java.awt.image.BufferedImage
 import java.awt.image.DataBufferInt
-import java.util.IdentityHashMap
 
 /**
  * Draws a `.p2lrt` rig the PSD2Live runtime evaluated, by the compositing rules of `p2l_runtime.h` ("Drawing"):
@@ -125,7 +126,7 @@ class P2lrtGlRenderer : AutoCloseable {
 			MeshBuffers(array, positions, uvs, indices, mesh.indices.size, vertexCount, mesh)
 		}
 		parts = rig.partIds.indices.map(rig::part)
-		val kept = java.util.Collections.newSetFromMap(IdentityHashMap<BufferedImage, Boolean>()).apply { addAll(pages) }
+		val kept = Collections.newSetFromMap(IdentityHashMap<BufferedImage, Boolean>()).apply { addAll(pages) }
 		val iterator = textures.entries.iterator()
 		while (iterator.hasNext()) {
 			val (image, texture) = iterator.next()

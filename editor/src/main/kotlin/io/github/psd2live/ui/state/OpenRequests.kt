@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.state
+import io.github.psd2live.core.warn
 
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -24,7 +25,7 @@ object OpenRequests {
 		Thread({
 			while (true) {
 				runCatching { next(dir)?.let { (psd, update) -> javax.swing.SwingUtilities.invokeLater { open(viewModel, psd, update) } } }
-					.onFailure { System.err.println("Open request: ${it.message}") }
+					.onFailure { warn("Open request: ${it.message}") }
 				Thread.sleep(1000)
 			}
 		}, "psd2live-open-requests").apply { isDaemon = true }.start()

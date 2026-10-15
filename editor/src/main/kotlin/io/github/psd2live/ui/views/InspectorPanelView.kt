@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.views
+import io.github.psd2live.core.toSortedMap
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically

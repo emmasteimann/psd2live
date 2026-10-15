@@ -1,4 +1,7 @@
 package io.github.psd2live.ui.state
+import io.github.psd2live.core.base64Decode
+import io.github.psd2live.core.base64Encode
+import io.github.psd2live.core.toSortedMap
 
 import io.github.psd2live.project.HistoryAnnotation
 import io.github.psd2live.project.WorkspaceAuxiliaryCodec
@@ -460,7 +463,7 @@ object WorkspaceStateCodec {
             put("id", log.id); put("timestamp", log.timestamp.toString()); put("source", log.source.name)
             put("level", log.level.name); put("tag", log.tag); put("message", log.message); put("detail", log.detail)
             put("imageLabel", log.imageLabel)
-            log.imageBytes?.let { put("image", java.util.Base64.getEncoder().encodeToString(it)) }
+            log.imageBytes?.let { put("image", base64Encode(it)) }
         }) } }
     }
     fun decode(value: JsonObject, base: PSD2LiveState = PSD2LiveState()): PSD2LiveState {
@@ -608,7 +611,7 @@ object WorkspaceStateCodec {
                 source = source, level = level,
                 tag = l.getValue("tag").jsonPrimitive.content, message = l.getValue("message").jsonPrimitive.content,
                 detail = l["detail"]?.jsonPrimitive?.contentOrNull, imageLabel = l["imageLabel"]?.jsonPrimitive?.contentOrNull,
-                imageBytes = l["image"]?.jsonPrimitive?.content?.let { java.util.Base64.getDecoder().decode(it) })
+                imageBytes = l["image"]?.jsonPrimitive?.content?.let { base64Decode(it) })
         }?.takeLast(LOG_ENTRY_LIMIT) ?: base.logEntries,
         ).let { decoded ->
             val savedActive = value["workspaces"]?.jsonArray?.map { it.jsonObject }

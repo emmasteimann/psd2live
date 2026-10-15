@@ -1,4 +1,7 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package io.github.psd2live.application
+import io.github.psd2live.core.synchronized
 
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -6,7 +9,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.put
 import java.time.Instant
-import java.util.UUID
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
@@ -89,7 +91,7 @@ class WorkspaceJobs(
         check(!closed) { "Workspace job runner is closed" }
         require(operation.isNotBlank()) { "Operation must not be blank" }
         resultSchema?.let(::checkOperationSchema)
-        val id = "job-${UUID.randomUUID()}"
+        val id = "job-${kotlin.uuid.Uuid.random()}"
         val now = clock()
         val state = MutableStateFlow(WorkspaceJobSnapshot(id, operation, projectId, inputState,
             WorkspaceJobStatus.QUEUED, 0f, "Queued", now, now))

@@ -1,7 +1,6 @@
 package io.github.psd2live.core
 
-import java.util.PriorityQueue
-import java.util.concurrent.CancellationException
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max

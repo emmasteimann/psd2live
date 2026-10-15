@@ -1,4 +1,7 @@
 package io.github.psd2live.ui
+import io.github.psd2live.core.Math
+import kotlin.concurrent.Volatile
+import io.github.psd2live.core.nanoTime
 
 import io.github.psd2live.core.RigInformationOverlay
 
@@ -2090,7 +2093,7 @@ class CanvasEditor(
 
     /** Repaints the preview at most every ~40 ms: a gesture fires far more moves than frames. */
     private fun refreshPaintPreview() {
-        val now = System.nanoTime()
+        val now = nanoTime()
         if (lastPaintBitmapAt != 0L && now - lastPaintBitmapAt < 40_000_000L) return
         lastPaintBitmapAt = now
         paintSession?.refreshPreview()

@@ -1,4 +1,6 @@
 package io.github.psd2live.ui.views
+import io.github.psd2live.core.Math
+import io.github.psd2live.core.WeakHashMap
 
 import io.github.psd2live.core.ComponentPalette
 
@@ -2972,7 +2974,7 @@ private fun SkeletonPoseLayer(editor: CanvasEditor, viewport: CanvasViewport, pa
 }
 
 /** [MeshTopology.uniqueEdges] of each index array the overlay draws, kept while that array is alive. */
-private val uniqueEdgeCache = java.util.WeakHashMap<IntArray, List<org.umamo.edit.MeshElement.Edge>>()
+private val uniqueEdgeCache = WeakHashMap<IntArray, List<org.umamo.edit.MeshElement.Edge>>()
 
 private fun cachedUniqueEdges(indices: IntArray): List<org.umamo.edit.MeshElement.Edge> =
     uniqueEdgeCache.getOrPut(indices) { MeshTopology.uniqueEdges(indices) }

@@ -1,3 +1,5 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package io.github.psd2live.application
 
 import io.github.psd2live.core.*
@@ -35,7 +37,7 @@ class WorkspaceImageLayerCommands(private val runtime: WorkspaceRuntime<RigPrevi
                 val image = LayerImport.decodeRasterFile(file, { context.ensureActive() })
                 pixels += image.width.toLong() * image.height
                 require(pixels <= 33_554_432L) { "Image batch exceeds 32 megapixels" }
-                val id = StableIds.fresh("import:" + java.util.UUID.randomUUID().toString().replace("-", "").take(12)) { it in taken }
+                val id = StableIds.fresh("import:" + kotlin.uuid.Uuid.random().toString().replace("-", "").take(12)) { it in taken }
                 taken += id
                 LayerImport.placedLayer(image, before.document.source.widthPx, before.document.source.heightPx,
                     LayerImport.displayNameOf(file), id, checkCancelled = { context.ensureActive() })

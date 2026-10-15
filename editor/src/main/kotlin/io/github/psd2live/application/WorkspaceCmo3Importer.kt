@@ -1,3 +1,5 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package io.github.psd2live.application
 
 import io.github.psd2live.core.*
@@ -6,14 +8,13 @@ import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.UUID
 
 /** Authored-model import prepares an isolated document and commits it without a GUI or transport. */
 class WorkspaceCmo3Importer(
     private val runtime: WorkspaceRuntime<RigPreviewModel>,
     private val build: suspend (WorkspaceDocument, RigPreviewModel?) -> RigPreviewModel = { document, current -> WorkspacePreviewBuilder().build(document, current) },
     private val read: suspend (Path) -> ByteArray = { path -> runInterruptible(Dispatchers.IO) { Files.readAllBytes(path) } },
-    private val newProjectId: () -> String = { UUID.randomUUID().toString() },
+    private val newProjectId: () -> String = { kotlin.uuid.Uuid.random().toString() },
     private val initialWorkspaceIds: () -> List<String> = { emptyList() },
 ) {
     suspend fun import(path: Path, mode: Cmo3ImportMode, projectId: String?, state: String,

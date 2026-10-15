@@ -5,7 +5,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.security.MessageDigest
 
 /**
  * What a runtime bundle's assets hash to, with the texture pages its manifest lists in page order.

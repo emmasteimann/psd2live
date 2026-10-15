@@ -246,7 +246,7 @@ object RasterPaintEngine {
         val maxY = clipRect?.let { it.y + it.height - 1 } ?: (image.height - 1)
 
         val queue = ArrayDeque<Pair<Int, Int>>()
-        val visited = java.util.BitSet((maxX - minX + 1) * (maxY - minY + 1))
+        val visited = BitSet((maxX - minX + 1) * (maxY - minY + 1))
         val stride = maxX - minX + 1
 
         var left = startX

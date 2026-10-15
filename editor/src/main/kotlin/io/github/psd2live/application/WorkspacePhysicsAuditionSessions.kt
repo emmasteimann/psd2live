@@ -1,8 +1,12 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package io.github.psd2live.application
+import kotlin.concurrent.Volatile
+import io.github.psd2live.core.synchronized
+import io.github.psd2live.core.toSortedMap
 
 import io.github.psd2live.core.*
 import kotlinx.serialization.json.*
-import java.util.UUID
 
 /**
  * Process-owned selected-group auditions: the panel's pendulum, dragged and stepped without touching the
@@ -23,7 +27,7 @@ class WorkspacePhysicsAuditionSessions(private val runtime: WorkspaceRuntime<Rig
                 val groupId = request.text("group_id")
                 val audition = PhysicsAudition()
                 val values = configure(audition, capture, groupId, workspace, request)
-                val session = Session(UUID.randomUUID().toString(), workspace, groupId, audition, capture, values)
+                val session = Session(kotlin.uuid.Uuid.random().toString(), workspace, groupId, audition, capture, values)
                 admit(session, capture)
                 // One live pendulum per workspace, as the panel shows one.
                 sessions.values.filter { it !== session && it.workspace == workspace && it.capture.projectId == projectId }

@@ -1,4 +1,6 @@
 package io.github.psd2live.application
+import io.github.psd2live.core.BitSet
+import io.github.psd2live.core.Math
 
 import io.github.psd2live.core.*
 import io.github.psd2live.project.*
@@ -725,7 +727,7 @@ object WorkspaceAtlasFootprints {
             val stored = model.atlas.footprints[id] ?: return@mapNotNull null
             val now = AtlasArrange.footprint(covered.rasterWidth, covered.rasterHeight, stored.cell, covered.triangles) ?: return@mapNotNull null
             if (now.columns != stored.columns || now.rows != stored.rows) return@mapNotNull names[id] ?: id
-            val outside = now.bits.clone() as java.util.BitSet
+            val outside = now.bits.clone() as BitSet
             outside.andNot(stored.bits)
             if (outside.isEmpty) null else names[id] ?: id
         }.sorted()

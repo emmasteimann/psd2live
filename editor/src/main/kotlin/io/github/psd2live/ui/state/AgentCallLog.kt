@@ -31,7 +31,7 @@ fun agentSessionLogEntry(event: AgentSessionEvent): AppLogEntry {
 		AgentSessionEventKind.DELETE_REQUESTED -> "log.ai.session.delete"
 		AgentSessionEventKind.CLOSED -> "log.ai.session.closed"
 	}
-	val reason = event.closeReason?.let { tr("log.ai.session.reason.${it.name.lowercase(java.util.Locale.ROOT)}") }.orEmpty()
+	val reason = event.closeReason?.let { tr("log.ai.session.reason.${it.name.lowercase()}") }.orEmpty()
 	return AppLogEntry(
 		source = LogSource.MCP_SERVER,
 		level = LogLevel.DEBUG,

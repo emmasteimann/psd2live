@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.state
+import io.github.psd2live.core.Math
 
 import androidx.compose.runtime.Immutable
 import io.github.psd2live.application.WorkspaceAtlasSnapshot

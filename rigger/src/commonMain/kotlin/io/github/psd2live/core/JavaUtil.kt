@@ -62,7 +62,13 @@ expect class AtomicBoolean() {
 object Collections {
 	fun <K, V> synchronizedMap(map: MutableMap<K, V>): MutableMap<K, V> = synchronizedMapOf(map)
 	fun <T> synchronizedList(list: MutableList<T>): MutableList<T> = synchronizedListOf(list)
+	/** A set backed by [map] (java.util.Collections.newSetFromMap): the map's keys, present while mapped to true. */
+	fun <E> newSetFromMap(map: MutableMap<E, Boolean>): MutableSet<E> = setFromMap(map)
+	fun <T> unmodifiableList(list: List<T>): List<T> = readOnlyList(list)
 }
+
+expect fun <E> setFromMap(map: MutableMap<E, Boolean>): MutableSet<E>
+expect fun <T> readOnlyList(list: List<T>): List<T>
 
 expect fun <K, V> synchronizedMapOf(map: MutableMap<K, V>): MutableMap<K, V>
 expect fun <T> synchronizedListOf(list: MutableList<T>): MutableList<T>
@@ -106,6 +112,15 @@ class MessageDigest private constructor(private val algorithm: String) {
 
 	companion object {
 		fun getInstance(algorithm: String): MessageDigest = MessageDigest(algorithm)
+
+		/** java.security.MessageDigest.isEqual: equal digests, compared in time independent of where they differ. */
+		fun isEqual(a: ByteArray?, b: ByteArray?): Boolean {
+			if (a === b) return true
+			if (a == null || b == null || a.size != b.size) return false
+			var diff = 0
+			for (i in a.indices) diff = diff or (a[i].toInt() xor b[i].toInt())
+			return diff == 0
+		}
 	}
 }
 

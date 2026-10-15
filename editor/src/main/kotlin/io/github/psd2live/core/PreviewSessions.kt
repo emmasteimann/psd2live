@@ -1,4 +1,5 @@
 package io.github.psd2live.core
+import kotlin.concurrent.Volatile
 
 import org.umamo.runtime.model.ParameterId
 
@@ -24,7 +25,7 @@ class PreviewSessions(
 		get() = p2lrtSession ?: P2lrtPreviewSession({ if (active == PreviewBackend.P2LRT || it.viewId in p2lrtViews) onFrame(it) }, ::p2lrtStatus)
 			.also { session -> p2lrtSession = session; model?.let(session::load) }
 	/** Views Cubism cannot draw (another window's context) that p2lrt draws instead. */
-	private val p2lrtViews = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
+	private val p2lrtViews = Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
 
 	/** The runtime the user picked. */
 	@Volatile var requested: PreviewBackend = PreviewBackend.CUBISM

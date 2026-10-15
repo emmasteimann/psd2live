@@ -1,9 +1,10 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package io.github.psd2live.application
 
 import io.github.psd2live.project.*
 import kotlinx.serialization.json.*
 import org.umamo.runtime.model.ParameterId
-import java.util.UUID
 
 fun registerAuxiliaryOperations(registry: WorkspaceOperationRegistry, workspace: WorkspaceStatePort, port: WorkspaceAuxiliaryPort) {
     fun register(id: String, description: String, fields: Map<String, JsonObject>, required: List<String> = emptyList(),
@@ -30,7 +31,7 @@ fun registerAuxiliaryOperations(registry: WorkspaceOperationRegistry, workspace:
 
     register("snapshot_create", "Save a named parameter pose in the project. Omit values to capture the current authored pose; pass explicit values to save sampled live values. Returns an ID; this auxiliary edit adds no rig history node.",
         mapOf("state" to string(), "name" to buildJsonObject { put("type", "string") }, "values" to values()), listOf("state")) { request ->
-        val id = UUID.randomUUID().toString()
+        val id = kotlin.uuid.Uuid.random().toString()
         val pose = if ("values" in request) request.pose("values") else workspace.snapshot().parameters.associate { ParameterId(it.id) to it.current }
         val next = port.editSavedProjectData(request.text("state"), WorkspaceAuxiliaryEdit.CreateSnapshot(id, request["name"]?.jsonPrimitive?.content.orEmpty(), pose))
         JsonObject(next.result() + ("snapshot" to snapshot(next, id).json()))

@@ -1,4 +1,5 @@
 package io.github.psd2live.ui
+import io.github.psd2live.core.synchronized
 
 import io.github.psd2live.ui.utils.toImageBitmapFast
 import androidx.compose.runtime.getValue

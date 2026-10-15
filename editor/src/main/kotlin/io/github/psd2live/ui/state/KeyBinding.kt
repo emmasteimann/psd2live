@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.state
+import kotlin.concurrent.Volatile
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.key.Key

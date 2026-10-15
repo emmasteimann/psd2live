@@ -1,4 +1,6 @@
 package io.github.psd2live.application
+import io.github.psd2live.core.MessageDigest
+import io.github.psd2live.core.toSortedMap
 
 import io.github.psd2live.core.RigInformationOverlay
 
@@ -25,7 +27,6 @@ import java.awt.RenderingHints
 import java.awt.geom.AffineTransform
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
-import java.security.MessageDigest
 import javax.imageio.ImageIO
 import kotlin.math.abs
 import kotlin.math.roundToInt

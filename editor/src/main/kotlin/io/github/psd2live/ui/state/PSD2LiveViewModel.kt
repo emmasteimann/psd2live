@@ -1,4 +1,13 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package io.github.psd2live.ui.state
+import io.github.psd2live.core.AtomicBoolean
+import io.github.psd2live.core.AtomicInteger
+import io.github.psd2live.core.AtomicLong
+import io.github.psd2live.core.Math
+import kotlin.concurrent.Volatile
+import io.github.psd2live.core.nanoTime
+import io.github.psd2live.core.synchronized
 import io.github.psd2live.core.read
 
 import io.github.psd2live.application.PendingPoseCommit
@@ -2285,7 +2294,7 @@ class PSD2LiveViewModel : AutoCloseable {
             replaceState(next)
         } else installProjectState(next, current, dirty = true, cancelActiveWork = false)
     }
-    private val pendingProjectSaves = java.util.concurrent.atomic.AtomicInteger()
+    private val pendingProjectSaves = AtomicInteger()
     fun projectSaveStarted() { pendingProjectSaves.incrementAndGet(); updateState { it.copy(projectSaving = true, projectSaveError = null) } }
     fun projectSaveFailed(failure: Throwable, captured: PSD2LiveState) {
         val saving = pendingProjectSaves.decrementAndGet() > 0
@@ -2914,7 +2923,7 @@ class PSD2LiveViewModel : AutoCloseable {
 	private var pointerActive = false
 	private var pointerX = 0f
 	private var pointerY = 0f
-	private var lastTick = System.nanoTime()
+	private var lastTick = nanoTime()
 	private var lastSdkParameterPublishNanos = 0L
 	private var lastSdkParameterCanvasId: String? = null
 	private fun refreshSdkSession(preview: RigPreviewModel) {
@@ -2928,7 +2937,7 @@ class PSD2LiveViewModel : AutoCloseable {
 		if (renderCoordinator.claimModelLoad(current.previewLive)) sdkSession.load(preview)
 	}
 
-	fun acceptSdkFrame(frame: PreviewFrame, nowNanos: Long = System.nanoTime()) {
+	fun acceptSdkFrame(frame: PreviewFrame, nowNanos: Long = nanoTime()) {
 		val current = state.value
 		val canvas = current.activeWorkspace.canvases.firstOrNull {
 			it.mode == CanvasMode.PREVIEW &&
@@ -4779,8 +4788,8 @@ class PSD2LiveViewModel : AutoCloseable {
 	private class QueuedTextureJob(val token: Long, val job: TextureJob, val tiles: Set<String>)
 
 	private val textureJobs = kotlinx.coroutines.channels.Channel<QueuedTextureJob>(kotlinx.coroutines.channels.Channel.UNLIMITED)
-	private val textureTokens = java.util.concurrent.atomic.AtomicLong()
-	private val texturesQueued = java.util.concurrent.atomic.AtomicInteger()
+	private val textureTokens = AtomicLong()
+	private val texturesQueued = AtomicInteger()
 	private var textureWorker: kotlinx.coroutines.Job? = null
 
 	private fun queueTextureEdits(edits: List<io.github.psd2live.application.WorkspaceTextureEdit>) {
@@ -5004,7 +5013,7 @@ class PSD2LiveViewModel : AutoCloseable {
 		val taken = current.workspaces.map { it.displayName() }.toSet()
 		val name = if (title !in taken) "" else
 			generateSequence(2) { it + 1 }.map { "$title $it" }.first { it !in taken }
-		val workspace = presetEditorWorkspace(java.util.UUID.randomUUID().toString(), preset, name)
+		val workspace = presetEditorWorkspace(kotlin.uuid.Uuid.random().toString(), preset, name)
 		updateState { it.copy(workspaces = it.workspaces + workspace) }
 		// Switching syncs the panel toggles and the preview session, and marks the change itself.
 		setActiveWorkspace(workspace.id)
@@ -5021,7 +5030,7 @@ class PSD2LiveViewModel : AutoCloseable {
 	fun duplicateWorkspace(id: String = _state.value.activeWorkspace.id): String {
 		val source = _state.value.workspaces.firstOrNull { it.id == id } ?: return addWorkspace()
 		val workspace = source.copy(
-			id = java.util.UUID.randomUUID().toString(),
+			id = kotlin.uuid.Uuid.random().toString(),
 			name = tr("workspace.copy", source.displayName()),
 			placeModules = emptyList(),
 		)
@@ -5176,7 +5185,7 @@ class PSD2LiveViewModel : AutoCloseable {
 
 	/** Docks another canvas. [focus] makes it the one zoom shortcuts and the editor follow. */
 	fun addCanvas(mode: CanvasMode, focus: Boolean = true): String {
-		val id = "canvas:${java.util.UUID.randomUUID()}"
+		val id = "canvas:${kotlin.uuid.Uuid.random()}"
 		val pane = CanvasWindowState(id = id, mode = mode)
 		updateState { current ->
 			current.updateActiveWorkspace { workspace ->
@@ -5577,7 +5586,7 @@ class PSD2LiveViewModel : AutoCloseable {
 				it.copy(animationEnabled = enabled)
 			}
 		}
-		lastTick = System.nanoTime()
+		lastTick = nanoTime()
 	}
 
 
@@ -6191,9 +6200,9 @@ class PSD2LiveViewModel : AutoCloseable {
 		val pending = showPendingPose(from)
 		var submitted = false
 		try {
-			val startedAt = System.nanoTime()
+			val startedAt = nanoTime()
 			while (true) {
-				val t = ((System.nanoTime() - startedAt) / 1_000_000.0 / durationMs).toFloat().coerceIn(0f, 1f)
+				val t = ((nanoTime() - startedAt) / 1_000_000.0 / durationMs).toFloat().coerceIn(0f, 1f)
 				val eased = t * t * (3f - 2f * t)
 				val current = currentWorkspaceState()
 				if (current != ownPoseLineage(state)) throw io.github.psd2live.application.WorkspaceConflict(state, current ?: "unloaded")
@@ -6236,7 +6245,7 @@ class PSD2LiveViewModel : AutoCloseable {
 		pointerY = 0f
 		resetPreviewPhysics()
 		stopProcessMotion()
-		lastTick = System.nanoTime()
+		lastTick = nanoTime()
 	}
 
     /**
@@ -6368,7 +6377,7 @@ class PSD2LiveViewModel : AutoCloseable {
 	/** Saves every parameter as the parameters panel shows it, the live pose included while previewing. */
 	fun saveParameterSnapshot(name: String = "") {
         val values = shownParameterValues() ?: return
-        editSavedProjectData(io.github.psd2live.application.WorkspaceAuxiliaryEdit.CreateSnapshot(java.util.UUID.randomUUID().toString(), name, values))
+        editSavedProjectData(io.github.psd2live.application.WorkspaceAuxiliaryEdit.CreateSnapshot(kotlin.uuid.Uuid.random().toString(), name, values))
     }
 
     fun overwriteParameterSnapshot(id: String) {
@@ -7036,7 +7045,7 @@ class PSD2LiveViewModel : AutoCloseable {
 	 */
 	val livePoseShown: StateFlow<Map<ParameterId, Float>> = _livePoseShown.asStateFlow()
 	private var livePoseShownNanos = 0L
-	private val livePoseShowScheduled = java.util.concurrent.atomic.AtomicBoolean(false)
+	private val livePoseShowScheduled = AtomicBoolean(false)
 
 	/**
 	 * What every view shows for the active workspace: the authored pose (with changes still committing), the
@@ -7083,7 +7092,7 @@ class PSD2LiveViewModel : AutoCloseable {
 	/** Shows [livePose] now, or once [LIVE_POSE_SHOWN_INTERVAL_NANOS] has passed since it was last shown. */
 	private fun showLivePose() {
 		val next = _livePose.value
-		val wait = livePoseShownNanos + LIVE_POSE_SHOWN_INTERVAL_NANOS - System.nanoTime()
+		val wait = livePoseShownNanos + LIVE_POSE_SHOWN_INTERVAL_NANOS - nanoTime()
 		if (wait > 0 && next.isNotEmpty()) {
 			if (livePoseShowScheduled.compareAndSet(false, true)) scope.launch {
 				delay((wait + 999_999) / 1_000_000)
@@ -7092,7 +7101,7 @@ class PSD2LiveViewModel : AutoCloseable {
 			}
 			return
 		}
-		livePoseShownNanos = System.nanoTime()
+		livePoseShownNanos = nanoTime()
 		if (next == _livePoseShown.value) return
 		_livePoseShown.value = next
 		if (next.isEmpty()) {
@@ -7128,7 +7137,7 @@ class PSD2LiveViewModel : AutoCloseable {
 		// step with the frames the preview shows. This loop keeps them going when no pump runs.
 		motionJob = scope.launch {
 			while (isActive) {
-				if (System.nanoTime() - lastPumpTickNanos > PUMP_IDLE_NANOS) tickMotion()
+				if (nanoTime() - lastPumpTickNanos > PUMP_IDLE_NANOS) tickMotion()
 				delay((frameIntervalNanos(_state.value.rigEdits.physicsFps).takeIf { it > 0 } ?: UNLIMITED_TICK_NANOS) / 1_000_000L)
 			}
 		}
@@ -7138,7 +7147,7 @@ class PSD2LiveViewModel : AutoCloseable {
     private fun tickMotion() {
         val current = _state.value
         val context = "${current.projectOpenGeneration}/${current.activeWorkspace.id}/${currentWorkspaceState()}/$playbackCommands"
-        if (!previewFrameRecovery.shouldAttempt(current.previewModel, context, System.nanoTime())) return
+        if (!previewFrameRecovery.shouldAttempt(current.previewModel, context, nanoTime())) return
 		try {
 			advanceMotionFrame()
             previewFrameRecovery.succeeded()
@@ -7148,7 +7157,7 @@ class PSD2LiveViewModel : AutoCloseable {
             // A concurrent edit can invalidate one frame without breaking the preview.
             if (failure is io.github.psd2live.application.WorkspaceConflict ||
                 failure is io.github.psd2live.application.WorkspaceProjectConflict) return
-            if (!previewFrameRecovery.failed(failure, System.nanoTime())) return
+            if (!previewFrameRecovery.failed(failure, nanoTime())) return
 			addLog(
 				message = failure.message ?: failure.javaClass.simpleName,
 				level = LogLevel.WARNING,
@@ -7159,7 +7168,7 @@ class PSD2LiveViewModel : AutoCloseable {
 	}
 
 	private fun advanceMotionFrame() {
-		val now = System.nanoTime()
+		val now = nanoTime()
 		val dt = ((now - lastTick) / 1_000_000_000.0).coerceIn(0.001, 0.08).toFloat()
 		lastTick = now
 
@@ -7303,7 +7312,7 @@ class PSD2LiveViewModel : AutoCloseable {
 		offsetX: Float,
 		offsetY: Float,
 		deltaTime: Float = 1f / 60f,
-		frameTimeNanos: Long = System.nanoTime(),
+		frameTimeNanos: Long = nanoTime(),
         viewId: String = "",
 		gpu: io.github.psd2live.render.WindowGpu? = null,
 	) {
@@ -7319,7 +7328,7 @@ class PSD2LiveViewModel : AutoCloseable {
 		// The canvas the panels follow drives the clock, once per frame it asks for.
 		val drivesClock = canvas == null || canvas.id == snapshot.previewControlCanvas().id
 		if (drivesClock) {
-			lastPumpTickNanos = System.nanoTime()
+			lastPumpTickNanos = nanoTime()
 			tickMotion()
 		}
 		val latest = _state.value
@@ -7370,7 +7379,7 @@ class PSD2LiveViewModel : AutoCloseable {
 		)
 	}
 
-	private val isClosed = java.util.concurrent.atomic.AtomicBoolean(false)
+	private val isClosed = AtomicBoolean(false)
 
 	// After every field the motion loop reads: an earlier init would race property initializers
 	// that sit lower in this class (pausedPhysics, live pose, etc.).

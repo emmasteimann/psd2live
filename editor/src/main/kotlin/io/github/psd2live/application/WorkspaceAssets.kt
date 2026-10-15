@@ -1,4 +1,7 @@
 package io.github.psd2live.application
+import io.github.psd2live.core.MessageDigest
+import io.github.psd2live.core.base64Decode
+import io.github.psd2live.core.putIfAbsent
 
 import io.github.psd2live.core.StableIds
 import io.github.psd2live.project.WorkspaceAddLayerRequest
@@ -31,7 +34,6 @@ import org.umamo.format.art.SourceGroup
 import org.umamo.format.art.SourceLayer
 import org.umamo.format.art.SourceLayerKind
 import java.awt.image.BufferedImage
-import java.security.MessageDigest
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 import javax.imageio.ImageIO
@@ -271,7 +273,7 @@ private inline fun <reified T : Enum<T>> enumValue(raw: String, field: String): 
 
 fun decodePngBase64(raw: String): ByteArray {
 	val payload = raw.substringAfter("base64,", raw).filterNot(Char::isWhitespace)
-	return runCatching { Base64.getDecoder().decode(payload) }
+	return runCatching { base64Decode(payload) }
 		.getOrElse { throw IllegalArgumentException("png_base64 is not valid Base64") }
 }
 

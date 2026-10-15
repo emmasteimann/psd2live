@@ -43,7 +43,7 @@ data class PreviewRenderRequest(
 	val parameterDefinitions: List<org.umamo.runtime.model.Parameter> = emptyList(),
 	val pointerTrackingEnabled: Boolean = pointerX != 0f || pointerY != 0f,
 	val lockedParameters: Set<ParameterId> = emptySet(),
-	val frameTimeNanos: Long = System.nanoTime(),
+	val frameTimeNanos: Long = nanoTime(),
 	val viewId: String = "",
 	/** The window the view draws in; its Skia context holds the frame. */
 	val gpu: WindowGpu? = null,

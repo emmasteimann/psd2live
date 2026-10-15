@@ -1,4 +1,8 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package io.github.psd2live.application
+import io.github.psd2live.core.nanoTime
+import io.github.psd2live.core.synchronized
 
 import io.github.psd2live.core.*
 import io.github.psd2live.project.*
@@ -9,7 +13,6 @@ import kotlinx.serialization.json.*
 import org.umamo.runtime.model.Deformer
 import org.umamo.runtime.model.ParameterId
 import org.umamo.runtime.model.PuppetModel
-import java.util.UUID
 import kotlin.math.PI
 import kotlin.math.sin
 
@@ -21,7 +24,7 @@ data class WorkspaceSwingPreview(val report: JsonObject, val draft: RigSwingEdit
 class WorkspaceSwingSessions(private val runtime: WorkspaceRuntime<RigPreviewModel>) {
     private data class Session(val id: String, val workspace: String, val capture: WorkspaceCapture<RigPreviewModel>,
         val draft: RigSwingEdit, val existingId: String?, val model: RigPreviewModel, val prepared: RigSwingEdit,
-        val motion: Int = 0, val playing: Boolean = false, val started: Long = System.nanoTime(),
+        val motion: Int = 0, val playing: Boolean = false, val started: Long = nanoTime(),
         val elapsed: Float = 0f, val status: String = "active")
     private val gate = Mutex()
     private val lock = Any()
@@ -46,7 +49,7 @@ class WorkspaceSwingSessions(private val runtime: WorkspaceRuntime<RigPreviewMod
             val preset = request["preset"]?.jsonPrimitive?.content?.let { SwingPreset.valueOf(it.uppercase()) } ?: SwingPreset.HAIR
             val draft = existing ?: defaults(capture, targets, preset, request["name"]?.jsonPrimitive?.content)
             val (model, prepared) = prepare(capture, draft)
-            Session(UUID.randomUUID().toString(), workspaceId, capture, draft, existing?.id, model, prepared)
+            Session(kotlin.uuid.Uuid.random().toString(), workspaceId, capture, draft, existing?.id, model, prepared)
         } else synchronized(lock) { requireNotNull(sessions[request.getValue("session_id").jsonPrimitive.content]) { "Swing preview not found" } }.also {
             require(it.workspace == workspaceId && it.capture.projectId == projectId) { "Swing preview belongs to another workspace" }
             if (mode != "cancel" && it.capture.state != state) throw WorkspaceConflict(it.capture.state, state)
@@ -99,7 +102,7 @@ class WorkspaceSwingSessions(private val runtime: WorkspaceRuntime<RigPreviewMod
                 require(motion in session.draft.motions.indices)
                 session = session.copy(motion = motion)
             }
-            "play" -> session = session.copy(playing = request.getValue("enabled").jsonPrimitive.boolean, elapsed = 0f, started = System.nanoTime())
+            "play" -> session = session.copy(playing = request.getValue("enabled").jsonPrimitive.boolean, elapsed = 0f, started = nanoTime())
             "cancel" -> session = session.copy(playing = false, elapsed = 0f, status = "cancelled")
             "commit" -> {
                 val frozen = session
@@ -139,7 +142,7 @@ class WorkspaceSwingSessions(private val runtime: WorkspaceRuntime<RigPreviewMod
 
     private fun values(session: Session, time: Float? = null): Map<ParameterId, Float> {
         val pose = PreviewSessions.read(session.model.rig.puppet.parameters, session.capture.auxiliary, session.workspace)
-        val elapsed = time ?: if (session.playing) (System.nanoTime() - session.started) / 1e9f else 0f
+        val elapsed = time ?: if (session.playing) (nanoTime() - session.started) / 1e9f else 0f
         val motion = session.draft.motions.withIndex().flatMap { (m, entry) -> entry.parameterIds.withIndex().map { (k, id) ->
             ParameterId(id) to if (session.playing || time != null) sin(2f * PI.toFloat() * elapsed / (if (m == 0) 1.6f else 1.3f) - k * 0.7f - m * 1.3f) else 0f
         } }.toMap().filterKeys { it !in pose.locked }

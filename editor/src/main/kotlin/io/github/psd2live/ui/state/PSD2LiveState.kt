@@ -1,4 +1,8 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package io.github.psd2live.ui.state
+import kotlin.concurrent.Volatile
+import io.github.psd2live.core.synchronized
 
 import io.github.psd2live.core.MeshSettings
 import io.github.psd2live.core.MeshEdgeMode
@@ -289,7 +293,7 @@ enum class WorkspacePreset(
 
 	fun description(): String = tr("workspace.preset.${name.lowercase()}.desc")
 
-	fun canvases(secondaryId: (Int) -> String = { "canvas:${java.util.UUID.randomUUID()}" }): List<CanvasWindowState> =
+	fun canvases(secondaryId: (Int) -> String = { "canvas:${kotlin.uuid.Uuid.random()}" }): List<CanvasWindowState> =
 		canvasModes.mapIndexed { index, mode ->
 			CanvasWindowState(id = if (index == 0) PRIMARY_CANVAS_ID else secondaryId(index), mode = mode)
 		}
@@ -392,7 +396,7 @@ fun List<AppLogEntry>.appendingLog(entries: List<AppLogEntry>): List<AppLogEntry
 
 @Immutable
 data class AppLogEntry(
-	val id: String = java.util.UUID.randomUUID().toString(),
+	val id: String = kotlin.uuid.Uuid.random().toString(),
 	val timestamp: java.time.Instant = java.time.Instant.now(),
 	val source: LogSource = LogSource.SYSTEM,
 	val level: LogLevel = LogLevel.INFO,

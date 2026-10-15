@@ -1,4 +1,7 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package io.github.psd2live.application
+import io.github.psd2live.core.base64Encode
 
 
 import io.github.psd2live.project.preview
@@ -19,8 +22,6 @@ import java.awt.Color
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
-import java.util.Base64
-import java.util.UUID
 import javax.imageio.ImageIO
 import kotlin.math.*
 
@@ -43,7 +44,7 @@ class WorkspaceAssetWorkflow(
         return asset.copy(public = asset.public.copy(details = details)).preview()
     }
     private fun save(kind: String, fields: JsonObject): JsonObject {
-        val value = JsonObject(fields + mapOf("id" to JsonPrimitive("$kind-${UUID.randomUUID()}"), "kind" to JsonPrimitive(kind),
+        val value = JsonObject(fields + mapOf("id" to JsonPrimitive("$kind-${kotlin.uuid.Uuid.random()}"), "kind" to JsonPrimitive(kind),
             "version" to JsonPrimitive(2), "project_id" to JsonPrimitive(projectId)))
         store.persistWorkflow(projectId, value.text("id"), value)
         return value
@@ -100,7 +101,7 @@ class WorkspaceAssetWorkflow(
                 ids.sorted().forEach { add(JsonPrimitive(it)) }
             }
             put("generation_brief","Paint only ${a.text("piece_id")} as its own complete root-to-tip volume. Preserve reference frame and direction where possible, extend under declared occluders, and retain padding. Use UNIFORM $matte background; no transparency claim, checkerboard, labels or cast shadows. Red labels are context only. If the generator recenters the content, use landmark registration, never assume its position was retained.")
-            put("_clean_png",Base64.getEncoder().encodeToString(clean)); put("_context_png",Base64.getEncoder().encodeToString(contextPng))
+            put("_clean_png",base64Encode(clean)); put("_context_png",base64Encode(contextPng))
         })
         // Its affine spatial reference: asset_import_png places the generated PNG through it.
         store.persistSpatial(projectId,r.text("id"), WorkspaceViewSpatialMetadata(pixelWidth=width,pixelHeight=height,

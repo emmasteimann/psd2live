@@ -1,7 +1,8 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package io.github.psd2live.ui.views
 
 import kotlinx.serialization.Serializable
-import java.util.UUID
 import io.github.psd2live.ui.state.DEFAULT_DOCK_MODULES
 import io.github.psd2live.ui.state.TEXTURE_DOCK_MODULES
 import io.github.psd2live.ui.state.EditorWorkspace
@@ -16,7 +17,7 @@ enum class DockSide { CENTER, LEFT, RIGHT, TOP, BOTTOM }
 
 @Serializable
 data class DockNode(
-    val id: String = UUID.randomUUID().toString(),
+    val id: String = kotlin.uuid.Uuid.random().toString(),
     val modules: List<String> = emptyList(),
     val selected: String = modules.firstOrNull().orEmpty(),
     val horizontal: Boolean = true,

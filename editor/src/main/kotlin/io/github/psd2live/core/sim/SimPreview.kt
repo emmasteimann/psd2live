@@ -1,4 +1,5 @@
 package io.github.psd2live.core.sim
+import kotlin.concurrent.Volatile
 
 import org.umamo.runtime.model.DrawableId
 import org.umamo.runtime.model.ParameterId
@@ -42,7 +43,7 @@ class SimPreview {
                 cancelled: () -> Boolean = { false }): List<String> {
         pending = model to edit
         try {
-            val checkpoint = { if (cancelled()) throw java.util.concurrent.CancellationException("Simulation preparation cancelled") }
+            val checkpoint = { if (cancelled()) throw kotlin.coroutines.cancellation.CancellationException("Simulation preparation cancelled") }
             val scene = SimScene.build(model, edit, checkpoint = checkpoint)
             scene.calibrate(model, progress = progress, cancelled = cancelled)
             checkpoint()

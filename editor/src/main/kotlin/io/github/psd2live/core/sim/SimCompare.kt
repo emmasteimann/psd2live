@@ -1,4 +1,5 @@
 package io.github.psd2live.core.sim
+import io.github.psd2live.core.AtomicInteger
 
 import io.github.psd2live.core.PhysicsEngine
 import io.github.psd2live.core.PrimitiveSkins
@@ -7,8 +8,7 @@ import org.umamo.render.eval.CpuDeformationEvaluator
 import org.umamo.runtime.model.DrawableId
 import org.umamo.runtime.model.ParameterId
 import org.umamo.runtime.model.PuppetModel
-import java.util.concurrent.CancellationException
-import java.util.concurrent.atomic.AtomicInteger
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.cos
 import kotlin.math.sin
 

@@ -1,4 +1,12 @@
 package io.github.psd2live.ui.state
+import io.github.psd2live.core.AtomicBoolean
+import io.github.psd2live.core.Collections
+import io.github.psd2live.core.MessageDigest
+import io.github.psd2live.core.WeakHashMap
+import kotlin.concurrent.Volatile
+import io.github.psd2live.core.synchronized
+import io.github.psd2live.core.toSortedMap
+import io.github.psd2live.core.warn
 import io.github.psd2live.core.inspect
 
 import io.github.psd2live.project.ParameterSnapshot
@@ -122,11 +130,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.nio.file.Files
 import java.nio.charset.StandardCharsets
 import java.nio.file.Path
-import java.security.MessageDigest
-import java.util.Collections
-import java.util.WeakHashMap
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
 
 
 
@@ -352,7 +356,7 @@ class DesktopWorkspace(
             val target = workspaceStore.projectRoot(projectId).resolve("layerloom/project.json")
             java.nio.file.Files.createDirectories(target.parent)
             java.nio.file.Files.copy(beside, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-        }.onFailure { System.err.println("Layerloom studio project not kept: ${it.message}") }
+        }.onFailure { warn("Layerloom studio project not kept: ${it.message}") }
     }
 
     /** Layerloom patch (S3a): the open project's Layerloom studio project, when it carries one. */

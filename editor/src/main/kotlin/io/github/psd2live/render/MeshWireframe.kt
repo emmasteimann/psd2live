@@ -1,10 +1,10 @@
 package io.github.psd2live.render
+import io.github.psd2live.core.WeakHashMap
 
 import io.github.psd2live.core.RigPreviewModel
 import io.github.psd2live.core.ComponentPalette
 import org.umamo.render.eval.DeformedGeometry
 import org.umamo.runtime.model.Drawable
-import java.util.WeakHashMap
 
 /** One mesh of the wireframe guide: selected meshes draw bright, dimmed ones faint. */
 class WireItem(val drawable: Drawable, val layerId: String, val selected: Boolean, val dimmed: Boolean)

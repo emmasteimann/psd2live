@@ -1,4 +1,6 @@
 package io.github.psd2live.application
+import io.github.psd2live.core.Collections
+import io.github.psd2live.core.IdentityHashMap
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.*
@@ -25,7 +27,7 @@ data class WorkspaceFailure private constructor(
             require(failure !is CancellationException) { "Cancellation is a terminal job state, not a failure" }
             // Worker pools and coroutine adapters can wrap Errors. Classify by type throughout the
             // cause chain, never by a JVM's implementation-specific message such as "Java heap space".
-            val seen = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Throwable, Boolean>())
+            val seen = Collections.newSetFromMap(IdentityHashMap<Throwable, Boolean>())
             var cause: Throwable? = failure
             var resourceFailure: Throwable? = null
             while (cause != null && seen.add(cause)) {

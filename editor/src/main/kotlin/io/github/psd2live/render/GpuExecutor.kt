@@ -1,4 +1,5 @@
 package io.github.psd2live.render
+import kotlin.concurrent.Volatile
 
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.ExecutorService

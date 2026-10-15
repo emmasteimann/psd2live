@@ -1,11 +1,11 @@
 package io.github.psd2live.ui.state
+import io.github.psd2live.core.MessageDigest
 
 import io.github.psd2live.ui.theme.CustomTheme
 import io.github.psd2live.ui.theme.ThemeCatalog
 import io.github.psd2live.ui.theme.ThemeCodec
 import java.awt.GraphicsEnvironment
 import java.nio.file.Path
-import java.security.MessageDigest
 import java.util.prefs.Preferences
 
 /**
@@ -126,7 +126,7 @@ object AppSettings {
 
 	private fun parameterPadHeightKey(horizontalId: String, verticalId: String): String {
 		val pair = "${horizontalId.length}:$horizontalId$verticalId"
-		val digest = MessageDigest.getInstance("SHA-256").digest(pair.toByteArray(Charsets.UTF_8))
+		val digest = MessageDigest.getInstance("SHA-256").digest(pair.encodeToByteArray())
 		return "param_pad_h_" + digest.joinToString("") { "%02x".format(it) }
 	}
 

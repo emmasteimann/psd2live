@@ -1,4 +1,5 @@
 package io.github.psd2live
+import io.github.psd2live.core.warn
 
 import io.github.psd2live.core.ExportService
 import io.github.psd2live.core.PipelineConfig
@@ -60,7 +61,7 @@ Writes the target's files and <base>.<target>.report.json, which lists what the 
 			requireNotNull(input) { "An input file is required" }
 			requireNotNull(targetId) { "--target is required (see `psd2live targets`)" }
 		} catch (failure: IllegalArgumentException) {
-			System.err.println(failure.message); System.err.println(USAGE); return 2
+			warn(failure.message); warn(USAGE); return 2
 		}
 		return try {
 			val source = input!!.toAbsolutePath()
@@ -79,7 +80,7 @@ Writes the target's files and <base>.<target>.report.json, which lists what the 
 			}
 			0
 		} catch (failure: Exception) {
-			System.err.println("Export failed: ${failure.message ?: failure.javaClass.simpleName}")
+			warn("Export failed: ${failure.message ?: failure.javaClass.simpleName}")
 			1
 		}
 	}

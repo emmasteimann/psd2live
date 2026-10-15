@@ -1,4 +1,5 @@
 package io.github.psd2live.core
+import kotlin.concurrent.Volatile
 
 import io.github.psd2live.format.eval.P2lRuntime
 import io.github.psd2live.render.GpuResources
@@ -9,7 +10,6 @@ import org.umamo.runtime.model.ParameterId
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import javax.swing.SwingUtilities
 

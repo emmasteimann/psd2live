@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.components
+import io.github.psd2live.core.Math
 
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.runtime.Composable

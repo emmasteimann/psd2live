@@ -1,4 +1,8 @@
 package io.github.psd2live.render
+import io.github.psd2live.core.AtomicBoolean
+import io.github.psd2live.core.AtomicLong
+import kotlin.concurrent.Volatile
+import io.github.psd2live.core.warn
 
 import org.jetbrains.skia.Canvas
 import org.jetbrains.skia.ColorAlphaType
@@ -16,8 +20,6 @@ import org.jetbrains.skia.SurfaceProps
 import org.jetbrains.skiko.SkikoRenderDelegate
 import java.lang.reflect.Field
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
 
 /**
  * A view the window draws itself under its Compose picture, every frame: a playing preview. Its canvas leaves a
@@ -154,7 +156,7 @@ class WindowCompositor(private val gpu: WindowGpu, private val inner: SkikoRende
 			sceneOffset = offsetOf(mediator)
 			invalidated.set(true)
 			true
-		}.onFailure { System.err.println("Window compositor unavailable: $it") }.getOrDefault(false)
+		}.onFailure { warn("Window compositor unavailable: $it") }.getOrDefault(false)
 		hooked = ok
 		return ok
 	}

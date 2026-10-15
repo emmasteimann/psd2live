@@ -87,8 +87,15 @@ internal fun applyRigConfig(outcome: RigOutcome, config: PipelineConfig, progres
 		next = config.copy(rigEdits = remeshed.config.rigEdits, generationSource = remeshed.config.generationSource, meshSource = remeshed.config.meshSource)
 		base = remeshed
 	}
-	return if (next == base.config) writeRig(outcome.name, outcome.source, next, base, started, progress)
-		else buildRig(outcome.name, outcome.source, next, started, progress)
+	// Physics and expressions shape only what is exported from the rig, not the rig: no rebuild for them.
+	val exportOnly = next.copy(rigEdits = next.rigEdits.copy(physicsEdits = base.config.rigEdits.physicsEdits,
+		disabledPhysicsIds = base.config.rigEdits.disabledPhysicsIds, expressions = base.config.rigEdits.expressions),
+		physicsFrontHair = base.config.physicsFrontHair, physicsBackHair = base.config.physicsBackHair, physicsEyeJelly = base.config.physicsEyeJelly) == base.config
+	return when {
+		next == base.config -> writeRig(outcome.name, outcome.source, next, base, started, progress)
+		exportOnly -> writeRig(outcome.name, outcome.source, next, PSD2LivePipeline().updateRuntimeBundle(base, next), started, progress)
+		else -> buildRig(outcome.name, outcome.source, next, started, progress)
+	}
 }
 
 /** [model]'s runtime files written into Rigs/NAME, and the outcome that describes them. */

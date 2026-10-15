@@ -3,7 +3,7 @@ package io.github.psd2live.targets.cubism
 import io.github.psd2live.format.compile.*
 import io.github.psd2live.format.model.RigIR
 import kotlinx.serialization.json.*
-import java.security.MessageDigest
+import okio.ByteString.Companion.encodeUtf8
 
 /**
  * A model folder VTube Studio loads: the Cubism runtime files plus `<name>.vtube.json`, which maps face
@@ -43,8 +43,7 @@ public object VTubeStudioTarget : ExportTarget {
 	)
 
 	/** A stable 32-digit hex id derived from [seed], so exports stay byte for byte reproducible. */
-	private fun id(seed: String): String = MessageDigest.getInstance("SHA-256").digest(seed.encodeToByteArray())
-		.take(16).joinToString("") { "%02x".format(it) }
+	private fun id(seed: String): String = seed.encodeUtf8().sha256().substring(0, 16).hex()
 
 	public fun config(ir: RigIR, baseName: String, motionFiles: List<String>, expressionFiles: List<String> = emptyList()): String {
 		val parameters = ir.parameters.associateBy { it.id }

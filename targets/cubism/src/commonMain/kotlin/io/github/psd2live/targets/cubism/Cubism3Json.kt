@@ -155,7 +155,7 @@ public object Cubism3Json {
 	 */
 	public fun normalize(source: String): String = exponent.replace(prettyWriter.encodeToString(
 		kotlinx.serialization.json.JsonElement.serializer(), kotlinx.serialization.json.Json.parseToJsonElement(source))) { match ->
-		java.math.BigDecimal(match.value).toPlainString()
+		plainDecimal(match.value)
 	}
 
 	/** A JSON string literal, escaped the way kotlinx.serialization's JsonPrimitive prints it. */
@@ -169,7 +169,7 @@ public object Cubism3Json {
 			'\t' -> append("\\t")
 			'\b' -> append("\\b")
 			'\u000C' -> append("\\f")
-			else -> if (c < ' ') append("\\u%04x".format(c.code)) else append(c)
+			else -> if (c < ' ') append("\\u").append(c.code.toString(16).padStart(4, '0')) else append(c)
 		}
 		append('"')
 	}
@@ -220,4 +220,31 @@ public object Cubism3Json {
 			append("\n\t]\n}\n")
 		}
 	}
+}
+
+/**
+ * A number in exponent notation ("1.5E-7") written out plainly ("0.00000015"), digit for digit as
+ * java.math.BigDecimal's toPlainString wrote it (trailing zeros of the mantissa kept), by moving the decimal point
+ * in the text: shared code has no BigDecimal, and floating arithmetic would change digits.
+ */
+internal fun plainDecimal(number: String): String {
+	val sign = if (number.startsWith("-")) "-" else ""
+	val body = number.removePrefix("-").removePrefix("+")
+	val e = body.indexOfFirst { it == 'e' || it == 'E' }
+	if (e < 0) return number
+	val mantissa = body.substring(0, e)
+	val exponent = body.substring(e + 1).toInt()
+	val point = mantissa.indexOf('.')
+	val whole = if (point < 0) mantissa else mantissa.substring(0, point)
+	val fraction = if (point < 0) "" else mantissa.substring(point + 1)
+	val digits = whole + fraction
+	val at = whole.length + exponent
+	val plain = when {
+		at <= 0 -> "0." + "0".repeat(-at) + digits
+		at >= digits.length -> digits + "0".repeat(at - digits.length)
+		else -> digits.substring(0, at) + "." + digits.substring(at)
+	}
+	// BigDecimal prints no leading zeros before the point, beyond a single one.
+	val trimmed = plain.trimStart('0').let { if (it.isEmpty() || it.startsWith(".")) "0$it" else it }
+	return sign + trimmed
 }

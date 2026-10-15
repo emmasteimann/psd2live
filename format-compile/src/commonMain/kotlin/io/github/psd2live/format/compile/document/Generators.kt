@@ -79,9 +79,9 @@ public class GeneratorGraph(nodes: List<GeneratorNode>) {
  */
 public class GenerationCache<V : Any>(private val capacity: Int = 64) {
 	// Least recently used first: a hit moves its key to the end, and the first key goes when the cache is full.
-	// (Shared code: no access-ordered LinkedHashMap or synchronized; CacheLock is the platform's lock.)
+	// (Shared code: no access-ordered LinkedHashMap or synchronized; PlatformLock is the platform's lock.)
 	private val entries = LinkedHashMap<String, V>()
-	private val lock = CacheLock()
+	private val lock = io.github.psd2live.format.compile.PlatformLock()
 	public var hits: Int = 0; private set
 	public var misses: Int = 0; private set
 
@@ -133,9 +133,4 @@ public object ThreeWayMerge {
 		}
 		return MergeResult(merged, conflicts)
 	}
-}
-
-/** A lock for [GenerationCache]: java.util.concurrent on the JVM, Foundation's on the iPad. */
-internal expect class CacheLock() {
-	fun <T> locked(block: () -> T): T
 }

@@ -1,5 +1,6 @@
 package io.github.psd2live.targets.cubism
 
+import okio.Path.Companion.toPath
 import io.github.psd2live.format.compile.*
 import io.github.psd2live.format.model.Clip
 import io.github.psd2live.format.model.ColorBlend
@@ -69,8 +70,10 @@ public object Moc3Target : ExportTarget {
 		val motions = texts.motions
 		// Layerloom patch: each motion's sound, copied beside the model as sounds/<motion file>.<ext> (model3 `Sound`).
 		val sounds = ir.clips.mapNotNull { clip ->
-			val path = clip.sound?.let { java.io.File(it) }?.takeIf { it.isFile } ?: return@mapNotNull null
-			"$baseName.${clip.file}.motion3.json" to ("sounds/$baseName.${clip.file}.${path.extension.lowercase().ifEmpty { "wav" }}" to path)
+			// okio's file system: the same file checks on the JVM and on the iPad.
+			val path = clip.sound?.toPath()?.takeIf { okio.FileSystem.SYSTEM.metadataOrNull(it)?.isRegularFile == true } ?: return@mapNotNull null
+			val extension = path.name.substringAfterLast('.', "").lowercase().ifEmpty { "wav" }
+			"$baseName.${clip.file}.motion3.json" to ("sounds/$baseName.${clip.file}.$extension" to path)
 		}.toMap()
 		// Layerloom patch: one exp3 per expression, listed in model3's Expressions.
 		val stems = Cubism3Json.expressionStems(ir.advanced.expressions)
@@ -109,7 +112,7 @@ public object Moc3Target : ExportTarget {
 		val bundle = Moc3Sidecars.bundle(exportPuppet, baseName, pages = pages, sidecars = sidecars, source = manifest,
 			canvasToParentSpace = canvasToParentSpaceFor(exportPuppet), options = moc3Options)
 		if (sounds.isEmpty()) return bundle
-		return Moc3Sidecars.Bundle(bundle.files + sounds.values.map { (name, file) -> Moc3Sidecars.BundleFile(name, file.readBytes()) },
+		return Moc3Sidecars.Bundle(bundle.files + sounds.values.map { (name, file) -> Moc3Sidecars.BundleFile(name, okio.FileSystem.SYSTEM.read(file) { readByteArray() }) },
 			bundle.mocFileName, bundle.report)
 	}
 
@@ -127,18 +130,24 @@ public object Moc3Target : ExportTarget {
 	 * while physics and motions stay the same, and writing and normalizing them costs more than lowering the moc;
 	 * the texts are pure functions of the key, so a hit is byte-identical.
 	 */
-	private val sidecarCache = object : LinkedHashMap<SidecarKey, SidecarTexts>(8, 0.75f, true) {
-		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<SidecarKey, SidecarTexts>?) = size > 4
-	}
+	// Least recently used first: a hit moves to the end, the first goes past four (shared code: reinsertion, not an
+	// access-ordered LinkedHashMap).
+	private val sidecarCache = LinkedHashMap<SidecarKey, SidecarTexts>()
+	private val sidecarLock = PlatformLock()
 
 	private fun sidecarTexts(key: SidecarKey): SidecarTexts {
-		synchronized(sidecarCache) { sidecarCache[key] }?.let { return it }
+		sidecarLock.locked { sidecarCache.remove(key)?.also { sidecarCache[key] = it } }?.let { return it }
 		val physics = Cubism3Json.physics3(key.physics.groups, key.physics.fps?.toInt() ?: 0)?.let(Cubism3Json::normalize)
 		val motions = key.clips.mapNotNull { clip ->
 			val json = Cubism3Json.motion3(clip, key.parameterIds) ?: return@mapNotNull null
 			Triple(clip.group, "${key.baseName}.${clip.file}.motion3.json", Cubism3Json.normalize(json))
 		}
-		return SidecarTexts(physics, motions).also { synchronized(sidecarCache) { sidecarCache[key] = it } }
+		return SidecarTexts(physics, motions).also { texts ->
+			sidecarLock.locked {
+				sidecarCache.remove(key); sidecarCache[key] = texts
+				while (sidecarCache.size > 4) sidecarCache.remove(sidecarCache.keys.first())
+			}
+		}
 	}
 
 	override fun plan(ir: RigIR, options: ExportOptions): LoweredExport {

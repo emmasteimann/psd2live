@@ -1,8 +1,11 @@
 package io.github.psd2live.core
+import io.github.psd2live.project.resolve
+import io.github.psd2live.project.toAbsolutePath
+import io.github.psd2live.project.normalize
+import io.github.psd2live.project.Files
+import io.github.psd2live.project.Path
 
-import java.io.IOException
-import java.nio.file.Files
-import java.nio.file.Path
+import okio.IOException
 
 // The desktop's rig object folders: a project's object folder on disk, read by RigObjects (shared).
 

@@ -130,7 +130,7 @@ object MaterializedRigStore {
 		synchronized(stored) { stored.clear() }
 	}
 
-	private fun key(revision: String) = "$revision|${io.github.psd2live.i18n.I18n.currentLanguage.tag}"
+	private fun key(revision: String) = "$revision|${io.github.psd2live.i18n.currentLanguageTag()}"
 
 	private fun liveIndex(revision: String): JsonObject? {
 		val entry = synchronized(live) { live[key(revision)]?.get() ?: live.entries.firstOrNull { it.key.startsWith("$revision|") }?.value?.get() }

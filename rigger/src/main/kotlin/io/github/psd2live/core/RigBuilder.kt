@@ -799,7 +799,7 @@ object RigBuilder {
 		analysis.layers.filter { it.semantic.side == Side.LEFT || it.semantic.side == Side.RIGHT }
 			.map { it.meta() to rigLayerById.getValue(it.source.id.raw).bounds },
 		analysis.layers.filter { it.semantic.tag == SemanticTag.TOPWEAR && it.opaquePixels > 0 }.map { it.bounds },
-		stageConfig(config), deformerSkeleton(config.rigEdits.skeleton), io.github.psd2live.i18n.I18n.currentLanguage.tag)
+		stageConfig(config), deformerSkeleton(config.rigEdits.skeleton), io.github.psd2live.i18n.currentLanguageTag())
 
 	/**
 	 * What [buildDeformers] reads of the skeleton: whether it is on and, through [torsoFrame], the joints of its
@@ -1625,7 +1625,7 @@ object RigBuilder {
 			skeleton?.let { listOf(it, context.bodyFrame, context.stance.contentKey, SkeletonRig.clears, skeletonJournalInputs(config)) },
 			listOf(pageByDrawable, sourceBoundsByDrawable, layerIdByDrawable, warnings.toList(), faceCenterCanvas,
 				faceRig.radiusX, faceRig.radiusY, faceRig.initialAngleZ),
-			io.github.psd2live.i18n.I18n.currentLanguage.tag,
+			io.github.psd2live.i18n.currentLanguageTag(),
 			if (!v2) null else listOf(resolution.resolved.contentKey, maskedParts, deferredParts, generatedMasks, partSlots,
 				partNeutralBounds, ghostIds))
 		val bound = stages.get(RigStageCache.BOUND, 4, key) { finish() to skeletonKey }
@@ -1683,7 +1683,7 @@ object RigBuilder {
 				lip.source.id.raw in atlas.placementByLayerId, config.drawOrderOverrides[lip.source.id.raw],
 				layerVisibility(config, lip.source.id.raw, lip.source.visible))
 		} }
-		val key = listOf(owner, layer.source.id.raw, Identity(parts), parentFrame, lips, meshConfig, io.github.psd2live.i18n.I18n.currentLanguage.tag)
+		val key = listOf(owner, layer.source.id.raw, Identity(parts), parentFrame, lips, meshConfig, io.github.psd2live.i18n.currentLanguageTag())
 		// A kept lip carries the layer of the build that made it; hand out this build's layer of the same content.
 		return stages.get(RigStageCache.LIPS, 64, key, build).map { lip ->
 			val current = generatedLips[lip.layer.source.id.raw] ?: lip.layer
@@ -1998,7 +1998,7 @@ object RigBuilder {
 			rigLayer.bounds, rigLayer.centroidX, rigLayer.centroidY, parentId, parentFrame, headSpace,
 			if (eyes) faceSignature(context.faceRig) else null, matchingEyeWhiteBounds(rigLayer, context.eyeWhiteLayers),
 			MeshResolution.unitScale(config, context.analysis.source), meshConfig, config.meshOverrides[layer.source.id.raw],
-			io.github.psd2live.i18n.I18n.currentLanguage.tag)
+			io.github.psd2live.i18n.currentLanguageTag())
 		return stages.get(RigStageCache.MESH, 1024, key, build)
 	}
 

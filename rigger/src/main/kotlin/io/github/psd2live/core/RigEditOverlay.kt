@@ -392,7 +392,7 @@ data class RigEditOverlay(
 		val earlyStructureEdits = structureEdits.filterNot(::generatedPanelEdit)
 		// Everything the legacy stage reads, and what decides how the journal's structure edits split.
 		val legacy = ReplayCheckpoints.Legacy(listOf(deletedParameterIds, parameterEdits, warpEdits, structureEdits,
-			keyformSetEdits, keyformCopyEdits, keyformDeleteEdits, generatedIds, io.github.psd2live.i18n.I18n.currentLanguage.tag, skins))
+			keyformSetEdits, keyformCopyEdits, keyformDeleteEdits, generatedIds, io.github.psd2live.i18n.currentLanguageTag(), skins))
 		// The notes ride in the checkpointed state, so a replay resumed from a checkpoint still reports every entry.
 		val replayed = ReplayCheckpoints.replay(base, legacy, authoringJournal, start = {
 			var model = base

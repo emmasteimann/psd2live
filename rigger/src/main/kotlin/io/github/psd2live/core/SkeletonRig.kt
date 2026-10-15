@@ -287,7 +287,7 @@ object SkeletonRig {
 	 */
 	private fun keyOf(base: PuppetModel, spec: SkeletonSpec, frame: Bounds, lockedTopology: Set<String>, stance: BodyStance?,
 					  inputs: BakeInputs, canvasSkinned: Set<String>): String {
-		val values = listOf(spec, frame, lockedTopology, stance?.contentKey, canvasSkinned, io.github.psd2live.i18n.I18n.currentLanguage.tag)
+		val values = listOf(spec, frame, lockedTopology, stance?.contentKey, canvasSkinned, io.github.psd2live.i18n.currentLanguageTag())
 		synchronized(keys) {
 			val index = keys.indexOfFirst { it.base.get() === base && it.inputs == values }
 			if (index >= 0) return keys.removeAt(index).also { keys.add(0, it) }.key
@@ -312,7 +312,7 @@ object SkeletonRig {
 		return io.github.psd2live.format.compile.document.ContentHash.of(BAKE_VERSION, io.github.psd2live.targets.cubism.PuppetIr.toIr(read),
 			base.deformers.map { Triple(it.id.raw, it.parent?.raw, it.javaClass.simpleName) },
 			base.drawables.map { it.id.raw to it.parentDeformerId?.raw }, spec.toJson(), frame,
-			lockedTopology.filter { DrawableId(it) in inputs.drawables }.sorted(), stance?.contentKey, io.github.psd2live.i18n.I18n.currentLanguage.tag,
+			lockedTopology.filter { DrawableId(it) in inputs.drawables }.sorted(), stance?.contentKey, io.github.psd2live.i18n.currentLanguageTag(),
 			// Only when there are any, so the key of every other bake stays what it was.
 			*listOfNotNull(canvasSkinned.filter { DrawableId(it) in inputs.drawables }.sorted().takeIf { it.isNotEmpty() }).toTypedArray())
 	}

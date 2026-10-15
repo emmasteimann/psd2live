@@ -49,7 +49,7 @@ object ProjectHeadCache {
 	private val json = Json { ignoreUnknownKeys = true }
 
 	/** What the cache is valid for. */
-	data class Key(val revision: String, val language: String = io.github.psd2live.i18n.I18n.currentLanguage.tag,
+	data class Key(val revision: String, val language: String = io.github.psd2live.i18n.currentLanguageTag(),
 	               val build: String = Compiler.version, val generator: Int = GENERATOR)
 
 	/** Writes the cache of [head] under [root]; returns whether anything was written. Failures only skip the cache. */

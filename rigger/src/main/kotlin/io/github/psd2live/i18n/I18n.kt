@@ -75,4 +75,8 @@ object I18n {
 	}
 }
 
-fun tr(key: String, vararg arguments: Any?): String = I18n.text(key, *arguments)
+actual fun tr(key: String, vararg arguments: Any?): String = I18n.text(key, *arguments)
+
+actual fun currentLanguageTag(): String = I18n.currentLanguage.tag
+
+internal actual val usesMacKeyWords: Boolean = System.getProperty("os.name").orEmpty().lowercase().contains("mac")

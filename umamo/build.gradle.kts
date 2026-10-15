@@ -5,9 +5,9 @@ plugins {
 	kotlin("plugin.serialization")
 }
 
-// Layerloom iPad plan (layerloom docs/IPAD-PLAN.md, phase 2): Kotlin Multiplatform, so the engine can compile for the
-// iPad as its code moves into common code. For now everything is JVM code, in its old folders (src/main, src/test),
-// and the desktop build sees the same module as before.
+// Layerloom iPad plan (layerloom docs/IPAD-PLAN.md, phase 2): Kotlin Multiplatform. The engine's shared code is in
+// src/commonMain (it compiles for the iPad too); Java-only code stays in its old folders (src/main, src/test), which
+// are the JVM target's, so the desktop build sees the same module as before.
 kotlin {
 	jvmToolchain(21)
 	jvm {
@@ -15,7 +15,17 @@ kotlin {
 			freeCompilerArgs.add("-Xno-optimize")
 		}
 	}
+	// The iPad: the shared engine (src/commonMain) compiles for it; Java-only code (.cmo3, OpenGL) stays in src/main.
+	iosArm64()
+	iosSimulatorArm64()
 	sourceSets {
+		val commonMain by getting {
+			dependencies {
+				implementation("com.squareup.okio:okio:3.17.0")
+				implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.8.0")
+				api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
+			}
+		}
 		val jvmMain by getting {
 			kotlin.srcDir("src/main/kotlin")
 			resources.srcDir("src/main/resources")

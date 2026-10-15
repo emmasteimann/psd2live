@@ -27,6 +27,8 @@ expect object ProjectArchive {
 	/** Unpacks [file] into a new temporary directory, checking it against its manifest. */
 	fun extract(file: Path, progress: (Double) -> Unit = {}): Path
 	fun deleteTemporaryDirectory(root: Path)
+	/** The manifest of the archive at [file], or null when it has none. */
+	fun manifestOf(file: Path): JsonObject?
 }
 
 /** The project format saves write (ProjectFormatV2.VERSION). */

@@ -105,3 +105,6 @@ expect fun <K, V, R> loadInParallel(items: Map<K, V>, threads: Int, load: (V) ->
 expect fun maxMemoryBytes(): Long
 
 expect fun sleepMillis(millis: Long)
+
+/** Copies [source] to [target] (created or replaced), returning the copied bytes' SHA-256 in hex. */
+expect fun copyWithSha256(source: Path, target: Path): String

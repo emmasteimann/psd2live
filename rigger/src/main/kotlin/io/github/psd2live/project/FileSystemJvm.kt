@@ -183,3 +183,17 @@ private fun copyIntArgb(image: java.awt.image.BufferedImage, out: ByteArray): Bo
 	}
 	return true
 }
+
+actual fun copyWithSha256(source: Path, target: Path): String {
+	val digest = java.security.MessageDigest.getInstance("SHA-256")
+	java.nio.file.Files.newInputStream(source).use { input -> java.nio.file.Files.newOutputStream(target).use { output ->
+		val bytes = ByteArray(64 * 1024)
+		while (true) {
+			val count = input.read(bytes)
+			if (count < 0) break
+			digest.update(bytes, 0, count)
+			output.write(bytes, 0, count)
+		}
+	} }
+	return io.github.psd2live.core.hex(digest.digest())
+}

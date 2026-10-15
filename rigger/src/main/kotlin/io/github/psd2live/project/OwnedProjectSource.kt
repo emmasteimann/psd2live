@@ -1,10 +1,6 @@
 package io.github.psd2live.project
-import io.github.psd2live.core.MessageDigest
 
 import kotlinx.serialization.json.*
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.StandardCopyOption
 
 /** Immutable import bytes owned by the workspace; external paths are presentation/provenance only. */
 data class OwnedProjectSource(val path: Path, val descriptor: JsonObject) {
@@ -22,17 +18,7 @@ data class OwnedProjectSource(val path: Path, val descriptor: JsonObject) {
             Files.createDirectories(directory)
             val temporary = Files.createTempFile(directory, "import-", ".$format")
             try {
-                val digest = MessageDigest.getInstance("SHA-256")
-                Files.newInputStream(input).use { source -> Files.newOutputStream(temporary).use { target ->
-                    val bytes = ByteArray(64 * 1024)
-                    while (true) {
-                        val count = source.read(bytes)
-                        if (count < 0) break
-                        digest.update(bytes, 0, count)
-                        target.write(bytes, 0, count)
-                    }
-                } }
-                val hash = WorkspaceRevisions.hex(digest.digest())
+                val hash = copyWithSha256(input, temporary)
                 val owned = directory.resolve("$hash.$format")
                 if (!Files.isRegularFile(owned)) Files.move(temporary, owned, StandardCopyOption.ATOMIC_MOVE)
                 val descriptor = buildJsonObject { put("format", format); put("sha256", hash) }

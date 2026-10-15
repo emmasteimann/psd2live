@@ -307,4 +307,9 @@ actual object ProjectArchive {
         if (!Files.exists(path)) return
         Files.walk(path).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) }
     }
+
+    actual fun manifestOf(file: Path): JsonObject? = ZipFile(file.toFile()).use { zip ->
+        val entry = zip.getEntry(MANIFEST) ?: return null
+        zip.getInputStream(entry).use { json.parseToJsonElement(it.readBytes().decodeToString()).jsonObject }
+    }
 }

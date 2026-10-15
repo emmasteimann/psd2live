@@ -317,11 +317,8 @@ object ProjectFormatV2 {
 
 	/** The format version of the archive at [file], or null when it is not a readable project archive. */
 	fun versionOf(file: Path): Int? = runCatching {
-		java.util.zip.ZipFile(file.toFile()).use { zip ->
-			val entry = zip.getEntry("manifest.json") ?: return null
-			val manifest = zip.getInputStream(entry).use { json.parseToJsonElement(it.readBytes().decodeToString()).jsonObject }
-			manifest["version"]?.jsonPrimitive?.intOrNull.takeIf { manifest["format"]?.jsonPrimitive?.contentOrNull == "PSD2Live" }
-		}
+		val manifest = ProjectArchive.manifestOf(file) ?: return null
+		manifest["version"]?.jsonPrimitive?.intOrNull.takeIf { manifest["format"]?.jsonPrimitive?.contentOrNull == "PSD2Live" }
 	}.getOrNull()
 
 	/**
@@ -339,12 +336,12 @@ object ProjectFormatV2 {
 	}
 
 	private fun write(path: Path, bytes: ByteArray) {
-		Files.createDirectories(path.parent)
+		Files.createDirectories(path.parent!!)
 		Files.write(path, bytes)
 	}
 
 	private fun move(from: Path, to: Path) {
-		Files.createDirectories(to.parent)
+		Files.createDirectories(to.parent!!)
 		Files.move(from, to)
 	}
 

@@ -6,6 +6,7 @@ import okio.FileSystem
 import okio.IOException
 import okio.Path.Companion.toPath
 import okio.use
+import okio.buffer
 import platform.Foundation.NSDate
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSFileModificationDate
@@ -157,3 +158,17 @@ actual fun <K, V, R> loadInParallel(items: Map<K, V>, threads: Int, load: (V) ->
 actual fun maxMemoryBytes(): Long = platform.Foundation.NSProcessInfo.processInfo.physicalMemory.toLong() / 2
 
 actual fun sleepMillis(millis: Long) { platform.posix.usleep((millis * 1000).toUInt()) }
+
+actual fun copyWithSha256(source: Path, target: Path): String {
+	val digest = io.github.psd2live.core.MessageDigest.getInstance("SHA-256")
+	val bytes = ByteArray(64 * 1024)
+	fs.source((source as OkioPath).okio).buffer().use { input -> fs.sink((target as OkioPath).okio).buffer().use { output ->
+		while (true) {
+			val count = input.read(bytes, 0, bytes.size)
+			if (count <= 0) break
+			digest.update(bytes, 0, count)
+			output.write(bytes, 0, count)
+		}
+	} }
+	return io.github.psd2live.core.hex(digest.digest())
+}

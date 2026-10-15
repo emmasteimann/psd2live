@@ -169,6 +169,13 @@ actual object ProjectArchive {
 		} catch (failure: Throwable) { deleteTemporaryDirectory(root); throw failure }
 	}
 
+	actual fun manifestOf(file: Path): JsonObject? {
+		val zip = fs.openZip(file.o)
+		val entry = "/$MANIFEST".toPath()
+		if (!zip.exists(entry)) return null
+		return json.parseToJsonElement(zip.read(entry) { readUtf8() }).jsonObject
+	}
+
 	/** Only directories this subsystem made in the temporary directory. */
 	actual fun deleteTemporaryDirectory(root: Path) {
 		val path = root.toAbsolutePath().normalize()

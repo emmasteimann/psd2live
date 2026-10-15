@@ -66,6 +66,7 @@ private val Danger = Color(0xFFFF9A9A)
  * the physics runs live; every group's pendulum - length, how freely it moves, how much it lags, how hard it
  * accelerates - and its on/off are sliders. Apply writes the rig's files with the new physics.
  */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun PhysicsScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onCancel: () -> Unit) {
 	val available = remember(outcome) { outcome.model.rig.puppet.parameters.mapTo(HashSet()) { it.id.raw } }
@@ -76,6 +77,8 @@ fun PhysicsScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onCancel
 	var wobble by remember { mutableStateOf(0L) }
 	var image by remember { mutableStateOf<ImageBitmap?>(null) }
 	var open by remember { mutableStateOf<String?>(null) }
+	var addingInput by remember { mutableStateOf(false) }
+	val paramNames = remember(outcome) { outcome.model.rig.puppet.parameters.associate { it.id.raw to it.name } }
 	var applying by remember { mutableStateOf<Pair<String, Double>?>(null) }
 	var failure by remember { mutableStateOf<String?>(null) }
 	val scope = rememberCoroutineScope()
@@ -172,6 +175,51 @@ fun PhysicsScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onCancel
 						}
 					}
 					if (open == id) {
+						val g = group.setting
+						Text("Presets", color = Text1, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+						androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+							for (preset in io.github.psd2live.core.PhysicsPresets.builtins(io.github.psd2live.core.PhysicsPresets.Kind.INPUT))
+								Chip(preset.name, io.github.psd2live.core.PhysicsPresets.matches(preset, g)) { edit(g) { io.github.psd2live.core.PhysicsPresets.apply(preset, it, available) } }
+						}
+						androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+							for (preset in io.github.psd2live.core.PhysicsPresets.builtins(io.github.psd2live.core.PhysicsPresets.Kind.PENDULUM))
+								Chip(preset.name, io.github.psd2live.core.PhysicsPresets.matches(preset, g)) { edit(g) { io.github.psd2live.core.PhysicsPresets.apply(preset, it, available) } }
+						}
+						Text("What shakes it", color = Text1, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+						for (input in g.inputs) {
+							Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+								Text(paramNames[input.parameter] ?: input.parameter, color = Text1, fontSize = 13.sp, modifier = Modifier.weight(1f))
+								Chip(if (input.type == io.github.psd2live.core.PhysicsSourceType.X) "Sideways" else "Angle", false) {
+									edit(g) { it.copy(inputs = it.inputs.map { i -> if (i === input) i.copy(type = if (i.type == io.github.psd2live.core.PhysicsSourceType.X)
+										io.github.psd2live.core.PhysicsSourceType.ANGLE else io.github.psd2live.core.PhysicsSourceType.X) else i }) } }
+								Chip("⇄", input.reflect) { edit(g) { it.copy(inputs = it.inputs.map { i -> if (i === input) i.copy(reflect = !i.reflect) else i }) } }
+								Text("✕", color = Muted, fontSize = 15.sp, modifier = Modifier.padding(start = 8.dp).clickable {
+									edit(g) { it.copy(inputs = it.inputs.filter { i -> i !== input }) } })
+							}
+							ValueRow("Weight", input.weight, 0f..100f) { v -> edit(g) { it.copy(inputs = it.inputs.map { i -> if (i === input) i.copy(weight = v) else i }) } }
+						}
+						Chip(if (addingInput) "Close the list" else "Add what shakes it", addingInput) { addingInput = !addingInput }
+						if (addingInput) for ((pid, pname) in paramNames.filterKeys { k -> g.inputs.none { it.parameter == k } && k !in g.outputParameters }) {
+							Text(pname, color = Accent, fontSize = 13.sp, modifier = Modifier.fillMaxWidth().clickable {
+								edit(g) { it.copy(inputs = it.inputs + io.github.psd2live.core.PhysicsInput(pid, 50f)) }; addingInput = false
+							}.padding(vertical = 4.dp))
+						}
+						Text("What it moves", color = Text1, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+						for (output in g.outputs) {
+							Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+								Text("${paramNames[output.parameter] ?: output.parameter} ← part ${output.vertex}", color = Text1, fontSize = 13.sp, modifier = Modifier.weight(1f))
+								Chip("⇄", output.reflect) { edit(g) { it.copy(outputs = it.outputs.map { o -> if (o === output) o.copy(reflect = !o.reflect) else o }) } }
+							}
+							if (g.segments.size > 1) ValueRow("Driven by part", output.vertex.toFloat(), 1f..g.segments.size.toFloat()) { v ->
+								edit(g) { it.copy(outputs = it.outputs.map { o -> if (o === output) o.copy(vertex = v.roundToInt().coerceIn(1, g.segments.size)) else o }) } }
+							ValueRow("Scale", output.scale, 0f..10f) { v -> edit(g) { it.copy(outputs = it.outputs.map { o -> if (o === output) o.copy(scale = v) else o }) } }
+						}
+						Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+							Text("Pendulum parts: ${g.segments.size}", color = Text1, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+							Chip("+", false, enabled = g.segments.size < RigPhysicsEdit.MAX_SEGMENTS) { edit(g) { it.copy(segments = it.segments + it.segments.last()) } }
+							Chip("−", false, enabled = g.segments.size > 1) {
+								edit(g) { val n = it.segments.size - 1; it.copy(segments = it.segments.dropLast(1), outputs = it.outputs.map { o -> if (o.vertex > n) o.copy(vertex = n) else o }) } }
+						}
 						for ((index, segment) in group.setting.segments.withIndex()) {
 							Text("Part ${index + 1}", color = Text1, fontSize = 13.sp, fontWeight = FontWeight.Bold)
 							fun set(change: (PhysicsSegment) -> PhysicsSegment) = edit(group.setting) { s ->

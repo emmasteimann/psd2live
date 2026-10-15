@@ -53,6 +53,7 @@ fun RigSettingsScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onCa
 	var config by remember(outcome) { mutableStateOf(outcome.config) }
 	val tuning = config.rigTuning
 	var advanced by remember { mutableStateOf(false) }
+	var meshes by remember { mutableStateOf(false) }
 	var applying by remember { mutableStateOf<Pair<String, Double>?>(null) }
 	var failure by remember { mutableStateOf<String?>(null) }
 	val scope = rememberCoroutineScope()
@@ -80,7 +81,7 @@ fun RigSettingsScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onCa
 				scope.launch {
 					try {
 						val updated = withContext(Dispatchers.Default) {
-							buildRig(outcome.name, outcome.source, config, RigFiles.nowSeconds()) { stage, fraction ->
+							applyRigConfig(outcome, config) { stage, fraction ->
 								scope.launch(Dispatchers.Main) { if (applying != null) applying = stage to fraction }
 							}
 						}
@@ -106,6 +107,28 @@ fun RigSettingsScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onCa
 				config = config.copy(physicsFrontHair = !config.physicsFrontHair) }
 			Chip(if (config.physicsBackHair) "Back hair sways: on" else "Back hair sways: off", config.physicsBackHair) {
 				config = config.copy(physicsBackHair = !config.physicsBackHair) }
+		}
+
+		Section("Mesh detail per layer")
+		Text("A part that bends like stiff paper may need more triangles. Finer re-meshes the layer; hand tweaks on it are " +
+			"carried onto the new mesh.", color = Muted, fontSize = 12.sp)
+		Chip(if (meshes) "Hide the layers" else "Show the layers", meshes) { meshes = !meshes }
+		if (meshes) {
+			val vertices = remember(outcome) {
+				outcome.model.rig.layerIdByDrawableId.entries.groupBy({ it.value }, { it.key }).mapValues { (_, ids) ->
+					ids.sumOf { id -> outcome.model.rig.puppet.drawables.firstOrNull { it.id.raw == id }?.mesh?.vertexCount ?: 0 } }
+			}
+			for (layer in paintableLayers(outcome)) {
+				val id = layer.id.raw
+				val current = config.meshOverrides[id]
+				val detail = current?.let { detailOf(it.interiorDensity) } ?: detailOf(config.meshInteriorDensity)
+				val changedHere = current != outcome.config.meshOverrides[id]
+				ValueRow("${layer.name}  (${vertices[id] ?: 0} vertices${if (changedHere) ", changed" else ""})",
+					"Coarser ← → finer", detail, 0f..1f, 0.05f) { t ->
+					val base = current ?: io.github.psd2live.core.MeshSettings(interiorDensity = config.meshInteriorDensity, maxEdgeDistance = config.meshMaxEdgeDistance)
+					config = config.copy(meshOverrides = config.meshOverrides + (id to base.copy(interiorDensity = spacingOf(t), maxEdgeDistance = edgeOf(t))))
+				}
+			}
 		}
 
 		Section(tr("settings.rigTuning.group.eyes") + " - eye contact")
@@ -158,3 +181,9 @@ private fun Chip(label: String, selected: Boolean, enabled: Boolean = true, onCl
 		Text(label, color = if (enabled) Accent else Muted, fontSize = 14.sp)
 	}
 }
+
+/** Mesh detail 0 (coarse) .. 1 (fine) to the interior point spacing, px: 70 .. 10; 0.5 is the default 40. */
+private fun spacingOf(detail: Float) = 70f - 60f * detail
+private fun detailOf(spacing: Float) = ((70f - spacing) / 60f).coerceIn(0f, 1f)
+/** ... and the outline's point spacing, px: 9 .. 3; 0.5 is the default 6. */
+private fun edgeOf(detail: Float) = 9f - 6f * detail

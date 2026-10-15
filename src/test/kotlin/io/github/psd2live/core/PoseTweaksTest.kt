@@ -61,4 +61,28 @@ class PoseTweaksTest {
 		assertEquals(0, diff(restBefore, frame(both, emptyMap())), "rest is untouched")
 		assertEquals(0, diff(frame(both, left), frame(pipeline.buildPreview(source, config), left)), "a full re-rig keeps both")
 	}
+
+	@Test fun reMeshingALayerKeepsItsTweaks() {
+		val psd = System.getenv("LAYERLOOM_PSD") ?: return
+		val source = PsdReader.read(java.nio.file.Files.readAllBytes(java.nio.file.Path.of(psd)))
+		val pipeline = PSD2LivePipeline()
+		val model = pipeline.buildPreview(source, PipelineConfig(exportCmo3 = false))
+		val pose = mapOf("ParamAngleX" to 30f)
+		val puppet = model.rig.puppet
+		val x = puppet.canvasWidth / 2f; val y = puppet.canvasHeight * 0.3f
+		val meshes = PoseTweaks.meshesUnder(puppet, pose, x, y, 40f)
+		val session = PoseTweaks.begin(puppet, pose, meshes, x, y, 40f)
+		for (i in 1..10) PoseTweaks.step(session, x + i * 4f, y)
+		val tweaked = PoseTweaks.rebuilt(pipeline, model, requireNotNull(PoseTweaks.journaled(model, session)))
+		// The front-most tweaked mesh's layer, re-meshed finer.
+		val layer = requireNotNull(tweaked.rig.layerIdByDrawableId[meshes.first()])
+		fun finer(config: PipelineConfig) = config.copy(meshOverrides = config.meshOverrides + (layer to MeshSettings(interiorDensity = 15f, maxEdgeDistance = 3f)))
+		val remeshed = pipeline.rebuildPreview(tweaked, finer(tweaked.config))
+		val plain = pipeline.rebuildPreview(model, finer(model.config))
+		val vertices = { m: RigPreviewModel -> m.rig.puppet.drawables.single { it.id.raw == meshes.first() }.mesh!!.vertexCount }
+		assertTrue(vertices(remeshed) > vertices(tweaked), "the layer has more vertices")
+		assertTrue(diff(frame(plain, pose), frame(remeshed, pose)) > 0, "the tweak is still there at its pose")
+		assertEquals(0, diff(frame(plain, emptyMap()), frame(remeshed, emptyMap())), "and still not at rest")
+		assertEquals(0, diff(frame(remeshed, pose), frame(pipeline.buildPreview(source, remeshed.config), pose)), "a full re-rig keeps it")
+	}
 }

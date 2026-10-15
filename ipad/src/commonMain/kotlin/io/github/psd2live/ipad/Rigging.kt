@@ -72,6 +72,25 @@ internal fun buildRig(name: String, source: org.umamo.format.art.SourceArt, conf
 	return writeRig(name, source, config, model, started, progress)
 }
 
+/**
+ * [outcome] re-rigged with [config]. Layers whose mesh settings changed are re-meshed first through the desktop's own
+ * path (`rebuildPreview`), which carries hand tweaks onto the new vertices; anything else that changed then rebuilds
+ * from that. Blocking.
+ */
+internal fun applyRigConfig(outcome: RigOutcome, config: PipelineConfig, progress: (String, Double) -> Unit): RigOutcome {
+	val started = RigFiles.nowSeconds()
+	var base = outcome.model
+	var next = config
+	if (config.meshOverrides != outcome.config.meshOverrides) {
+		progress("Re-meshing", 0.05)
+		val remeshed = PSD2LivePipeline().rebuildPreview(base, base.config.copy(meshOverrides = config.meshOverrides))
+		next = config.copy(rigEdits = remeshed.config.rigEdits, generationSource = remeshed.config.generationSource, meshSource = remeshed.config.meshSource)
+		base = remeshed
+	}
+	return if (next == base.config) writeRig(outcome.name, outcome.source, next, base, started, progress)
+		else buildRig(outcome.name, outcome.source, next, started, progress)
+}
+
 /** [model]'s runtime files written into Rigs/NAME, and the outcome that describes them. */
 internal fun writeRig(name: String, source: org.umamo.format.art.SourceArt, config: PipelineConfig, model: RigPreviewModel,
 	started: Double, progress: (String, Double) -> Unit): RigOutcome {

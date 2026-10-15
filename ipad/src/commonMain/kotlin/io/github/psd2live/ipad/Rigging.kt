@@ -2,6 +2,7 @@ package io.github.psd2live.ipad
 
 import io.github.psd2live.core.IrFrameRenderer
 import io.github.psd2live.project.resolve
+import io.github.psd2live.project.config
 import io.github.psd2live.core.PSD2LivePipeline
 import io.github.psd2live.core.RigIrCompiler
 import io.github.psd2live.core.RigPreviewModel
@@ -101,10 +102,34 @@ suspend fun saveRigProject(outcome: RigOutcome): String {
 	return target.toString()
 }
 
+/**
+ * The project at [path] opened through the desktop's own project code and rigged with everything it holds - its
+ * settings, hand tweaks and painted pixels - as the outcome the Rig tab shows. Its runtime files go to Rigs/NAME.
+ */
+suspend fun openRigProject(path: String, progress: (String, Double) -> Unit): RigOutcome {
+	val started = RigFiles.nowSeconds()
+	progress("Opening the project", 0.02)
+	val opened = io.github.psd2live.project.ProjectRepository().open(io.github.psd2live.project.pathOf(path))
+	try {
+		val document = opened.history.head().snapshot
+		require(document.rigEdits.importedCmo3 == null) { "This project was imported from a .cmo3, which only the Mac app opens for now" }
+		// Named after the project file; the archive keeps its PSD as "original.psd".
+		val name = path.substringAfterLast('/').substringBeforeLast('.') + ".psd"
+		// A project from the Mac brings its PSD along: put it beside the others, so saving it again has its source.
+		val psd = io.github.psd2live.project.pathOf(RigFiles.psdPath(name))
+		if (!io.github.psd2live.project.Files.exists(psd) && io.github.psd2live.project.Files.exists(opened.source))
+			io.github.psd2live.project.Files.copy(opened.source, psd)
+		val config = document.config(PipelineConfig()).copy(exportCmo3 = false)
+		return buildRig(name, document.source, config, started) { stage, fraction -> progress(stage, 0.1 + fraction * 0.9) }
+	} finally { opened.close() }
+}
+
 /** The app's files: PSDs it can rig, and the Rigs folder it writes into (the Files app shows both). */
 expect object RigFiles {
 	/** The PSDs in the app's Documents folder (put there from the Files app or the share sheet), by name. */
 	fun psds(): List<String>
+	/** Saved projects (`.psd2live`) in Documents and Documents/Rigs, as full paths. */
+	fun projects(): List<String>
 	fun read(name: String): ByteArray
 	/** A fresh folder for [psdName]'s rig: Documents/Rigs/NAME (an older rig of the same name is replaced). */
 	fun folderFor(psdName: String): String

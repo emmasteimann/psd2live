@@ -64,9 +64,43 @@ private sealed interface RigState {
 @Composable
 fun RigWorkspace(modifier: Modifier = Modifier) {
 	var psds by remember { mutableStateOf(emptyList<String>()) }
+	var projects by remember { mutableStateOf(emptyList<String>()) }
+	var autosave by remember { mutableStateOf<String?>(null) }
 	var state by remember { mutableStateOf<RigState>(RigState.Idle) }
 	val scope = rememberCoroutineScope()
-	fun refresh() { psds = runCatching { RigFiles.psds() }.getOrDefault(emptyList()) }
+	fun refresh() {
+		psds = runCatching { RigFiles.psds() }.getOrDefault(emptyList())
+		projects = runCatching { RigFiles.projects() }.getOrDefault(emptyList())
+	}
+
+	// Every change of the rig is saved as its project in the background, so a long session can't be lost.
+	fun keep(outcome: RigOutcome) {
+		state = RigState.Done(outcome)
+		autosave = "Saving the project…"
+		scope.launch {
+			autosave = try {
+				val path = withContext(Dispatchers.Default) { saveRigProject(outcome) }
+				refresh()
+				"Saved to Rigs/${path.substringAfterLast('/')}"
+			} catch (failure: Throwable) { "Couldn't save the project: ${failure.message ?: failure::class.simpleName}" }
+		}
+	}
+
+	fun open(path: String) {
+		if (state is RigState.Rigging) return
+		val name = path.substringAfterLast('/')
+		state = RigState.Rigging(name, "Opening", 0.0)
+		scope.launch {
+			try {
+				val outcome = openRigProject(path) { stage, fraction ->
+					scope.launch(Dispatchers.Main) { if (state is RigState.Rigging) state = RigState.Rigging(name, stage, fraction) }
+				}
+				state = RigState.Done(outcome); autosave = "Opened $name"
+			} catch (failure: Throwable) {
+				state = RigState.Failed(name, failure.message ?: failure::class.simpleName ?: "Opening failed")
+			}
+		}
+	}
 	LaunchedEffect(Unit) { refresh() }
 
 	fun rig(name: String) {
@@ -79,7 +113,7 @@ fun RigWorkspace(modifier: Modifier = Modifier) {
 						scope.launch(Dispatchers.Main) { if (state is RigState.Rigging) state = RigState.Rigging(name, stage, fraction) }
 					}
 				}
-				RigState.Done(outcome)
+				keep(outcome); state
 			} catch (failure: Throwable) {
 				RigState.Failed(name, failure.message ?: failure::class.simpleName ?: "Rigging failed")
 			}
@@ -87,20 +121,37 @@ fun RigWorkspace(modifier: Modifier = Modifier) {
 	}
 
 	Column(modifier.verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-		Text("Rig a PSD", color = Text1, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-		Text("Put PSDs in Files > On My iPad > Layerloom. The rig is built here on the iPad, with the same rigger as the Mac " +
-			"app; its moc3 runtime files go to the Rigs folder there.", color = Muted, fontSize = 14.sp)
-		Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-			Button("Refresh the list") { refresh() }
-		}
-		if (psds.isEmpty()) Text("No PSDs in the Layerloom folder yet.", color = Muted, fontSize = 15.sp)
-		for (name in psds) {
-			Row(
-				Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).clickable { rig(name) }.padding(16.dp),
-				horizontalArrangement = Arrangement.SpaceBetween,
-			) {
-				Text(name, color = Text1, fontSize = 16.sp)
-				Text("Rig", color = Accent, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+		// An editing screen (paint, tweak, settings) has the whole tab: the file list steps aside.
+		val editing = state is RigState.Painting || state is RigState.Tweaking || state is RigState.Settings
+		if (!editing) {
+			Text("Rig a PSD", color = Text1, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+			Text("Put PSDs in Files > On My iPad > Layerloom. The rig is built here on the iPad, with the same rigger as the Mac " +
+				"app; its moc3 runtime files go to the Rigs folder there.", color = Muted, fontSize = 14.sp)
+			Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+				Button("Refresh the list") { refresh() }
+			}
+			if (projects.isNotEmpty()) {
+				Text("Projects", color = Text1, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+				for (path in projects) {
+					Row(
+						Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).clickable { open(path) }.padding(16.dp),
+						horizontalArrangement = Arrangement.SpaceBetween,
+					) {
+						Text(path.substringAfterLast('/'), color = Text1, fontSize = 16.sp)
+						Text("Open", color = Accent, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+					}
+				}
+				Text("PSDs", color = Text1, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+			}
+			if (psds.isEmpty()) Text("No PSDs in the Layerloom folder yet.", color = Muted, fontSize = 15.sp)
+			for (name in psds) {
+				Row(
+					Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).clickable { rig(name) }.padding(16.dp),
+					horizontalArrangement = Arrangement.SpaceBetween,
+				) {
+					Text(name, color = Text1, fontSize = 16.sp)
+					Text("Rig", color = Accent, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+				}
 			}
 		}
 		when (val s = state) {
@@ -112,11 +163,11 @@ fun RigWorkspace(modifier: Modifier = Modifier) {
 				Spacer(Modifier.height(6.dp))
 				Text(s.stage, color = Muted, fontSize = 13.sp)
 			}
-			is RigState.Done -> RigResult(s.outcome, onPaint = { state = RigState.Painting(s.outcome) }, onTweak = { state = RigState.Tweaking(s.outcome) },
-				onSettings = { state = RigState.Settings(s.outcome) })
-			is RigState.Settings -> RigSettingsScreen(s.outcome, onApplied = { state = RigState.Done(it) }, onCancel = { state = RigState.Done(s.outcome) })
-			is RigState.Tweaking -> TweakScreen(s.outcome, onDone = { state = RigState.Done(it) }, onCancel = { state = RigState.Done(s.outcome) })
-			is RigState.Painting -> PaintScreen(s.outcome, onApplied = { state = RigState.Done(it) }, onClose = { state = RigState.Done(s.outcome) })
+			is RigState.Done -> { autosave?.let { Text(it, color = Muted, fontSize = 13.sp) }; RigResult(s.outcome, onPaint = { state = RigState.Painting(s.outcome) }, onTweak = { state = RigState.Tweaking(s.outcome) },
+				onSettings = { state = RigState.Settings(s.outcome) }) }
+			is RigState.Settings -> RigSettingsScreen(s.outcome, onApplied = { keep(it) }, onCancel = { state = RigState.Done(s.outcome) })
+			is RigState.Tweaking -> TweakScreen(s.outcome, onDone = { keep(it) }, onCancel = { state = RigState.Done(s.outcome) })
+			is RigState.Painting -> PaintScreen(s.outcome, onApplied = { keep(it) }, onClose = { state = RigState.Done(s.outcome) })
 			is RigState.Failed -> Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp)) {
 				Text("Couldn't rig ${s.name}", color = Danger, fontSize = 16.sp, fontWeight = FontWeight.Bold)
 				Text(s.message, color = Text1, fontSize = 14.sp)

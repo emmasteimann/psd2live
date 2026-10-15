@@ -17,6 +17,12 @@ actual object RigFiles {
 		return FileSystem.SYSTEM.list(root).filter { it.name.lowercase().endsWith(".psd") }.map { it.name }.sorted()
 	}
 
+	actual fun projects(): List<String> {
+		val roots = listOf(documents.toPath(), "$documents/Rigs".toPath())
+		return roots.flatMap { root -> if (FileSystem.SYSTEM.exists(root)) FileSystem.SYSTEM.list(root) else emptyList() }
+			.filter { it.name.lowercase().endsWith(".psd2live") }.map { it.toString() }.sortedBy { it.substringAfterLast('/').lowercase() }
+	}
+
 	actual fun read(name: String): ByteArray = FileSystem.SYSTEM.read("$documents/$name".toPath()) { readByteArray() }
 
 	actual fun folderFor(psdName: String): String {

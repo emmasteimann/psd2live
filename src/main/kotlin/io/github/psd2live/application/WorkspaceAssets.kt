@@ -57,8 +57,10 @@ internal class WorkspacePngAssetStore(private val checkCancelled: () -> Unit = {
             } finally { reader.dispose() }
         }
         checkCancelled()
-        val matte = if (request.referenceId != null && request.solidBackground != null) processGeneratedMatte(decoded,
-            request.solidBackground, request.backgroundTolerance, request.processing, checkCancelled) else null
+        // A local copy: the request is the rigger module's, so its property cannot be smart-cast here.
+        val solidBackground = request.solidBackground
+        val matte = if (request.referenceId != null && solidBackground != null) processGeneratedMatte(decoded,
+            solidBackground, request.backgroundTolerance, request.processing, checkCancelled) else null
         val image = matte?.image ?: request.solidBackground?.let { cleanGeneratedMatte(decoded, it, request.backgroundTolerance, checkCancelled) } ?: decoded
         if (request.requireTransparency) {
             val pixels = image.getRGB(0, 0, image.width, image.height, null, 0, image.width)

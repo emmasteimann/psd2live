@@ -60,6 +60,8 @@ dependencies {
 	implementation(platform("io.ktor:ktor-bom:3.5.1"))
 	// Engine ported from Umamo (format, runtime, interop, render, edit); it brings its own libraries.
 	implementation(project(":umamo"))
+	// The rigger (PSD in, rig out), split out of the app for the iPad.
+	implementation(project(":rigger"))
 	// Neutral rig IR, export framework and targets (see docs/zh/spec/EXPORT_TARGETS.md).
 	implementation(project(":targets:cubism"))
 	implementation(project(":targets:raster"))

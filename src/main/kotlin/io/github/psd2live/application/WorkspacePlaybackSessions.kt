@@ -189,7 +189,7 @@ internal class WorkspacePlaybackSessions(private val runtime: WorkspaceRuntime<R
 
     private fun clip(capture: WorkspaceCapture<RigPreviewModel>, id: String): MotionClip? {
         val document = capture.document
-        return document.rigEdits.motionClips.firstOrNull { it.id == id && (it.builtin == null || enabled(capture, it.builtin)) }
+        return document.rigEdits.motionClips.firstOrNull { it.id == id && it.builtin.let { builtin -> builtin == null || enabled(capture, builtin) } }
             ?: id.takeIf { it.startsWith("preset:") }?.removePrefix("preset:")?.let { name ->
                 if (name !in MotionClips.BUILTIN_NAMES || !enabled(capture, name)) null
                 else MotionClips.overrideOf(document.rigEdits.motionClips, name) ?: MotionPresets.clip(id, name,

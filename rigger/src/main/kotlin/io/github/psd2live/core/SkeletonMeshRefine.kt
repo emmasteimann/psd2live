@@ -1,0 +1,159 @@
+package io.github.psd2live.core
+
+import org.umamo.edit.MeshRefinementOps
+import org.umamo.edit.MeshTopologyEdit
+import org.umamo.edit.withMeshTopologyEdit
+import org.umamo.runtime.model.DrawableId
+import org.umamo.runtime.model.DrawableMesh
+import org.umamo.runtime.model.PuppetModel
+import kotlin.math.hypot
+
+/**
+ * A joint band in canvas pixels: the joint, the unit axis across it and its half width.
+ */
+class JointBand(val x: Double, val y: Double, val nx: Double, val ny: Double, val half: Double)
+
+/**
+ * Gives a mesh enough vertices across each joint band to bend smoothly.
+ *
+ * A mesh bends only where it has vertices, and a generated mesh is as coarse as its outline allows, so
+ * an elbow often falls inside one long triangle that can only fold along an edge. This inserts 17
+ * rows of vertices across every band, including the rigid endpoints and the joint, each row as
+ * wide as the mesh is there. The inserted vertices are affine combinations of the old ones, so the
+ * picture does not move and every existing keyform follows through [withMeshTopologyEdit].
+ *
+ * Rows that already have a vertex nearby are skipped, so refining a refined mesh changes nothing.
+ */
+object SkeletonMeshRefine {
+
+	/**
+	 * How far an inserted vertex's uv may lie off the affine map of its quad before a flip is refused. The bake
+	 * runs on the unbound rig, whose uvs are layer offsets in canvas units, so this is the page tolerance the
+	 * flip uses by default (2e-4) on a 4096 px page at one texel per canvas unit: the bake keeps the
+	 * triangulation it had on such a page, and no longer depends on the page size or the layout.
+	 */
+	private const val OFFSET_UV_TOLERANCE = 2e-4f * 4096f
+
+	/** Largest number of points one row may add, however wide the mesh is. */
+	private const val MAX_ROW_POINTS = 24
+
+	/**
+	 * Refines [drawableId] of [model] across [bands]. [canvas] is its rest vertices in canvas pixels, the
+	 * space the bands are in. Returns the model and the refined mesh's rest vertices in the same space, or
+	 * the inputs unchanged when nothing needed adding.
+	 */
+	fun refine(model: PuppetModel, drawableId: DrawableId, canvas: FloatArray, bands: List<JointBand>, segments: Int = 16): Pair<PuppetModel, FloatArray> {
+		val mesh = model.drawables.firstOrNull { it.id == drawableId }?.mesh ?: return model to canvas
+		if (canvas.size != mesh.positions.size || bands.isEmpty()) return model to canvas
+		val refined = refinedTopology(mesh, canvas, bands, segments) ?: return model to canvas
+		return model.withMeshTopologyEdit(drawableId, refined.edit) to refined.frame.copyOf()
+	}
+
+	/** A refinement: the topology edit and the refined rest vertices in canvas pixels. */
+	private class Refined(val edit: MeshTopologyEdit, val frame: FloatArray)
+
+	private const val CACHE_CAPACITY = 128
+	private val cache = object : LinkedHashMap<String, java.lang.ref.SoftReference<Refined>>(16, 0.75f, true) {
+		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, java.lang.ref.SoftReference<Refined>>?): Boolean = size > CACHE_CAPACITY
+	}
+	/** Marks a cached "nothing to add", which a soft reference cannot hold. */
+	private val unchanged = Refined(MeshTopologyEdit(DrawableMesh(FloatArray(0), FloatArray(0), IntArray(0)), emptyList()), FloatArray(0))
+
+	fun clearCache() = synchronized(cache) { cache.clear() }
+
+	/**
+	 * The vertices [bands] add to [mesh], or null when none: a pure function of the mesh's arrays, its rest
+	 * vertices, the bands and [segments], so it is kept by exactly those (a skeleton edit refines again only the
+	 * meshes whose limb bands moved).
+	 */
+	private fun refinedTopology(mesh: DrawableMesh, canvas: FloatArray, bands: List<JointBand>, segments: Int): Refined? {
+		val key = io.github.psd2live.format.compile.document.ContentHash.of("refine-1", mesh.positions.contentToString(), mesh.uvs.contentToString(),
+			mesh.indices.contentToString(), canvas.contentToString(), bands.map { listOf(it.x, it.y, it.nx, it.ny, it.half) }, segments)
+		val hit = synchronized(cache) { cache[key]?.get() }
+		if (hit != null) return hit.takeIf { it !== unchanged }
+		val result = compute(mesh, canvas, bands, segments)
+		synchronized(cache) { cache[key] = java.lang.ref.SoftReference(result ?: unchanged) }
+		return result
+	}
+
+	private fun compute(mesh: DrawableMesh, canvas: FloatArray, bands: List<JointBand>, segments: Int): Refined? {
+		val points = bands.flatMap { rowPoints(canvas, mesh.indices, it, segments) }
+		if (points.isEmpty()) return null
+		val inserted = MeshRefinementOps.insertPoints(mesh, canvas, points, extend = false, edgeSnap = 0.5f) ?: return null
+		val edit = inserted.result.edit
+		val created = (mesh.vertexCount until edit.newMesh.vertexCount).toSet()
+		if (created.isEmpty()) return null
+		val flipped = MeshRefinementOps.flipTowardDelaunay(edit.newMesh, inserted.frame, created, uvTolerance = OFFSET_UV_TOLERANCE)
+		val tidy = MeshTopologyEdit(DrawableMesh(edit.newMesh.positions, edit.newMesh.uvs, flipped), edit.vertexSources)
+		return Refined(tidy, inserted.frame.copyOf())
+	}
+
+	/**
+	 * The points one band asks for: segments + 1 rows across the band. Each row gets a vertex wherever it
+	 * crosses the outline, so the silhouette bends at the row instead of running straight across the
+	 * joint, and interior vertices between those crossings at most a third of the limb's width apart.
+	 * Spots an existing vertex already covers are skipped.
+	 */
+	private fun rowPoints(canvas: FloatArray, indices: IntArray, band: JointBand, segments: Int): List<Pair<Float, Float>> {
+		val tx = -band.ny
+		val ty = band.nx
+		val count = canvas.size / 2
+		val s = DoubleArray(count) { (canvas[it * 2] - band.x) * band.nx + (canvas[it * 2 + 1] - band.y) * band.ny }
+		val t = DoubleArray(count) { (canvas[it * 2] - band.x) * tx + (canvas[it * 2 + 1] - band.y) * ty }
+		// The outline: edges used by a single triangle. Its crossings do not move when vertices are added
+		// along the row, which is what makes a second pass find every spot already covered.
+		val uses = HashMap<Long, Int>()
+		for (i in indices.indices step 3) for (k in 0..2) {
+			val a = indices[i + k]
+			val b = indices[i + (k + 1) % 3]
+			val key = minOf(a, b).toLong() shl 32 or maxOf(a, b).toLong()
+			uses[key] = (uses[key] ?: 0) + 1
+		}
+		val edges = uses.filterValues { it == 1 }.keys
+		val out = ArrayList<Pair<Float, Float>>()
+		fun add(depth: Double, across: Double, clearance: Double) {
+			val x = band.x + band.nx * depth + tx * across
+			val y = band.y + band.ny * depth + ty * across
+			if (covered(canvas, x, y, clearance) || out.any { hypot(it.first - x, it.second - y) < clearance }) return
+			out += x.toFloat() to y.toFloat()
+		}
+		for (row in 0..segments) {
+			val offset = -1.0 + 2.0 * row / segments
+			val depth = offset * band.half
+			val crossings = ArrayList<Double>()
+			for (edge in edges) {
+				val a = (edge ushr 32).toInt()
+				val b = (edge and 0xffffffffL).toInt()
+				val sa = s[a] - depth
+				val sb = s[b] - depth
+				if (sa == sb || sa * sb > 0.0) continue
+				crossings += t[a] + (t[b] - t[a]) * (sa / (sa - sb))
+			}
+			if (crossings.size < 2) continue
+			crossings.sort()
+			val width = crossings.last() - crossings.first()
+			// Five rows and three transverse intervals leave the contact gradient inside
+			// large triangles: even a smooth vertex field then produces faceted UV folds.
+			val spacing = maxOf(3.0, minOf(band.half * 2 / segments, width / (if (segments == 4) 3.0 else 6.0)), width / MAX_ROW_POINTS)
+			val clearance = if (segments == 4) minOf(spacing * .45, band.half * .2) else minOf(spacing * .4, band.half * .05)
+			for (across in crossings) add(depth, across, clearance)
+			// Crossings pair up as the row enters and leaves the silhouette; fill only inside each span.
+			for (k in 0 until crossings.size - 1 step 2) {
+				val gap = crossings[k + 1] - crossings[k]
+				val steps = (gap / spacing).toInt()
+				for (j in 1 until steps + 1) {
+					val across = crossings[k] + gap * j / (steps + 1)
+					add(depth, across, clearance)
+				}
+			}
+		}
+		return out
+	}
+
+	private fun covered(canvas: FloatArray, x: Double, y: Double, clearance: Double): Boolean {
+		for (i in 0 until canvas.size / 2) {
+			if (hypot(canvas[i * 2] - x, canvas[i * 2 + 1] - y) < clearance) return true
+		}
+		return false
+	}
+}

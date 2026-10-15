@@ -1,0 +1,436 @@
+package io.github.psd2live.core
+
+import kotlinx.serialization.json.*
+import kotlin.math.abs
+import org.umamo.edit.withParameterCreated
+import org.umamo.edit.withDrawableAlphaBlendMode
+import org.umamo.edit.withParameterDeleted
+import org.umamo.edit.withParameterRange
+import org.umamo.edit.ParameterPanelRef
+import org.umamo.edit.withDeformerDeleted
+import org.umamo.edit.withDeformerMoved
+import org.umamo.edit.withDeformerMultiplyColor
+import org.umamo.edit.withDeformerName
+import org.umamo.edit.withDeformerOpacity
+import org.umamo.edit.withDeformerPart
+import org.umamo.edit.withDeformerQuadTransform
+import org.umamo.edit.withDeformerScreenColor
+import org.umamo.edit.withDeformerSelectable
+import org.umamo.edit.withDrawableBlendMode
+import org.umamo.edit.withDrawableCulling
+import org.umamo.edit.withDrawableDrawOrder
+import org.umamo.edit.withDrawableInvertMask
+import org.umamo.edit.withDrawableMaskedBy
+import org.umamo.edit.withDrawableMultiplyColor
+import org.umamo.edit.withDrawableName
+import org.umamo.edit.withDrawableOpacity
+import org.umamo.edit.withDrawableScreenColor
+import org.umamo.edit.withDrawableSelectable
+import org.umamo.edit.withDrawableUserData
+import org.umamo.edit.withOrgChildMoved
+import org.umamo.edit.withParameterGroupCreated
+import org.umamo.edit.withParameterGroupDeleted
+import org.umamo.edit.withParameterGroupLabelColor
+import org.umamo.edit.withParameterGroupOpen
+import org.umamo.edit.withParameterGroupRenamed
+import org.umamo.edit.withParameterLink
+import org.umamo.edit.withParameterPanelNodeMoved
+import org.umamo.edit.withParameterRenamed
+import org.umamo.edit.withPartName
+import org.umamo.edit.withPartSelectable
+import org.umamo.runtime.model.*
+
+/** Ordered document edits. Stored verbatim in history and replayed after rig construction. */
+object RigStructureEdits {
+    fun apply(model: PuppetModel, edits: List<JsonObject>): PuppetModel = edits.fold(model, ::applyOne)
+
+    /** A recorded mesh edit may outlive a temporarily removed source layer. Keep it for later rebuilds. */
+    fun replay(model: PuppetModel, edits: List<JsonObject>): PuppetModel = edits.fold(model) { current, edit ->
+        val missingMesh = edit["kind"]?.jsonPrimitive?.contentOrNull == "mesh" &&
+            edit["id"]?.jsonPrimitive?.contentOrNull?.let { id -> current.drawables.none { it.id.raw == id } } == true
+        if (missingMesh || vanishedParent(current, edit)) current else applyOne(current, edit)
+    }
+
+    /**
+     * A recorded bind or deformer move into a deformer [model] lacks keeps the object where it is. Every deformer the
+     * journal made before the edit exists again when it replays, so only the base generation can have dropped it: a
+     * generation setting changed after the edit (an enabled skeleton drops the arm hang warps). New edits go through
+     * [apply] and still fail on a missing parent.
+     */
+    private fun vanishedParent(model: PuppetModel, edit: JsonObject): Boolean {
+        val action = edit["action"]?.jsonPrimitive?.contentOrNull
+        val kind = edit["kind"]?.jsonPrimitive?.contentOrNull
+        if (!(action == "bind" && kind == "mesh" || action == "move" && (kind == "warp" || kind == "rotation"))) return false
+        val parent = edit["parent_id"]?.jsonPrimitive?.contentOrNull ?: return false
+        return model.deformers.none { it.id.raw == parent }
+    }
+
+    private fun applyOne(model: PuppetModel, edit: JsonObject): PuppetModel {
+        val action = edit.string("action")
+        if(action == "create_warp") return RigWarpEdit.fromJson(JsonObject(edit - "action")).applyTo(model)
+        val kind = edit.string("kind")
+        if (kind == "parameter" || kind == "param_group") {
+            return applyParameterPanel(model, action, kind, edit)
+        }
+        val id = edit.string("id")
+        require(kind in setOf("mesh", "warp", "rotation", "part")) { "Expected mesh, warp, rotation or part" }
+        val allowed = when (action) {
+            "rename" -> setOf("name")
+            "visibility" -> setOf("visible")
+            "move" -> setOf("parent_id", "before_id", "before_kind", "space")
+            "bind" -> setOf("parent_id", "space")
+            "static" -> setOf("opacity", "draw_order", "multiply_color", "screen_color", "blend_mode", "alpha_blend", "masked_by", "invert_mask", "culling", "selectable", "quad", "user_data") + PartStatics.keys
+            // A deformer's organizational part. Distinct from `move`, which walks the deformer parent
+            // chain: this is only the Parts-panel membership, and meshes use `move` instead because they
+            // are org children in a way a deformer is not.
+            "part" -> setOf("part_id")
+            "delete" -> emptySet()
+            else -> error("Unknown structure action: $action")
+        }
+        require((edit.keys - allowed - setOf("action", "kind", "id")).isEmpty()) { "Unexpected field for $action" }
+        val mesh = model.drawables.singleOrNull { it.id.raw == id }
+        val part = model.parts.singleOrNull { it.id.raw == id }
+        val deformer = model.deformers.singleOrNull { it.id.raw == id }
+        require(when(kind) {
+            "mesh" -> mesh != null; "part" -> part != null
+            "warp" -> deformer is Deformer.Warp; else -> deformer is Deformer.Rotation
+        }) { "Object not found: $kind $id" }
+        fun parent(): String? {
+            require("parent_id" in edit) { "Specify parent_id; null means root" }
+            return edit["parent_id"]?.jsonPrimitive?.contentOrNull
+        }
+        return when(action) {
+            "delete" -> {
+                require(kind in setOf("warp", "rotation")) { "Only a deformer can be deleted via structure delete" }
+                model.withDeformerDeleted(deformer!!.id)
+            }
+            "rename" -> {
+                val name = edit.string("name").trim()
+                when(kind) {
+                    "mesh" -> model.withDrawableName(mesh!!.id, name)
+                    "part" -> model.withPartName(part!!.id, name)
+                    else -> model.withDeformerName(deformer!!.id, name)
+                }
+            }
+            // The values a channel track falls back to when it keys nothing. Writing one never touches the
+            // track, so this is a plain overwrite of the model field — the same edit the inspector's own
+            // helpers made directly, now recorded in the document so it survives a rebuild and a reload.
+            "static" -> {
+                var next = model
+                edit["opacity"]?.jsonPrimitive?.floatOrNull?.let { value ->
+                    require(kind != "part") { "A part has no opacity of its own" }
+                    next = if (kind == "mesh") next.withDrawableOpacity(mesh!!.id, value)
+                           else next.withDeformerOpacity(deformer!!.id, value)
+                }
+                edit["draw_order"]?.jsonPrimitive?.floatOrNull?.let { value ->
+                    require(kind == "mesh") { "Draw order belongs to a mesh; parts order through move" }
+                    next = next.withDrawableDrawOrder(mesh!!.id, value)
+                }
+                edit["multiply_color"]?.jsonArray?.let { value ->
+                    val color = value.toColorRgb("multiply_color")
+                    next = if (kind == "mesh") next.withDrawableMultiplyColor(mesh!!.id, color)
+                           else next.withDeformerMultiplyColor(deformer!!.id, color)
+                }
+                edit["screen_color"]?.jsonArray?.let { value ->
+                    val color = value.toColorRgb("screen_color")
+                    next = if (kind == "mesh") next.withDrawableScreenColor(mesh!!.id, color)
+                           else next.withDeformerScreenColor(deformer!!.id, color)
+                }
+                edit["blend_mode"]?.jsonPrimitive?.contentOrNull?.let { value ->
+                    require(kind == "mesh") { "Blend mode belongs to a mesh" }
+                    val mode = BlendMode.entries.firstOrNull { it.name.equals(value, ignoreCase = true) }
+                        ?: throw IllegalArgumentException("Unknown blend mode: $value")
+                    next = next.withDrawableBlendMode(mesh!!.id, mode)
+                }
+                // Layerloom patch: the 5.3 alpha blend (Over, Atop, Out, Conjoint, Disjoint).
+                edit["alpha_blend"]?.jsonPrimitive?.contentOrNull?.let { value ->
+                    require(kind == "mesh") { "Alpha blend belongs to a mesh" }
+                    val mode = org.umamo.runtime.model.AlphaBlendMode.entries.firstOrNull { it.name.equals(value, ignoreCase = true) }
+                        ?: throw IllegalArgumentException("Unknown alpha blend: $value")
+                    next = next.withDrawableAlphaBlendMode(mesh!!.id, mode)
+                }
+                edit["masked_by"]?.jsonArray?.let { value ->
+                    require(kind == "mesh") { "Only a mesh is masked" }
+                    next = next.withDrawableMaskedBy(mesh!!.id, value.map { DrawableId(it.jsonPrimitive.content) })
+                }
+                edit["invert_mask"]?.jsonPrimitive?.booleanOrNull?.let { value ->
+                    require(kind == "mesh") { "Only a mesh is masked" }
+                    next = next.withDrawableInvertMask(mesh!!.id, value)
+                }
+                edit["culling"]?.jsonPrimitive?.booleanOrNull?.let { value ->
+                    require(kind == "mesh") { "Culling belongs to a mesh" }
+                    next = next.withDrawableCulling(mesh!!.id, value)
+                }
+                edit["user_data"]?.jsonPrimitive?.contentOrNull?.let { value ->
+                    require(kind == "mesh") { "User data belongs to a mesh" }
+                    next = next.withDrawableUserData(mesh!!.id, value)
+                }
+                edit["selectable"]?.jsonPrimitive?.booleanOrNull?.let { value ->
+                    next = when (kind) {
+                        "mesh" -> next.withDrawableSelectable(mesh!!.id, value)
+                        "part" -> next.withPartSelectable(part!!.id, value)
+                        else -> next.withDeformerSelectable(deformer!!.id, value)
+                    }
+                }
+                edit["quad"]?.jsonPrimitive?.booleanOrNull?.let { value ->
+                    require(kind == "warp") { "Quad transform belongs to a warp" }
+                    next = next.withDeformerQuadTransform(deformer!!.id, value)
+                }
+                if (edit.keys.any { it in PartStatics.keys }) {
+                    require(kind == "part") { "Group mode and offscreen settings belong to a part" }
+                    next = PartStatics.apply(next, part!!.id, edit)
+                }
+                next
+            }
+            "part" -> {
+                require(kind in setOf("warp", "rotation")) { "A mesh moves through the org tree, not into a part" }
+                val partId = edit["part_id"]?.jsonPrimitive?.contentOrNull?.let(::PartId)
+                require(partId == null || model.parts.any { it.id == partId }) { "Part not found: $partId" }
+                model.withDeformerPart(deformer!!.id, partId)
+            }
+            "visibility" -> {
+                val visible = edit.getValue("visible").jsonPrimitive.boolean
+                require(kind in setOf("mesh", "part")) { "Visibility belongs to mesh or part" }
+                if(kind == "mesh") model.copy(drawables = model.drawables.map { if(it.id == mesh!!.id) it.copy(isVisible = visible) else it })
+                else model.copy(parts = model.parts.map { if(it.id == part!!.id) it.copy(isVisible = visible) else it })
+            }
+            "bind" -> {
+                require(kind == "mesh") { "bind changes a mesh's deformer; use move for deformers" }
+                val space = edit["space"]?.jsonPrimitive?.contentOrNull
+                require(space == "local" || space == "canvas") {
+                    "Specify space=local (retains local geometry and keys, changes inherited appearance) or space=canvas (keeps the mesh where it shows at the default pose)"
+                }
+                val p = parent()?.let(::DeformerId)
+                require(p == null || model.deformers.any { it.id == p }) { "Parent deformer not found" }
+                val rebound = model.copy(drawables = model.drawables.map { if(it.id == mesh!!.id) it.copy(parentDeformerId = p) else it }).withDerivedRenderRoot()
+                if (space == "canvas" && mesh!!.parentDeformerId != p) carriedToParent(model, rebound, mesh.id) else rebound
+            }
+            else -> {
+                val p = parent()
+                val before = edit["before_id"]?.jsonPrimitive?.contentOrNull
+                require(before != id) { "Cannot insert an object before itself" }
+                if(kind in setOf("warp", "rotation")) {
+                    require(edit["space"]?.jsonPrimitive?.content == "local") { "Specify space=local: inherited appearance changes" }
+                    val parentId = p?.let(::DeformerId)
+                    require(parentId == null || model.deformers.any { it.id == parentId }) { "Parent deformer not found" }
+                    require(parentId == null || parentId !in model.deformerSelfAndDescendants(deformer!!.id)) { "Deformer cycle" }
+                    require(before == null || model.deformers.any { it.id.raw == before && it.parent == parentId }) { "before_id must be a destination sibling" }
+                    model.withDeformerMoved(deformer!!.id, parentId, before?.let(::DeformerId)).withDerivedRenderRoot()
+                } else {
+                    require("space" !in edit) { "Organizational moves do not change deformation space" }
+                    val parentId = p?.let(::PartId)
+                    require(parentId == null || model.parts.any { it.id == parentId }) { "Parent part not found" }
+                    require(kind != "part" || parentId == null || parentId !in model.partSelfAndDescendants(part!!.id)) { "Part cycle" }
+                    val child = if(kind == "mesh") OrgChild.Drawable(mesh!!.id) else OrgChild.Part(part!!.id)
+                    val siblings = parentId?.let { model.partById.getValue(it).children } ?: model.rootChildren
+                    val next = before?.let { b ->
+                        when(edit.string("before_kind")) {
+                            "mesh" -> OrgChild.Drawable(DrawableId(b))
+                            "part" -> OrgChild.Part(PartId(b))
+                            else -> error("before_kind must be mesh or part")
+                        }.also { require(it in siblings) { "before_id must be a destination sibling" } }
+                    }
+                    model.withOrgChildMoved(child, parentId, next)
+                }
+            }
+        }
+    }
+
+    /**
+     * [after] - [before] with mesh [id] hung under another deformer - with the mesh's rest positions, keyforms and
+     * blend shapes carried into the new parent's space, so it shows where it did at the default pose. Each shape is
+     * moved through the old parent onto the canvas and back through the new one; a keyform keeps the canvas offset it
+     * had from the rest shape there. A parent that cannot reproduce the rest shape (a hidden ancestor, a folded
+     * lattice) refuses the bind rather than place the mesh somewhere else.
+     */
+    fun carriedToParent(before: PuppetModel, after: PuppetModel, id: DrawableId): PuppetModel {
+        val drawable = after.drawables.single { it.id == id }
+        val mesh = requireNotNull(drawable.mesh) { "Mesh has no geometry: ${id.raw}" }
+        val from = requireNotNull(org.umamo.render.eval.drawableSpaceMapping(before, emptyMap(), id)) { "The current parent cannot place the mesh" }
+        val to = requireNotNull(org.umamo.render.eval.drawableSpaceMapping(after, emptyMap(), id)) { "The new parent cannot place the mesh" }
+        val all = (0 until mesh.vertexCount).toSet()
+        fun carried(local: FloatArray, seed: FloatArray): FloatArray {
+            val world = from.localToWorld(local)
+            return to.worldToLocalLinearized(world, seed, world, all).also { result ->
+                require(result.all(Float::isFinite)) { "The new parent cannot place the mesh" }
+            }
+        }
+        val rest = carried(mesh.positions, FloatArray(mesh.positions.size) { 0.5f })
+        val reached = to.localToWorld(rest); val shown = from.localToWorld(mesh.positions)
+        require(reached.indices.all { abs(reached[it] - shown[it]) < 0.05f }) { "The new parent cannot hold the mesh where it shows" }
+        fun delta(deltas: FloatArray): FloatArray {
+            if (deltas.all { it == 0f }) return FloatArray(deltas.size)
+            val moved = carried(FloatArray(deltas.size) { mesh.positions[it] + deltas[it] }, rest)
+            return FloatArray(deltas.size) { moved[it] - rest[it] }
+        }
+        val carriedDrawable = drawable.copy(
+            mesh = DrawableMesh(rest, mesh.uvs, mesh.indices),
+            geometryGrid = drawable.geometryGrid?.let { grid ->
+                KeyformGrid(grid.axes, grid.cells.map { cell -> KeyformCell(cell.coordinate, MeshDeltaForm(delta(cell.form.positionDeltas))) })
+            },
+            blendShapes = drawable.blendShapes.map { binding -> binding.copy(forms = binding.forms.map { form ->
+                form?.let { MeshForm(delta(it.positionDeltas), it.drawOrder, it.opacity, it.multiplyColor, it.screenColor) }
+            }) },
+        )
+        return after.copy(drawables = after.drawables.map { if (it.id == id) carriedDrawable else it })
+    }
+
+    /**
+     * Parameter-panel layout: folders, reorder / recategorize, and LINKED (combined) pairs.
+     * Same payload shape as org-tree structure edits so history / rebuild replay stays uniform.
+     */
+    private fun applyParameterPanel(model: PuppetModel, action: String, kind: String, edit: JsonObject): PuppetModel {
+        val id = edit.string("id")
+        val allowed = when (action) {
+            "rename" -> setOf("name")
+            "move" -> setOf("parent_id", "before_id", "before_kind")
+            "create" -> setOf("name", "parent_id", "before_id", "before_kind", "open", "min", "max", "default", "parameter_kind", "repeat")
+            "update" -> setOf("name", "min", "max", "default", "parameter_kind", "repeat")
+            "delete" -> emptySet()
+            "link" -> setOf("partner_id", "linked")
+            "open" -> setOf("open")
+            "color" -> setOf("label_type", "color")
+            else -> error("Unknown parameter-panel action: $action")
+        }
+        require((edit.keys - allowed - setOf("action", "kind", "id")).isEmpty()) { "Unexpected field for $action" }
+		fun parentId(): ParameterGroupId? {
+            require("parent_id" in edit) { "Specify parent_id; null means panel root" }
+            return edit["parent_id"]?.jsonPrimitive?.contentOrNull?.let(::ParameterGroupId)
+        }
+        fun beforeRef(): ParameterPanelRef? {
+            val beforeId = edit["before_id"]?.jsonPrimitive?.contentOrNull ?: return null
+            return when (edit.string("before_kind")) {
+                "parameter" -> ParameterPanelRef.Param(ParameterId(beforeId))
+                "param_group" -> ParameterPanelRef.Group(ParameterGroupId(beforeId))
+                else -> error("before_kind must be parameter or param_group")
+            }
+        }
+		if (kind == "parameter" && action in setOf("create", "update", "delete")) {
+            val parameterId = ParameterId(id)
+            require(id.isNotBlank()) { "Parameter ID is required" }
+            val existing = model.parameters.find { it.id == parameterId }
+            if (action == "delete") {
+                require(existing != null) { "Parameter not found: $id" }
+                return model.withParameterDeleted(parameterId)
+            }
+            require((existing == null) == (action == "create")) { "Parameter ID already exists or is missing: $id" }
+            val name = edit.string("name").trim()
+            val min = edit.getValue("min").jsonPrimitive.float
+            val max = edit.getValue("max").jsonPrimitive.float
+            val default = edit.getValue("default").jsonPrimitive.float
+            require(name.isNotEmpty()) { "Parameter name is required" }
+            require(min.isFinite() && max.isFinite() && default.isFinite() && min < max && default in min..max) {
+                "Use a finite range with minimum < maximum and default inside the range"
+            }
+            val parameterKind = edit["parameter_kind"]?.jsonPrimitive?.content?.let(ParameterKind::valueOf)
+                ?: existing?.kind ?: ParameterKind.NORMAL
+            val repeat = edit["repeat"]?.jsonPrimitive?.boolean ?: existing?.repeat ?: false
+            var next = if (action == "create") {
+				model.withParameterCreated(
+					parameterId,
+					name,
+					parameterKind,
+				)
+			} else {
+				model.withParameterRenamed(parameterId, name)
+			}
+			next = next.withParameterRange(parameterId, min, default, max)
+            next = next.copy(parameters = next.parameters.map { parameter ->
+                if (parameter.id == parameterId) parameter.copy(kind = parameterKind, repeat = repeat) else parameter
+            })
+			if (action == "create" && "parent_id" in edit) {
+				val parent = parentId()
+				require(parent == null || next.parameterTree.anyGroup(parent)) { "Parent folder not found: $parent" }
+				next = next.withParameterPanelNodeMoved(ParameterPanelRef.Param(parameterId), parent, beforeRef())
+			}
+			return next
+        }
+        return when (action) {
+            "create" -> {
+                require(kind == "param_group") { "Only a parameter folder can be created here" }
+                val name = edit.string("name")
+                val open = edit["open"]?.jsonPrimitive?.booleanOrNull ?: true
+                val parent = if ("parent_id" in edit) parentId() else null
+                require(parent == null || model.parameterTree.anyGroup(parent)) { "Parent folder not found: $parent" }
+                model.withParameterGroupCreated(
+                    id = ParameterGroupId(id),
+                    name = name,
+                    parentId = parent,
+                    before = beforeRef(),
+                    initiallyOpen = open,
+                )
+            }
+            "rename" -> {
+                val name = edit.string("name")
+                when (kind) {
+                    "parameter" -> model.withParameterRenamed(ParameterId(id), name)
+                    "param_group" -> model.withParameterGroupRenamed(ParameterGroupId(id), name)
+                    else -> error("rename requires parameter or param_group")
+                }
+            }
+            "delete" -> {
+                require(kind == "param_group") { "Only a parameter folder can be deleted here" }
+                model.withParameterGroupDeleted(ParameterGroupId(id))
+            }
+            "open" -> {
+                require(kind == "param_group") { "open belongs to a parameter folder" }
+                val open = edit.getValue("open").jsonPrimitive.boolean
+                model.withParameterGroupOpen(ParameterGroupId(id), open)
+            }
+            "color" -> {
+                require(kind == "param_group") { "color belongs to a parameter folder" }
+                val labelType = edit.string("label_type").uppercase()
+                val color = when (labelType) {
+                    "UNDEFINED", "NONE" -> ParameterLabelColor.None
+                    "CUSTOM" -> {
+                        val argb = edit.getValue("color").jsonPrimitive.int
+                        ParameterLabelColor.Custom(argb)
+                    }
+                    else -> {
+                        val kind = ParameterLabelColor.Preset.Kind.entries.firstOrNull { it.cmo3Name == labelType }
+                            ?: error("Unknown label_type: $labelType")
+                        ParameterLabelColor.Preset(kind)
+                    }
+                }
+                model.withParameterGroupLabelColor(ParameterGroupId(id), color)
+            }
+            "link" -> {
+                require(kind == "parameter") { "link belongs to a parameter" }
+                val partner = ParameterId(edit.string("partner_id"))
+                val linked = edit.getValue("linked").jsonPrimitive.boolean
+                model.withParameterLink(ParameterId(id), partner, linked)
+            }
+            "move" -> {
+                val node = when (kind) {
+                    "parameter" -> ParameterPanelRef.Param(ParameterId(id))
+                    "param_group" -> ParameterPanelRef.Group(ParameterGroupId(id))
+                    else -> error("move requires parameter or param_group")
+                }
+                val parent = parentId()
+                require(parent == null || model.parameterTree.anyGroup(parent)) { "Parent folder not found: $parent" }
+                model.withParameterPanelNodeMoved(node, parent, beforeRef())
+            }
+            else -> error("Unknown parameter-panel action: $action")
+        }
+    }
+
+    private fun List<ParameterNode>.anyGroup(id: ParameterGroupId): Boolean {
+        for (node in this) {
+            if (node is ParameterNode.Group) {
+                if (node.id == id || node.children.anyGroup(id)) return true
+            }
+        }
+        return false
+    }
+
+    private fun JsonObject.string(key: String): String = getValue(key).jsonPrimitive.content.also {
+        require(it.isNotBlank() && it.none(Char::isISOControl)) { "$key must be nonblank text" }
+    }
+
+    private fun JsonArray.toColorRgb(key: String): ColorRgb {
+        require(size == 3) { "$key must be [r, g, b]" }
+        val channels = map { it.jsonPrimitive.float }
+        require(channels.all { it in 0f..1f }) { "$key channels must be within 0..1" }
+        return ColorRgb(channels[0], channels[1], channels[2])
+    }
+}

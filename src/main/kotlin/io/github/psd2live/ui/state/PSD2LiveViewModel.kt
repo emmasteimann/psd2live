@@ -2622,9 +2622,9 @@ class PSD2LiveViewModel : AutoCloseable {
             previewRebuildJob?.cancel()
             captured to draft
         }
-        val result = if (settingsOnly) workspace.submitEditorSettingsDraft(expected.projectId, expected.state, intents,
+        val result = if (settingsOnly) workspace.submitEditorSettingsDraft(expected.projectId!!, expected.state, intents,
             summary ?: "Updated model presets", MutationAuthor.USER)
-        else workspace.submitEditorDraft(expected.projectId, expected.state, document, intents,
+        else workspace.submitEditorDraft(expected.projectId!!, expected.state, document, intents,
             summary ?: "Workspace changed in the editor", MutationAuthor.USER)
         synchronized(stateLock) {
             editorDraftCount++
@@ -6714,7 +6714,7 @@ class PSD2LiveViewModel : AutoCloseable {
 				progress = 0f, isIndeterminateProgress = true, errorMessage = null, exportSuccess = null,
 				statusText = tr("status.generating")) }
 			try {
-				val settled = workspace.settleEditorDrafts(expected.projectId, expected.state)
+				val settled = workspace.settleEditorDrafts(expected.projectId!!, expected.state)
 				val progress = io.github.psd2live.application.WorkspaceJobContext { fraction, message ->
 					if (currentExport()) updateState { it.copy(progress = fraction, isIndeterminateProgress = false, statusText = message) }
 				}

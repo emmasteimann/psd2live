@@ -25,6 +25,8 @@ class RigOutcome(
 	/** What the rig was built from, for saving it as a project. */
 	internal val source: org.umamo.format.art.SourceArt,
 	internal val config: PipelineConfig,
+	/** The rig as the editor holds it, for painting. */
+	internal val model: RigPreviewModel,
 )
 
 /** One parameter's slider: its id, display name and range. */
@@ -53,10 +55,14 @@ class RigPreview(model: RigPreviewModel) {
 fun rigPsd(name: String, bytes: ByteArray, progress: (String, Double) -> Unit): RigOutcome {
 	require(PsdReader.matches(bytes)) { "$name is not a Photoshop file" }
 	val started = RigFiles.nowSeconds()
-	val config = PipelineConfig(exportCmo3 = false)
-	val pipeline = PSD2LivePipeline()
 	progress("Reading the layers", 0.02)
-	val source = PsdReader.read(bytes)
+	return buildRig(name, PsdReader.read(bytes), PipelineConfig(exportCmo3 = false), started, progress)
+}
+
+/** Builds [source]'s rig with [config], writes its runtime files into Rigs/NAME and returns what was made. */
+internal fun buildRig(name: String, source: org.umamo.format.art.SourceArt, config: PipelineConfig, started: Double,
+	progress: (String, Double) -> Unit): RigOutcome {
+	val pipeline = PSD2LivePipeline()
 	val model = pipeline.buildPreview(source, config, ProgressListener { stage, fraction -> progress(stage, 0.04 + fraction * 0.8) })
 	progress("Writing the runtime files", 0.86)
 	val folder = RigFiles.folderFor(name)
@@ -64,7 +70,7 @@ fun rigPsd(name: String, bytes: ByteArray, progress: (String, Double) -> Unit): 
 	progress("Done", 1.0)
 	val puppet = model.rig.puppet
 	return RigOutcome(name, puppet.drawables.size, puppet.deformers.size, puppet.parameters.size, outcome.files.sorted(), folder,
-		outcome.warnings, RigFiles.nowSeconds() - started, RigPreview(model), source, config)
+		outcome.warnings, RigFiles.nowSeconds() - started, RigPreview(model), source, config, model)
 }
 
 /**
@@ -73,7 +79,8 @@ fun rigPsd(name: String, bytes: ByteArray, progress: (String, Double) -> Unit): 
  */
 suspend fun saveRigProject(outcome: RigOutcome): String {
 	val document = io.github.psd2live.project.WorkspaceDocument(outcome.source, emptyMap(), emptySet(), emptyMap(), emptyMap(),
-		io.github.psd2live.core.RigEditOverlay.Empty, io.github.psd2live.project.WorkspaceSettingsCodec.encode(outcome.config))
+		io.github.psd2live.core.RigEditOverlay.Empty, io.github.psd2live.project.WorkspaceSettingsCodec.encode(outcome.config),
+		generationSource = outcome.config.generationSource)
 	val revision = io.github.psd2live.project.WorkspaceRevisions.of(document)
 	val history = io.github.psd2live.history.WorkspaceHistoryTree(document, revision, revision)
 	val work = io.github.psd2live.project.Files.createTempDirectory("rig-save-")

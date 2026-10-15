@@ -51,6 +51,7 @@ private sealed interface RigState {
 	data object Idle : RigState
 	data class Rigging(val name: String, val stage: String, val fraction: Double) : RigState
 	data class Done(val outcome: RigOutcome) : RigState
+	data class Painting(val outcome: RigOutcome) : RigState
 	data class Failed(val name: String, val message: String) : RigState
 }
 
@@ -109,7 +110,8 @@ fun RigWorkspace(modifier: Modifier = Modifier) {
 				Spacer(Modifier.height(6.dp))
 				Text(s.stage, color = Muted, fontSize = 13.sp)
 			}
-			is RigState.Done -> RigResult(s.outcome)
+			is RigState.Done -> RigResult(s.outcome, onPaint = { state = RigState.Painting(s.outcome) })
+			is RigState.Painting -> PaintScreen(s.outcome, onApplied = { state = RigState.Done(it) }, onClose = { state = RigState.Done(s.outcome) })
 			is RigState.Failed -> Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp)) {
 				Text("Couldn't rig ${s.name}", color = Danger, fontSize = 16.sp, fontWeight = FontWeight.Bold)
 				Text(s.message, color = Text1, fontSize = 14.sp)
@@ -127,7 +129,7 @@ private fun Button(label: String, onClick: () -> Unit) {
 
 /** A rigged PSD: what was made and saved, and the rig drawn at the pose the sliders set. */
 @Composable
-private fun RigResult(o: RigOutcome) {
+private fun RigResult(o: RigOutcome, onPaint: () -> Unit) {
 	var values by remember(o) { mutableStateOf(o.preview.parameters.associate { it.id to it.default }) }
 	var saveStatus by remember(o) { mutableStateOf<String?>(null) }
 	val scope = rememberCoroutineScope()
@@ -155,6 +157,7 @@ private fun RigResult(o: RigOutcome) {
 					} catch (failure: Throwable) { "Couldn't save: ${failure.message ?: failure::class.simpleName}" }
 				}
 			}
+			Button("Paint a layer", onPaint)
 			saveStatus?.let { Text(it, color = Muted, fontSize = 13.sp) }
 		}
 		Spacer(Modifier.height(8.dp))

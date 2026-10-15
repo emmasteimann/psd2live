@@ -9,5 +9,6 @@ rootProject.name = "layerloom-ipad"
 includeBuild("..") {
 	dependencySubstitution {
 		substitute(module("io.github.psd2live:rigger")).using(project(":rigger"))
+		substitute(module("io.github.psd2live:editor")).using(project(":editor"))
 	}
 }

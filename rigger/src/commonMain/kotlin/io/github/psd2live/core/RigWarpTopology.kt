@@ -11,7 +11,7 @@ object RigWarpTopology {
     const val OP = "warp_topology"
 
     fun checkpoint() {
-        if (Thread.currentThread().isInterrupted) throw CancellationException("Warp edit cancelled")
+        if (currentThreadInterrupted()) throw CancellationException("Warp edit cancelled")
     }
 
     fun fingerprint(warp: Deformer.Warp): String {

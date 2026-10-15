@@ -1,5 +1,7 @@
 package io.github.psd2live.core
 
+import kotlin.jvm.JvmName
+
 import kotlin.math.*
 
 data class MouthColumn(

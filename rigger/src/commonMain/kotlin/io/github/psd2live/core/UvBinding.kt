@@ -141,7 +141,7 @@ class LayerTexture(
 
 		/** [layer]'s texture on [atlas] under the generator's layer space. */
 		fun packed(layer: ClassifiedLayer, placement: AtlasPlacement, atlas: PackedAtlas): LayerTexture =
-			packed(layer, placement, atlas.pages[placement.page].image.width, atlas.pages[placement.page].image.height)
+			packed(layer, placement, atlas.pages[placement.page].image.pixelWidth, atlas.pages[placement.page].image.pixelHeight)
 
 		/** [layer]'s texture on a page of [pageWidth] x [pageHeight], its offsets measured from its integer bounds. */
 		fun packed(layer: ClassifiedLayer, placement: AtlasPlacement, pageWidth: Int, pageHeight: Int): LayerTexture {

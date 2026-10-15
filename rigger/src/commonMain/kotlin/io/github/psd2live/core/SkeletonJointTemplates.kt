@@ -252,8 +252,8 @@ class SkeletonJointTemplates(
 		}
 		private data class Row(val angle: Double, val axial: Double, val coordinates: DoubleArray)
 		private val cages: Map<String, Map<Double, List<Row>>> by lazy {
-			checkNotNull(SkeletonJointTemplates::class.java.getResourceAsStream("/skinning/mhr-joints.tsv"))
-				.bufferedReader().useLines { lines -> lines.filter { it.isNotBlank() && !it.startsWith('#') }.map { line ->
+			rigResourceText("skinning/mhr-joints.tsv")
+				.lineSequence().let { lines -> lines.filter { it.isNotBlank() && !it.startsWith('#') }.map { line ->
 					val f = line.split('\t')
 					f[0] to Row(f[1].toDouble(), f[2].toDouble(), f.drop(5).map(String::toDouble).toDoubleArray())
 				}.toList().groupBy({ it.first }, { it.second }).mapValues { (_, rows) -> rows.groupBy { it.angle } } }

@@ -125,7 +125,7 @@ class PSD2LivePipeline {
 		val bindingKey: String by lazy {
 			val text = buildString {
 				atlas.placementByLayerId.toSortedMap().forEach { (layer, placement) -> append("|p:").append(layer).append('=').append(placement) }
-				atlas.pages.forEach { append("|page:").append(it.image.width).append('x').append(it.image.height) }
+				atlas.pages.forEach { append("|page:").append(it.image.pixelWidth).append('x').append(it.image.pixelHeight) }
 				analyses.textures.layers.forEach { layer -> val s = layer.source
 					append("|l:").append(s.id.raw).append(':').append(s.bounds).append(':').append(s.raster.width).append('x').append(s.raster.height)
 				}
@@ -183,8 +183,8 @@ class PSD2LivePipeline {
 		// and replay checkpoints keyed by it keep hitting. The geometry rig counts by identity: the rig builder's
 		// stage cache hands out the same instance whenever every stage input is unchanged, even when the generation
 		// config differs in what no stage reads (a journal entry), which misses the geometry cache.
-		val key = BoundBaseKey(geometry.rig, geometry.atlas.placementByLayerId, geometry.atlas.pages.map { it.image.width to it.image.height },
-			atlas.placementByLayerId, atlas.pages.map { it.image.width to it.image.height },
+		val key = BoundBaseKey(geometry.rig, geometry.atlas.placementByLayerId, geometry.atlas.pages.map { it.image.pixelWidth to it.image.pixelHeight },
+			atlas.placementByLayerId, atlas.pages.map { it.image.pixelWidth to it.image.pixelHeight },
 			analyses.textures.layers.map { layer -> val s = layer.source
 				listOf(s.id.raw, s.name, s.groupPath, s.visible, s.idIsStable, s.bounds, s.raster.width, s.raster.height) },
 			createdIds(config))

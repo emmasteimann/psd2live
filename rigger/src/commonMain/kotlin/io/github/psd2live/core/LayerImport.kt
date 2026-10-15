@@ -145,7 +145,7 @@ object LayerImport {
 			checkCancelled()
 			val src = ((minY + y) * image.width + minX) * 4
 			val dst = y * width * 4
-			System.arraycopy(rgba, src, cropped, dst, width * 4)
+			rgba.copyInto(cropped, dst, src, src + width * 4)
 		}
 		return RasterImage(width, height, cropped)
 	}
@@ -222,7 +222,7 @@ object LayerSizeBudget {
 		}
 		val density = max(rasterWidth / rect.width, rasterHeight / rect.height)
 		require(density <= MAX_DENSITY) {
-			"Layer density ${"%.1f".format(density)} pixels per canvas unit exceeds ${MAX_DENSITY.toInt()}; enlarge the rectangle or downscale the image"
+			"Layer density ${formatFixedRoot(density.toDouble(), 1)} pixels per canvas unit exceeds ${MAX_DENSITY.toInt()}; enlarge the rectangle or downscale the image"
 		}
 	}
 

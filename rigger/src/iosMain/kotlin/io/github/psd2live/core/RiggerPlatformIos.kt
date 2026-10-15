@@ -330,3 +330,28 @@ actual class Flight<T> actual constructor() {
 }
 
 actual fun runMeshTasks(tasks: List<() -> Unit>) { for (task in tasks) task() }
+
+actual object ImportedCmo3 {
+	private fun desktopOnly(): Nothing = throw UnsupportedOperationException("Projects imported from a .cmo3 open on the desktop")
+	actual fun analysis(source: org.umamo.format.art.SourceArt, config: PipelineConfig): PipelineAnalysis = desktopOnly()
+	actual fun baseRig(source: org.umamo.format.art.SourceArt, config: PipelineConfig): Pair<PackedAtlas, BuiltRig> = desktopOnly()
+	actual fun paintingPreview(pipeline: PSD2LivePipeline, source: org.umamo.format.art.SourceArt, config: PipelineConfig): RigPreviewModel = desktopOnly()
+	actual fun puppet(encoded: String): org.umamo.runtime.model.PuppetModel = desktopOnly()
+	actual fun bezierDivisions(encoded: String): Map<String, Pair<Int, Int>> = desktopOnly()
+}
+
+internal actual fun PSD2LivePipeline.exportCmo3(baseName: String, model: RigPreviewModel, warnings: MutableList<String>, write: (String, ByteArray) -> Unit) {
+	warnings += "CMO3: the .cmo3 export is on the desktop; this export has the moc3 runtime files"
+}
+
+actual fun systemProperty(name: String): String? = null
+
+actual fun processorCount(): Int = platform.Foundation.NSProcessInfo.processInfo.activeProcessorCount.toInt()
+
+actual fun currentThreadInterrupted(): Boolean = false
+
+actual fun rigResourceText(path: String): String = EmbeddedResources.text(path) ?: error("Missing rig resource: $path")
+
+/** The iPad upscales textures in the studio (Clean up / Upscale), not in the rigger. */
+actual fun prepareUpscaledTextures(layers: List<ClassifiedLayer>, config: TextureUpscaleConfig, progress: ProgressListener): Map<String, TextureFile> =
+	throw UnsupportedOperationException("Texture upscaling in the rigger is on the desktop; upscale in the studio on the iPad")

@@ -1,4 +1,5 @@
 package io.github.psd2live.core.legacy
+import io.github.psd2live.core.systemProperty
 import io.github.psd2live.core.ThreadLocal
 import io.github.psd2live.core.toSortedMap
 import io.github.psd2live.core.SoftReference
@@ -35,7 +36,7 @@ object ReplayCheckpoints {
 	const val CHAINS = 4
 
 	/** Off: every replay starts from the base model (tests compare against it; `-Dpsd2live.replayCheckpoints=false`). */
-	@Volatile var enabled: Boolean = System.getProperty("psd2live.replayCheckpoints") != "false"
+	@Volatile var enabled: Boolean = systemProperty("psd2live.replayCheckpoints") != "false"
 
 	/** The overlay part replayed before the journal, and what decides how the journal's structure edits split. */
 	data class Legacy(val parts: List<Any?>)

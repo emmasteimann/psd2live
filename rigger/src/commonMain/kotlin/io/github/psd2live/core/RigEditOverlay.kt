@@ -359,7 +359,7 @@ data class RigEditOverlay(
 			if (!StubTolerance.onlyStubs(model, command, stubs)) throw failure
 			ReplayState(model, state.notes + SupersededEntryNote(authoringJournal.indexOfFirst { it === command },
 				command["op"]?.jsonPrimitive?.contentOrNull.orEmpty(), StubTolerance.targets(model, command, stubs).sorted(),
-				failure.message ?: failure.javaClass.simpleName))
+				failure.message ?: failure::class.simpleName ?: failure.toString()))
 		}
 	}
 

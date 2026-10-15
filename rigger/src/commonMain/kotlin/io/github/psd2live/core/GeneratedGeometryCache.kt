@@ -25,7 +25,7 @@ class GeneratedGeometryCache {
 	class Entry(val atlas: PackedAtlas, val rig: BuiltRig)
 
 	private data class LayerKey(
-		val type: Class<*>, val id: String, val name: String, val groupPath: String, val kind: Any, val visible: Boolean,
+		val type: kotlin.reflect.KClass<*>, val id: String, val name: String, val groupPath: String, val kind: Any, val visible: Boolean,
 		val idIsStable: Boolean, val order: Int, val bounds: Any, val opacity: Float, val clipped: Boolean, val blend: Any,
 		val channelMask: Any, val width: Int, val height: Int, val digest: String,
 	)
@@ -45,12 +45,11 @@ class GeneratedGeometryCache {
 		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Key, SoftReference<Entry>>?) = size > CAPACITY - 1
 	}
 
-	@Synchronized
-	fun getOrPut(geometry: SourceArt, generationConfig: PipelineConfig, baselineConfig: PipelineConfig, build: () -> Entry): Entry {
+	fun getOrPut(geometry: SourceArt, generationConfig: PipelineConfig, baselineConfig: PipelineConfig, build: () -> Entry): Entry = synchronized(this) {
 		val key = Key(geometry.widthPx, geometry.heightPx,
 			geometry.groups.map { GroupKey(it.path, it.name, it.visible, it.opacity, it.clipped, it.blend, it.passThrough) },
 			geometry.layers.map { layer ->
-				LayerKey(layer.javaClass, layer.id.raw, layer.name, layer.groupPath, layer.kind, layer.visible, layer.idIsStable,
+				LayerKey(layer::class, layer.id.raw, layer.name, layer.groupPath, layer.kind, layer.visible, layer.idIsStable,
 					layer.order, layer.bounds, layer.opacity, layer.clipped, layer.blend, layer.channelMask,
 					layer.raster.width, layer.raster.height, digest(layer.raster.rgba))
 			},

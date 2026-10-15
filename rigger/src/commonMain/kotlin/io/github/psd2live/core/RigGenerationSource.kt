@@ -29,7 +29,7 @@ object RigGenerationSource {
         private class Key(val source: SourceArt, val reference: SourceArt?, val config: PipelineConfig, val stage: String) {
             override fun equals(other: Any?) = other is Key && source === other.source && reference === other.reference &&
                 stage == other.stage && config == other.config
-            override fun hashCode() = (System.identityHashCode(source) * 31 + System.identityHashCode(reference)) * 31 + stage.hashCode()
+            override fun hashCode() = (identityHash(source) * 31 + identityHash(reference)) * 31 + stage.hashCode()
         }
         private val entries = object : AccessOrderMap<Key, PipelineAnalysis>(8, 0.75f, true) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Key, PipelineAnalysis>?) = size > 4
@@ -292,14 +292,14 @@ object RigGenerationSource {
             fun slice(atlas: PackedAtlas, placement: AtlasPlacement, layer: ClassifiedLayer): LayerTexture {
                 val page = atlas.pages[placement.page]
                 return if (layer.source is CanvasDensityLayer || CanvasDensity.dense(layer.source))
-                    LayerTexture.packed(layer, placement, page.image.width, page.image.height)
-                else LayerTexture.packed(layer.source.bounds, placement, page.image.width, page.image.height)
+                    LayerTexture.packed(layer, placement, page.image.pixelWidth, page.image.pixelHeight)
+                else LayerTexture.packed(layer.source.bounds, placement, page.image.pixelWidth, page.image.pixelHeight)
             }
             val before = slice(from, old, oldLayers.getValue(layerId))
             val after = slice(to, next, newLayers.getValue(layerId))
             val sameAddress = old == next && oldBounds == newBounds &&
-                from.pages[old.page].image.width == to.pages[next.page].image.width &&
-                from.pages[old.page].image.height == to.pages[next.page].image.height
+                from.pages[old.page].image.pixelWidth == to.pages[next.page].image.pixelWidth &&
+                from.pages[old.page].image.pixelHeight == to.pages[next.page].image.pixelHeight
             val uvs = if (sameAddress) mesh.uvs else before.remap(mesh.uvs, after)
             pages[drawable.id.raw] = next.page
             drawable.copy(mesh = DrawableMesh(mesh.positions, uvs, mesh.indices), texturePage = next.page)
@@ -398,7 +398,7 @@ object RigGenerationSource {
         val dx = current.bounds.left - bounds.left; val dy = current.bounds.top - bounds.top
         val input = source.rgba
         for (y in 0 until source.height) {
-            if (Thread.currentThread().isInterrupted) throw InterruptedException()
+            checkInterrupted()
             var from = y * source.width * 4
             var to = ((y + dy) * bounds.width + dx) * 4
             for (x in 0 until source.width) {

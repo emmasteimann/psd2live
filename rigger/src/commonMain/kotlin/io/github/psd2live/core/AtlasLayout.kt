@@ -101,7 +101,7 @@ object AtlasLayout {
         progress: ProgressListener = ProgressListener { _, _ -> },
         previous: PackedAtlas? = null,
         arrangement: AtlasArrangement? = null,
-    ): PackedAtlas = packWithTextures(layers, budget, overrides, upscale, progress, previous, arrangement) { l, c -> TextureUpscale.prepare(l, c, progress) }
+    ): PackedAtlas = packWithTextures(layers, budget, overrides, upscale, progress, previous, arrangement) { l, c -> prepareUpscaledTextures(l, c, progress) }
 
     fun packWithTextures(
         layers: List<ClassifiedLayer>, requestedSize: Int, padding: Int,

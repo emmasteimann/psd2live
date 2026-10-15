@@ -216,3 +216,6 @@ internal actual fun platformLocalTextureRuntime(): TextureUpscaleConfig? {
         TextureUpscaleConfig(python = python, nunifDirectory = repo.toString(), modelDirectory = models.toString())
     else null
 }
+
+actual fun prepareUpscaledTextures(layers: List<ClassifiedLayer>, config: TextureUpscaleConfig, progress: ProgressListener): Map<String, TextureFile> =
+    TextureUpscale.prepare(layers, config, progress)

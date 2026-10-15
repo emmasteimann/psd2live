@@ -310,7 +310,7 @@ object SkeletonRig {
 			renderRoot = org.umamo.runtime.model.RenderGroup(null, org.umamo.runtime.model.DEFAULT_DRAW_ORDER, emptyList()),
 		)
 		return io.github.psd2live.format.compile.document.ContentHash.of(BAKE_VERSION, io.github.psd2live.targets.cubism.PuppetIr.toIr(read),
-			base.deformers.map { Triple(it.id.raw, it.parent?.raw, it.javaClass.simpleName) },
+			base.deformers.map { Triple(it.id.raw, it.parent?.raw, it::class.simpleName) },
 			base.drawables.map { it.id.raw to it.parentDeformerId?.raw }, spec.toJson(), frame,
 			lockedTopology.filter { DrawableId(it) in inputs.drawables }.sorted(), stance?.contentKey, io.github.psd2live.i18n.currentLanguageTag(),
 			// Only when there are any, so the key of every other bake stays what it was.
@@ -347,7 +347,7 @@ object SkeletonRig {
 			if (deformer.id in inputs.deformers) continue
 			val old = deformersBefore[deformer.id] ?: continue
 			if (deformer === old) continue
-			if (deformer.javaClass != old.javaClass || deformer != withParent(old, deformer.parent)) { narrow = false; break }
+			if (deformer::class != old::class || deformer != withParent(old, deformer.parent)) { narrow = false; break }
 			reparentedDeformers[deformer.id] = deformer.parent
 		}
 		// Every unread base deformer must survive the bake, or a rebase could not take it from the new base.
@@ -1617,7 +1617,7 @@ object SkeletonRig {
 		// accept almost any inverse rotation arc and shrink the proximal limb between its keys.
 		val sides = RigBuildProfile.stage("skeleton: skin fit") {
 			fittedSides(ranges, sampling, { batch -> prefetch(batch.map { (id, value) -> mapOf(id to value) }) },
-				if (parallelSamples) Runtime.getRuntime().availableProcessors() else 1) { id, value ->
+				if (parallelSamples) processorCount() else 1) { id, value ->
 				val deltas = solved(mapOf(id to value))
 				FloatArray(deltas.size).also { points ->
 					for (i in deltas.indices step 2) homeRest.apply(restBase[i] + deltas[i], restBase[i + 1] + deltas[i + 1], points, i)

@@ -233,3 +233,12 @@ actual fun runMeshTasks(tasks: List<() -> Unit>) {
 }
 
 actual typealias JavaRandom = java.util.Random
+
+actual fun systemProperty(name: String): String? = System.getProperty(name)
+
+actual fun processorCount(): Int = Runtime.getRuntime().availableProcessors()
+
+actual fun currentThreadInterrupted(): Boolean = Thread.currentThread().isInterrupted
+
+actual fun rigResourceText(path: String): String =
+	checkNotNull(PSD2LivePipeline::class.java.getResourceAsStream("/$path")) { "Missing rig resource: $path" }.use { it.readBytes().decodeToString() }

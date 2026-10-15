@@ -46,7 +46,7 @@ class RigStageCache {
 
 	companion object {
 		/** Off: every stage runs, as before stages were cached (`-Dpsd2live.rigStages=false`; the measurement tools compare both). */
-		@Volatile var enabled: Boolean = System.getProperty("psd2live.rigStages") != "false"
+		@Volatile var enabled: Boolean = systemProperty("psd2live.rigStages") != "false"
 
 		const val FOOTPRINT = "footprint"
 		const val DEFORMERS = "deformers"

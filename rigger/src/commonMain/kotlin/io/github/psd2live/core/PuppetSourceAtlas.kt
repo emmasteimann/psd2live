@@ -26,7 +26,7 @@ object PuppetSourceAtlas {
 		sourceIdRaw: String = SOURCE_ID_RAW,
 	): Pair<PuppetAtlas, List<ArtSource>> {
 		val (puppetAtlas, sources) = build(analysis, atlas.placementByLayerId, sourceName, sourceIdRaw)
-		return puppetAtlas.copy(pages = atlas.pages.map { page -> AtlasPage(page.image.width, page.image.height) }) to sources
+		return puppetAtlas.copy(pages = atlas.pages.map { page -> AtlasPage(page.image.pixelWidth, page.image.pixelHeight) }) to sources
 	}
 
 	/**

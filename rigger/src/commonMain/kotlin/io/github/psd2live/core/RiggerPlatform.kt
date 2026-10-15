@@ -195,3 +195,21 @@ fun roundSignificant(value: Double, digits: Int): Double {
 	val text = "0." + kept.concatToString() + "E" + decimalAt
 	return (if (value < 0) "-$text" else text).toDouble()
 }
+
+/** A JVM system property (debug switches); none on the iPad. */
+expect fun systemProperty(name: String): String?
+
+/** How many processors work can spread over. */
+expect fun processorCount(): Int
+
+/** Whether the current job was asked to stop (a JVM thread interrupt); never on the iPad. */
+expect fun currentThreadInterrupted(): Boolean
+
+/** A text resource the rigger ships ("skinning/mhr-joints.tsv"): the classpath on the desktop, embedded on the iPad. */
+expect fun rigResourceText(path: String): String
+
+/** The .cmo3 (and .can3) export with its read-back checks: the desktop's (umamo's .cmo3 writer); noted as skipped on the iPad. */
+internal expect fun PSD2LivePipeline.exportCmo3(baseName: String, model: RigPreviewModel, warnings: MutableList<String>, write: (String, ByteArray) -> Unit)
+
+/** Upscaled textures for [layers] ([AtlasLayout] with a texture scale above 1): the desktop's local runtime (TextureUpscale). */
+expect fun prepareUpscaledTextures(layers: List<ClassifiedLayer>, config: TextureUpscaleConfig, progress: ProgressListener): Map<String, TextureFile>

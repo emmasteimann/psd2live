@@ -8,6 +8,10 @@ import org.umamo.format.psd.PsdReader
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import org.umamo.interop.cmo3.Cmo3Import
+import org.umamo.format.cmo3.model.gen.CDeformerSourceSet
+import org.umamo.format.cmo3.model.gen.CWarpDeformerSource
+import org.umamo.format.cmo3.model.gen.CWarpDeformerBezierExtension
+import org.umamo.format.cmo3.type.CArrayList
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
@@ -80,8 +84,7 @@ private fun writeContained(root: Path, relativeName: String, bytes: ByteArray): 
 	return ExportedFile(target, bytes.size.toLong())
 }
 
-/** The .cmo3 (and .can3) export with its read-back checks (umamo's .cmo3 writer is the desktop's). */
-internal fun PSD2LivePipeline.exportCmo3(baseName: String, model: RigPreviewModel, warnings: MutableList<String>, write: (String, ByteArray) -> Unit) {
+internal actual fun PSD2LivePipeline.exportCmo3(baseName: String, model: RigPreviewModel, warnings: MutableList<String>, write: (String, ByteArray) -> Unit) {
 	val (analysis, atlas, rig, config) = model
 val ir = RigIrCompiler.compile(analysis, atlas, rig, config, tileArt = true)
 val cmo3 = io.github.psd2live.targets.cubism.Cmo3Target { BezierWarp.configureEditor(it, config.rigEdits) }
@@ -115,15 +118,40 @@ fun LayerloomJob.Companion.besidePsd(psd: Path): Path? = psd.resolveSibling(psd.
 
 fun LayerloomJob.Companion.read(path: Path): LayerloomJob = parse(Json.parseToJsonElement(Files.readString(path)) as JsonObject)
 
-/**
- * Projects imported from a Cubism `.cmo3` (config.rigEdits.importedCmo3), as the rigger sees them: reading a `.cmo3` is
- * the desktop's (Cmo3ModelImport over umamo's `.cmo3` reader). It becomes an expect/actual pair (the iPad saying it
- * opens generated projects only) when the pipeline moves to shared code.
- */
-object ImportedCmo3 {
-	fun analysis(source: org.umamo.format.art.SourceArt, config: PipelineConfig): PipelineAnalysis = Cmo3ModelImport.analysis(source, config)
-	fun baseRig(source: org.umamo.format.art.SourceArt, config: PipelineConfig): Pair<PackedAtlas, BuiltRig> = Cmo3ModelImport.baseRig(source, config)
-	fun paintingPreview(pipeline: PSD2LivePipeline, source: org.umamo.format.art.SourceArt, config: PipelineConfig): RigPreviewModel =
+actual object ImportedCmo3 {
+	actual fun analysis(source: org.umamo.format.art.SourceArt, config: PipelineConfig): PipelineAnalysis = Cmo3ModelImport.analysis(source, config)
+	actual fun baseRig(source: org.umamo.format.art.SourceArt, config: PipelineConfig): Pair<PackedAtlas, BuiltRig> = Cmo3ModelImport.baseRig(source, config)
+	actual fun paintingPreview(pipeline: PSD2LivePipeline, source: org.umamo.format.art.SourceArt, config: PipelineConfig): RigPreviewModel =
 		Cmo3ModelImport.paintingPreview(pipeline, source, config)
-	fun puppet(encoded: String): org.umamo.runtime.model.PuppetModel = Cmo3ModelImport.decode(encoded).puppet
+	actual fun puppet(encoded: String): org.umamo.runtime.model.PuppetModel = Cmo3ModelImport.decode(encoded).puppet
+	actual fun bezierDivisions(encoded: String): Map<String, Pair<Int, Int>> {
+		val model = Cmo3.read(base64Decode(encoded)).root as CModelSource
+		val sources = Cmo3Import.elementsOf((model.deformerSourceSet as? org.umamo.format.cmo3.model.gen.CDeformerSourceSet)?._sources)
+			.filterIsInstance<org.umamo.format.cmo3.model.gen.CWarpDeformerSource>()
+		return sources.mapNotNull { source ->
+			val key = Cmo3Import.idStrOf(source.id) ?: return@mapNotNull null
+			val extension = Cmo3Import.elementsOf(source._extensions).filterIsInstance<org.umamo.format.cmo3.model.gen.CWarpDeformerBezierExtension>().lastOrNull()
+				?: return@mapNotNull null
+			if (extension.bezierRow !in 1..16 || extension.bezierCol !in 1..16) null else key to (extension.bezierRow to extension.bezierCol)
+		}.toMap()
+	}
+}
+
+/** The editable Bezier divisions written into a .cmo3 model's warps (Cubism keeps them apart from the baked lattice). */
+fun BezierWarp.configureEditor(model: CModelSource, overlay: RigEditOverlay = RigEditOverlay.Empty) {
+    val sources = (model.deformerSourceSet as? CDeformerSourceSet)?._sources as? Iterable<*> ?: return
+    for (warp in sources.filterIsInstance<CWarpDeformerSource>()) {
+        val id = Cmo3Import.idStrOf(warp.id) ?: continue
+        val (rows, columns) = RigBezierJournal.divisions(overlay, id)
+        val extensions = CArrayList<Any?>()
+        (warp._extensions as? Iterable<*>)?.filterNot { it is CWarpDeformerBezierExtension }?.forEach { extensions.add(it) }
+        extensions.add(CWarpDeformerBezierExtension().apply {
+            guid = org.umamo.format.cmo3.model.identity.Guid("CExtensionGuid").apply { uuid = java.util.UUID.randomUUID().toString() }
+            _owner = warp
+            editLevel = 2
+            bezierCol = columns
+            bezierRow = rows
+        })
+        warp._extensions = extensions
+    }
 }

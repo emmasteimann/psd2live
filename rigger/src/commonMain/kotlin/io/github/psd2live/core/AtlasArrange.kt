@@ -438,7 +438,7 @@ object AtlasArrange {
 				val index = row + x / cell
 				val owned = footprint.bits[index] || grown?.get(index) == true
 				if (!owned && (rgba[(y * raster.width + x) * 4 + 3].toInt() and 0xff) < COVER_ALPHA) { x++; continue }
-				if (!owned) (grown ?: (footprint.bits.clone() as BitSet).also { grown = it }).set(index)
+				if (!owned) (grown ?: footprint.bits.copy().also { grown = it }).set(index)
 				x = (x / cell + 1) * cell
 			}
 		}

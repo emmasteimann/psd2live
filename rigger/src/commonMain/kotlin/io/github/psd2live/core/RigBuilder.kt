@@ -1620,7 +1620,7 @@ object RigBuilder {
 		// The assembled rig, the binding's and the skeleton's inputs and the rest of the result: equal to an earlier
 		// build's, that build's very instance comes back, so replay checkpoints keyed by it keep hitting.
 		val key = BoundKey(assembled, config.hairSimulationFront, config.hairSimulationBack, atlas.placementByLayerId,
-			atlas.pages.map { it.image.width to it.image.height }, inputAnalysis.layers.map(::bindingMeta),
+			atlas.pages.map { it.image.pixelWidth to it.image.pixelHeight }, inputAnalysis.layers.map(::bindingMeta),
 			classifiedByDrawable.entries.associate { it.key.raw to it.value.source.id.raw },
 			skeleton?.let { listOf(it, context.bodyFrame, context.stance.contentKey, SkeletonRig.clears, skeletonJournalInputs(config)) },
 			listOf(pageByDrawable, sourceBoundsByDrawable, layerIdByDrawable, warnings.toList(), faceCenterCanvas,
@@ -1653,7 +1653,7 @@ object RigBuilder {
 	/** A key part compared by identity: a stage output that later stages reuse while it is the same instance. */
 	private class Identity(val value: Any, val extra: Any? = null) {
 		override fun equals(other: Any?) = other is Identity && value === other.value && extra == other.extra
-		override fun hashCode() = System.identityHashCode(value) * 31 + (extra?.hashCode() ?: 0)
+		override fun hashCode() = identityHash(value) * 31 + (extra?.hashCode() ?: 0)
 	}
 
 	/** [buildChannels] under a key of what it reads. */
@@ -1877,7 +1877,7 @@ object RigBuilder {
 		val lips = unboundLips.map { lip ->
 			val lipPlacement = atlas.placementByLayerId.getValue(lip.layer.source.id.raw)
 			val lipPage = atlas.pages[lipPlacement.page].image
-			val texture = LayerTexture.packed(lip.layer, lipPlacement, lipPage.width, lipPage.height)
+			val texture = LayerTexture.packed(lip.layer, lipPlacement, lipPage.pixelWidth, lipPage.pixelHeight)
 			val unbound = requireNotNull(lip.drawable.mesh)
 			val mesh = DrawableMesh(unbound.positions, texture.bind(unbound.uvs), unbound.indices)
 			MouthLip(lip.drawable.copy(mesh = mesh, texturePage = lipPlacement.page), lip.ownerId, lip.layer, lip.path, lip.neutralBounds,

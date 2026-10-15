@@ -1,6 +1,7 @@
 @file:OptIn(kotlin.time.ExperimentalTime::class, kotlin.uuid.ExperimentalUuidApi::class)
 
 package io.github.psd2live.history
+import io.github.psd2live.core.synchronized
 
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -75,30 +76,23 @@ class WorkspaceHistoryTree<T>(
 		headId = root.id
 	}
 
-	@Synchronized
-	fun head(): WorkspaceHistorySelection<T> = storedById.getValue(headId).selection()
+	fun head(): WorkspaceHistorySelection<T> = synchronized(this) { storedById.getValue(headId).selection() }
 
-	@Synchronized
-	fun nodes(): List<WorkspaceHistoryNode> = storedById.values.map(Stored<T>::node)
+	fun nodes(): List<WorkspaceHistoryNode> = synchronized(this) { storedById.values.map(Stored<T>::node) }
 
-	@Synchronized
-	fun selections(): List<WorkspaceHistorySelection<T>> = capturedSelections
+	fun selections(): List<WorkspaceHistorySelection<T>> = synchronized(this) { capturedSelections }
 
-	@Synchronized
-	fun state(): WorkspaceHistoryState<T> = WorkspaceHistoryState(headId, capturedSelections)
+	fun state(): WorkspaceHistoryState<T> = synchronized(this) { WorkspaceHistoryState(headId, capturedSelections) }
 
-	@Synchronized
-	fun childrenOf(nodeId: String): List<WorkspaceHistoryNode> {
+	fun childrenOf(nodeId: String): List<WorkspaceHistoryNode> = synchronized(this) {
 		requireNode(nodeId)
 		return storedById.values.map(Stored<T>::node).filter { node -> node.parentId == nodeId }
 	}
 
 	/** Read an immutable historical snapshot without moving HEAD. */
-	@Synchronized
-	fun selectionAt(nodeId: String): WorkspaceHistorySelection<T> = requireNode(nodeId).selection()
+	fun selectionAt(nodeId: String): WorkspaceHistorySelection<T> = synchronized(this) { requireNode(nodeId).selection() }
 
 	/** Append a child of the current HEAD and atomically advance HEAD to it. */
-	@Synchronized
 	fun commit(
 		expectedHeadNodeId: String,
 		snapshot: T,
@@ -107,7 +101,7 @@ class WorkspaceHistoryTree<T>(
 		summary: String,
 		actor: String = "agent",
 		taskId: String? = null,
-	): WorkspaceHistorySelection<T> {
+	): WorkspaceHistorySelection<T> = synchronized(this) {
 		if (expectedHeadNodeId != headId) throw StaleWorkspaceHeadException(expectedHeadNodeId, headId)
 		require(revisionId.isNotBlank()) { "Revision ID must not be blank" }
 		require(snapshotHash.isNotBlank()) { "Snapshot hash must not be blank" }
@@ -131,8 +125,7 @@ class WorkspaceHistoryTree<T>(
 	}
 
 	/** Move HEAD to an existing snapshot without changing the tree. */
-	@Synchronized
-	fun checkout(nodeId: String): WorkspaceHistorySelection<T> {
+	fun checkout(nodeId: String): WorkspaceHistorySelection<T> = synchronized(this) {
 		val stored = requireNode(nodeId)
 		headId = nodeId
 		return stored.selection()

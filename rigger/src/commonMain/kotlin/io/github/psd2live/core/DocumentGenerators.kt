@@ -234,7 +234,7 @@ object GeneratorReuse {
 	private const val ENTRIES = 16
 
 	/** Off: every generator runs (`-Dpsd2live.replayCheckpoints=false` turns this and the replay checkpoints off). */
-	@Volatile var enabled: Boolean = System.getProperty("psd2live.replayCheckpoints") != "false"
+	@Volatile var enabled: Boolean = systemProperty("psd2live.replayCheckpoints") != "false"
 
 	private val hitCount = AtomicLong()
 	private val missCount = AtomicLong()

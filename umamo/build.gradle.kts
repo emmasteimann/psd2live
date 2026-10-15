@@ -1,29 +1,45 @@
 // Engine ported from Umamo (GPL-3): model, keyform evaluation, edit primitives, PSD/PNG/CMO3/MOC3
 // formats and their interop. It must not depend on the PSD2Live product code.
 plugins {
-	kotlin("jvm")
+	kotlin("multiplatform")
 	kotlin("plugin.serialization")
 }
 
+// Layerloom iPad plan (layerloom docs/IPAD-PLAN.md, phase 2): Kotlin Multiplatform, so the engine can compile for the
+// iPad as its code moves into common code. For now everything is JVM code, in its old folders (src/main, src/test),
+// and the desktop build sees the same module as before.
 kotlin {
 	jvmToolchain(21)
-	compilerOptions {
-		freeCompilerArgs.add("-Xno-optimize")
+	jvm {
+		compilerOptions {
+			freeCompilerArgs.add("-Xno-optimize")
+		}
 	}
-}
-
-dependencies {
-	implementation(kotlin("reflect"))
-	implementation("org.jdom:jdom:1.1.3")
-	implementation("com.squareup.okio:okio:3.17.0")
-	implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.8.0")
-	api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
-	api(platform("org.lwjgl:lwjgl-bom:3.4.2"))
-	api("org.lwjgl:lwjgl")
-	api("org.lwjgl:lwjgl-opengl")
-	testImplementation(kotlin("test"))
-	// MocDefaultColorsTest hands fresh models to the official Cubism Core, when PSD2LIVE_TEST_CUBISM_CORE names it.
-	testImplementation("net.java.dev.jna:jna:5.18.0")
+	sourceSets {
+		val jvmMain by getting {
+			kotlin.srcDir("src/main/kotlin")
+			resources.srcDir("src/main/resources")
+			dependencies {
+				implementation(kotlin("reflect"))
+				implementation("org.jdom:jdom:1.1.3")
+				implementation("com.squareup.okio:okio:3.17.0")
+				implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.8.0")
+				api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
+				api(project.dependencies.platform("org.lwjgl:lwjgl-bom:3.4.2"))
+				api("org.lwjgl:lwjgl")
+				api("org.lwjgl:lwjgl-opengl")
+			}
+		}
+		val jvmTest by getting {
+			kotlin.srcDir("src/test/kotlin")
+			resources.srcDir("src/test/resources")
+			dependencies {
+				implementation(kotlin("test"))
+				// MocDefaultColorsTest hands fresh models to the official Cubism Core, when PSD2LIVE_TEST_CUBISM_CORE names it.
+				implementation("net.java.dev.jna:jna:5.18.0")
+			}
+		}
+	}
 }
 
 tasks.withType<Test>().configureEach {
@@ -42,5 +58,5 @@ tasks.withType<Test>().configureEach {
 tasks.register("quickTest") {
 	group = "verification"
 	description = "Runs the engine tests."
-	dependsOn(tasks.test)
+	dependsOn("jvmTest")
 }

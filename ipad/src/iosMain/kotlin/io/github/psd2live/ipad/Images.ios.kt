@@ -33,3 +33,20 @@ actual fun io.github.psd2live.core.RigImage.toImageBitmap(maxEdge: Int): ImageBi
 	}
 	return Image.makeRaster(ImageInfo(w, h, ColorType.BGRA_8888, ColorAlphaType.UNPREMUL), bytes, w * 4).toComposeImageBitmap()
 }
+
+actual fun io.github.psd2live.core.RigImage.regionBitmap(x: Float, y: Float, width: Float, height: Float, outWidth: Int, outHeight: Int): ImageBitmap {
+	val w = maxOf(1, outWidth); val h = maxOf(1, outHeight)
+	val bytes = ByteArray(w * h * 4)
+	for (row in 0 until h) {
+		val sy = kotlin.math.floor(y + (row + 0.5f) * height / h).toInt()
+		if (sy !in 0 until this.height) continue
+		for (col in 0 until w) {
+			val sx = kotlin.math.floor(x + (col + 0.5f) * width / w).toInt()
+			if (sx !in 0 until this.width) continue
+			val p = argb[sy * this.width + sx]
+			val o = (row * w + col) * 4
+			bytes[o] = p.toByte(); bytes[o + 1] = (p ushr 8).toByte(); bytes[o + 2] = (p ushr 16).toByte(); bytes[o + 3] = (p ushr 24).toByte()
+		}
+	}
+	return Image.makeRaster(ImageInfo(w, h, ColorType.BGRA_8888, ColorAlphaType.UNPREMUL), bytes, w * 4).toComposeImageBitmap()
+}

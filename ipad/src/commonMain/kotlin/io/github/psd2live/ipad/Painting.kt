@@ -47,6 +47,9 @@ class LayerPainting(val outcome: RigOutcome, val layer: SourceLayer) {
 	fun beginStroke() { session.beginStroke(); stroking = true }
 
 	/** One drag segment, canvas units; [radius] is the brush's in canvas pixels. */
+	/** Drops the stroke in progress (a second finger landed): its pixels go back. */
+	fun cancelStroke() { if (stroking) { session.abandonStroke(); stroking = false } }
+
 	fun segment(x0: Float, y0: Float, x1: Float, y1: Float, radius: Float, hardness: Float, color: Int, opacity: Float, erase: Boolean) {
 		if (!stroking) beginStroke()
 		val tip = RasterPaintEngine.Tip(space.imageLength(radius), hardness)
@@ -62,6 +65,12 @@ class LayerPainting(val outcome: RigOutcome, val layer: SourceLayer) {
 		RasterPaintEngine.floodFill(image, px, py, color, tolerance, Rectangle(0, 0, image.width, image.height),
 			before = { session.willWrite(it) }, opacity = opacity)
 		session.recordStroke("Fill")
+	}
+
+	/** The layer's own pixel under canvas point ([x], [y]), 0 where it has none. */
+	fun pixelAt(x: Float, y: Float): Int {
+		val px = kotlin.math.floor(space.canvasToImageX(x)).toInt(); val py = kotlin.math.floor(space.canvasToImageY(y)).toInt()
+		return if (px in 0 until image.width && py in 0 until image.height) image.readArgb(px, py, 1, 1)[0] else 0
 	}
 
 	fun undo() { session.undo() }
@@ -88,6 +97,9 @@ class LayerPainting(val outcome: RigOutcome, val layer: SourceLayer) {
 		}
 	}
 }
+
+/** The block ([x], [y], [width], [height]) of [image], in its pixels, stretched to [outWidth] x [outHeight], nearest pixel. */
+expect fun RigImage.regionBitmap(x: Float, y: Float, width: Float, height: Float, outWidth: Int, outHeight: Int): androidx.compose.ui.graphics.ImageBitmap
 
 /** [image] as a Compose image at most [maxEdge] px on its longer side. */
 expect fun RigImage.toImageBitmap(maxEdge: Int): androidx.compose.ui.graphics.ImageBitmap

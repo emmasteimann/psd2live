@@ -43,6 +43,10 @@ class RigPreview(model: RigPreviewModel) {
 	private val lock = Any()
 	val parameters: List<PreviewParameter> = ir.parameters.map { PreviewParameter(it.id, it.name, it.min, it.max, it.default) }
 
+	/** The canvas region ([left], [top], [width], [height]) at [values], [outWidth] x [outHeight] pixels. */
+	fun render(values: Map<String, Float>, left: Float, top: Float, width: Float, height: Float, outWidth: Int, outHeight: Int): RasterImage =
+		io.github.psd2live.core.synchronized(lock) { session.render(values, 0f, FrameSpec(left, top, width, height, outWidth, outHeight), null) }
+
 	/** The whole canvas at [values] (missing parameters at their defaults), [size] px on its longer side. */
 	fun render(values: Map<String, Float>, size: Int): RasterImage =
 		io.github.psd2live.core.synchronized(lock) { session.render(values, 0f, FrameSpec.canvas(ir, size), null) }

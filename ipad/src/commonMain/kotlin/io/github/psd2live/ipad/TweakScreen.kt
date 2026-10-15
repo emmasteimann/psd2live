@@ -3,8 +3,6 @@ package io.github.psd2live.ipad
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -39,8 +37,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.input.pointer.PointerType
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
@@ -52,7 +48,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.hypot
 import kotlin.math.roundToInt
 
 private val Card = Color(0xFF1C1C27)
@@ -60,9 +55,6 @@ private val Text1 = Color(0xFFF2ECFD)
 private val Muted = Color(0xFF9793A7)
 private val Accent = Color(0xFFC9B7FF)
 private val Danger = Color(0xFFFF9A9A)
-
-/** Where the canvas sits on screen: [zoom] times the fitted scale, moved by [panX]/[panY] screen pixels. */
-private data class View(val zoom: Float = 1f, val panX: Float = 0f, val panY: Float = 0f)
 
 /**
  * Tweak the rig by hand at a pose: pose it with the sliders, then push what's under the pencil (or a finger) into
@@ -77,7 +69,7 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 	var radius by remember { mutableStateOf(40f) }
 	var strength by remember { mutableStateOf(0.6f) }
 	var smooth by remember { mutableStateOf(false) }
-	var view by remember { mutableStateOf(View()) }
+	var view by remember { mutableStateOf(CanvasView()) }
 	var tick by remember { mutableStateOf(0L) }
 	var image by remember { mutableStateOf<Pair<ImageBitmap, FloatArray>?>(null) }
 	var cursor by remember { mutableStateOf<Offset?>(null) }
@@ -90,12 +82,9 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 	fun bump() { scope.launch(Dispatchers.Main) { tick++ } }
 
 	// Canvas units to screen pixels, for the current box and view.
-	fun layout(w: Float, h: Float, v: View): FloatArray {
-		val fit = minOf(w / tweaking.canvasWidth, h / tweaking.canvasHeight)
-		val scale = fit * v.zoom
-		val left = (w - tweaking.canvasWidth * scale) / 2f + v.panX; val top = (h - tweaking.canvasHeight * scale) / 2f + v.panY
-		return floatArrayOf(scale, left, top)
-	}
+	fun layout(w: Float, h: Float, v: CanvasView): FloatArray = v.layout(w, h, tweaking.canvasWidth, tweaking.canvasHeight)
+	val viewNow = { view }
+	val setViewNow = { v: CanvasView -> view = v }
 
 	LaunchedEffect(tweaking) {
 		// Draws only what is on screen, so zooming in stays sharp: a quick draft (~0.35 MP) while the pencil or a slider
@@ -134,49 +123,29 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 				val density = LocalDensity.current
 				val w = with(density) { maxWidth.toPx() }; val h = with(density) { maxHeight.toPx() }
 				if (box != (w to h)) box = w to h
-				Canvas(Modifier.fillMaxSize().pointerInput(tweaking) {
-					awaitEachGesture {
-						val down = awaitFirstDown(requireUnconsumed = false)
-						if (saving != null) return@awaitEachGesture
-						val l = layout(w, h, view)
-						fun toCanvas(o: Offset) = Offset((o.x - l[1]) / l[0], (o.y - l[2]) / l[0])
-						val (r, s, sm) = settings
-						val start = toCanvas(down.position)
-						var stroking = false
-						val p0 = currentPose
-						scope.launch(worker) { stroking = tweaking.begin(p0, start.x, start.y, r, 0.5f, s, sm) }
-						cursor = down.position
-						var pinchFrom: Pair<Offset, Float>? = null
-						var viewAtPinch = view
-						var cancelled = false
-						while (true) {
-							val event = awaitPointerEvent()
-							val pressed = event.changes.filter { it.pressed }
-							if (pressed.isEmpty()) break
-							if (pressed.size >= 2 && down.type != PointerType.Stylus) {
-								// Two fingers: the stroke is dropped and the canvas pans and zooms.
-								if (!cancelled) { cancelled = true; cursor = null; scope.launch(worker) { tweaking.cancel(); bump() } }
-								val a = pressed[0].position; val b = pressed[1].position
-								val mid = Offset((a.x + b.x) / 2f, (a.y + b.y) / 2f); val dist = hypot(a.x - b.x, a.y - b.y).coerceAtLeast(1f)
-								val from = pinchFrom ?: (mid to dist).also { pinchFrom = it; viewAtPinch = view }
-								val zoom = (viewAtPinch.zoom * dist / from.second).coerceIn(0.5f, 16f)
-								// Keep the canvas point under the pinch centre under it.
-								val l0 = layout(w, h, viewAtPinch)
-								val cx = (from.first.x - l0[1]) / l0[0]; val cy = (from.first.y - l0[2]) / l0[0]
-								val l1 = layout(w, h, viewAtPinch.copy(zoom = zoom, panX = 0f, panY = 0f))
-								view = View(zoom, mid.x - (l1[1] + cx * l1[0]), mid.y - (l1[2] + cy * l1[0]))
-								event.changes.forEach { it.consume() }
-								continue
-							}
-							if (cancelled) { event.changes.forEach { it.consume() }; continue }
-							val change = event.changes.firstOrNull { it.id == down.id } ?: continue
-							val p = toCanvas(change.position)
-							cursor = change.position
-							scope.launch(worker) { if (stroking) { tweaking.step(p.x, p.y); bump() } }
-							change.consume()
+				Canvas(Modifier.fillMaxSize().canvasTouch(listOf(tweaking, w, h)) {
+					object : CanvasTouch {
+						private var stroking = false
+						private fun toCanvas(o: Offset): Offset { val l = layout(w, h, viewNow()); return Offset((o.x - l[1]) / l[0], (o.y - l[2]) / l[0]) }
+						override fun start(at: Offset, pressure: Float) {
+							if (saving != null) return
+							val (r, s, sm) = settings
+							val p = toCanvas(at); val p0 = currentPose
+							cursor = at
+							// The Pencil's pressure scales how hard this stroke pushes.
+							scope.launch(worker) { stroking = tweaking.begin(p0, p.x, p.y, r, 0.5f, (s * pressure).coerceIn(0.02f, 1f), sm) }
 						}
-						cursor = null
-						if (!cancelled) scope.launch(worker) { if (stroking) { tweaking.end(); bump() } }
+						override fun move(at: Offset, pressure: Float) {
+							val p = toCanvas(at); cursor = at
+							scope.launch(worker) { if (stroking) { tweaking.step(p.x, p.y); bump() } }
+						}
+						override fun end() { cursor = null; scope.launch(worker) { if (stroking) { stroking = false; tweaking.end(); bump() } } }
+						override fun cancel() { cursor = null; scope.launch(worker) { stroking = false; tweaking.cancel(); bump() } }
+						override fun undo() { scope.launch(worker) { tweaking.undo(); bump() } }
+						override fun redo() { scope.launch(worker) { tweaking.redo(); bump() } }
+						override fun view() = viewNow()
+						override fun setView(view: CanvasView) = setViewNow(view)
+						override fun layout(view: CanvasView) = view.layout(w, h, tweaking.canvasWidth, tweaking.canvasHeight)
 					}
 				}) {
 					image?.let { (bitmap, at) ->
@@ -196,7 +165,7 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 				Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
 					Chip("Push", !smooth) { smooth = false }
 					Chip("Smooth", smooth) { smooth = true }
-					Chip("Fit view", false) { view = View() }
+					Chip("Fit view", false) { view = CanvasView() }
 				}
 				Text("Brush size  ${(radius * 2).roundToInt()} px", color = Muted, fontSize = 12.sp)
 				Slider(radius, { radius = it }, valueRange = 4f..300f, colors = sliderColors(), modifier = Modifier.height(30.dp))

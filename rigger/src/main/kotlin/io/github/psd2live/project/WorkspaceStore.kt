@@ -56,16 +56,8 @@ import org.umamo.format.art.SourceLayer
 import org.umamo.format.art.SourceLayerKind
 import org.umamo.runtime.model.ParameterKind
 import java.io.ByteArrayOutputStream
-import java.nio.file.AccessDeniedException
-import java.nio.file.AtomicMoveNotSupportedException
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.StandardCopyOption
-import java.nio.file.StandardOpenOption
 import java.time.Instant
 import java.util.UUID
-import java.util.zip.GZIPInputStream
-import java.util.zip.GZIPOutputStream
 
 /**
  * Disk repository for Agent workspace state. History node, snapshot, raster and staged-asset files
@@ -237,7 +229,7 @@ class WorkspaceStore(
         val path = directory.toAbsolutePath().normalize()
         val pending = projectRoot(projectId).resolve(".pending").toAbsolutePath().normalize()
         require(path.parent == pending && path.fileName.toString().startsWith("asset-")) { "Invalid asset staging directory" }
-        if (Files.exists(path)) Files.walk(path).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) }
+        if (Files.exists(path)) Files.walk(path).use { paths -> paths.sorted(reverseOrder()).forEach(Files::deleteIfExists) }
     }
 
     /** Publish immutable files together, or remove only the files created by this attempt. */
@@ -1008,9 +1000,7 @@ class WorkspaceStore(
         if (rgba.isEmpty()) {
             val path = project.resolve("blobs/${fileKey(hash)}.rgba.gz")
             if (!isStored(path)) {
-                val bytes = ByteArrayOutputStream().use { out ->
-                    GZIPOutputStream(out).use { it.write(rgba) }; out.toByteArray()
-                }
+                val bytes = gzipBytes(rgba)
                 writeImmutable(path, bytes)
                 stored.add(path)
             }
@@ -1040,13 +1030,13 @@ class WorkspaceStore(
 		if (!Files.isRegularFile(source)) return false
 		Files.createDirectories(target.parent)
 		try { Files.createLink(target, source) }
-		catch (_: java.nio.file.FileAlreadyExistsException) {}
+		catch (_: FileAlreadyExistsException) {}
 		catch (_: Exception) {
 			val temporary = target.resolveSibling(".${target.fileName}.${UUID.randomUUID()}.tmp")
 			try {
 				ProjectArchive.copyKeepingTime(source, temporary)
 				try { Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE) }
-				catch (_: java.nio.file.FileAlreadyExistsException) {}
+				catch (_: FileAlreadyExistsException) {}
 				catch (_: AtomicMoveNotSupportedException) { if (!Files.exists(target)) Files.move(temporary, target) }
 			} finally { Files.deleteIfExists(temporary) }
 		}
@@ -1069,7 +1059,7 @@ class WorkspaceStore(
         }
         val file = project.resolve("blobs/${fileKey(hash)}.rgba.gz")
 		require(Files.isRegularFile(file)) { "Stored raster blob is missing: $hash" }
-		val rgba = GZIPInputStream(Files.newInputStream(file)).use { input -> input.readNBytes(expected + 1) }
+		val rgba = gunzipBytes(Files.readAllBytes(file), expected + 1)
 		require(rgba.size == expected) { "Stored raster length mismatch for $hash" }
 		require(sha256(rgba) == hash) { "Stored raster hash mismatch for $hash" }
 		return verifiedRaster(rgba, hash)
@@ -1411,10 +1401,10 @@ class WorkspaceStore(
 		val sharedContentFolders = listOf("history/journal", "history/payloads")
 
 		fun defaultRoot(): Path {
-			System.getProperty("psd2live.agent.store")?.takeIf(String::isNotBlank)?.let { return Path.of(it) }
+			System.getProperty("psd2live.agent.store")?.takeIf(String::isNotBlank)?.let { return pathOf(it) }
 			val localAppData = System.getenv("LOCALAPPDATA")?.takeIf(String::isNotBlank)
-			return if (localAppData != null) Path.of(localAppData, "PSD2Live", "agent-workspaces")
-			else Path.of(System.getProperty("user.home"), ".psd2live", "agent-workspaces")
+			return if (localAppData != null) pathOf(localAppData, "PSD2Live", "agent-workspaces")
+			else pathOf(System.getProperty("user.home"), ".psd2live", "agent-workspaces")
 		}
 
 		inline fun <reified T : Enum<T>> enumValue(raw: String): T =

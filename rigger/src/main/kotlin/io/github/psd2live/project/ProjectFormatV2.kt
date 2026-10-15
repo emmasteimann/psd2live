@@ -4,9 +4,6 @@ import io.github.psd2live.core.IdentityHashMap
 import io.github.psd2live.core.MessageDigest
 
 import kotlinx.serialization.json.*
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.StandardCopyOption
 
 /**
  * The v2 layout of a `.psd2live` archive, and its conversion to and from the working store.
@@ -359,7 +356,7 @@ object ProjectFormatV2 {
 
 	private fun deleteTree(path: Path) {
 		if (!Files.exists(path)) return
-		Files.walk(path).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) }
+		Files.walk(path).use { paths -> paths.sorted(reverseOrder()).forEach(Files::deleteIfExists) }
 	}
 
 	private fun sha256(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).let(::hex)

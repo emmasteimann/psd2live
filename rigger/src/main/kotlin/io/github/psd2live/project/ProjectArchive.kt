@@ -118,6 +118,11 @@ object ProjectArchive {
         Files.setLastModifiedTime(target, Files.getLastModifiedTime(source))
     }
 
+    /** [copyKeepingTime] with the shared storage code's copy options (the same Java options). */
+    fun copyKeepingTime(source: Path, target: Path, option: io.github.psd2live.project.StandardCopyOption,
+                        vararg more: io.github.psd2live.project.StandardCopyOption) =
+        copyKeepingTime(source, target, *(listOf(option) + more).map { StandardCopyOption.valueOf(it.name) }.toTypedArray())
+
     private fun copy(input: InputStream, output: OutputStream, counted: (Long) -> Unit) {
         val buffer = ByteArray(1 shl 16)
         var size = 0L

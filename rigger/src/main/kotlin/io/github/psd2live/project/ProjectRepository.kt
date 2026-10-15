@@ -10,8 +10,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.*
-import java.nio.file.Files
-import java.nio.file.Path
 
 /** Serializes saves, while model edits may continue against the next workspace revision. */
 class ProjectRepository(
@@ -126,7 +124,7 @@ class ProjectRepository(
                     val log = entry.jsonObject.toMutableMap()
                     log.remove("imagePath")?.jsonPrimitive?.content?.let { name ->
                         val image = root.resolve(name).normalize()
-                        require(!Path.of(name).isAbsolute && image.startsWith(root) && Files.isRegularFile(image)) { "Invalid log image reference" }
+                        require(!pathOf(name).isAbsolute && image.startsWith(root) && Files.isRegularFile(image)) { "Invalid log image reference" }
                         log["image"] = JsonPrimitive(base64Encode(Files.readAllBytes(image)))
                     }
                     JsonObject(log)

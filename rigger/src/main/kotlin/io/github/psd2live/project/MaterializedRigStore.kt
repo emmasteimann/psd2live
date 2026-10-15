@@ -15,8 +15,6 @@ import io.github.psd2live.core.RigEditOverlay
 import io.github.psd2live.core.RigObjects
 import io.github.psd2live.history.WorkspaceHistoryState
 import kotlinx.serialization.json.*
-import java.nio.file.Files
-import java.nio.file.Path
 
 /**
  * The authored rig of each revision ([AuthoredRig]) a preview can build from without generating its base or replaying

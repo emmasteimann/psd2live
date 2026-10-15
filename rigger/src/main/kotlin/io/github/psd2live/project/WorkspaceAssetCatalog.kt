@@ -1,7 +1,6 @@
 package io.github.psd2live.project
 
 import kotlinx.serialization.json.*
-import java.nio.file.Path
 
 /** Optional v1 auxiliary index. Only these immutable authoring records belong to this capture. */
 data class WorkspaceAssetCatalog(val assets: Set<String> = emptySet(), val workflow: Set<String> = emptySet()) {

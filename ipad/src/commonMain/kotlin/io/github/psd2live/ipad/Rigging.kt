@@ -1,6 +1,11 @@
 package io.github.psd2live.ipad
 
+import io.github.psd2live.core.IrFrameRenderer
 import io.github.psd2live.core.PSD2LivePipeline
+import io.github.psd2live.core.RigIrCompiler
+import io.github.psd2live.core.RigPreviewModel
+import io.github.psd2live.format.compile.FrameSpec
+import io.github.psd2live.format.compile.RasterImage
 import io.github.psd2live.core.PipelineConfig
 import io.github.psd2live.core.ProgressListener
 import org.umamo.format.psd.PsdReader
@@ -15,7 +20,26 @@ class RigOutcome(
 	val folder: String,
 	val warnings: List<String>,
 	val seconds: Double,
+	val preview: RigPreview,
 )
+
+/** One parameter's slider: its id, display name and range. */
+class PreviewParameter(val id: String, val name: String, val min: Float, val max: Float, val default: Float)
+
+/**
+ * The rig drawn at any pose, as the desktop's raster exports draw it (the shared software rasterizer). One frame at a
+ * time; render off the main thread.
+ */
+class RigPreview(model: RigPreviewModel) {
+	private val ir = RigIrCompiler.compile(model)
+	private val session = IrFrameRenderer.open(ir, false)
+	private val lock = Any()
+	val parameters: List<PreviewParameter> = ir.parameters.map { PreviewParameter(it.id, it.name, it.min, it.max, it.default) }
+
+	/** The whole canvas at [values] (missing parameters at their defaults), [size] px on its longer side. */
+	fun render(values: Map<String, Float>, size: Int): RasterImage =
+		io.github.psd2live.core.synchronized(lock) { session.render(values, 0f, FrameSpec.canvas(ir, size), null) }
+}
 
 /**
  * Rigs [bytes] (a PSD named [name]) with the desktop's pipeline and writes the moc3 runtime files - the same files the
@@ -36,7 +60,7 @@ fun rigPsd(name: String, bytes: ByteArray, progress: (String, Double) -> Unit): 
 	progress("Done", 1.0)
 	val puppet = model.rig.puppet
 	return RigOutcome(name, puppet.drawables.size, puppet.deformers.size, puppet.parameters.size, outcome.files.sorted(), folder,
-		outcome.warnings, RigFiles.nowSeconds() - started)
+		outcome.warnings, RigFiles.nowSeconds() - started, RigPreview(model))
 }
 
 /** The app's files: PSDs it can rig, and the Rigs folder it writes into (the Files app shows both). */
@@ -49,3 +73,6 @@ expect object RigFiles {
 	fun write(folder: String, relative: String, data: ByteArray)
 	fun nowSeconds(): Double
 }
+
+/** A rendered frame as an image Compose can draw. */
+expect fun RasterImage.toImageBitmap(): androidx.compose.ui.graphics.ImageBitmap

@@ -15,7 +15,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.Image
 import androidx.compose.material.LinearProgressIndicator
+import androidx.compose.material.Slider
+import androidx.compose.material.SliderDefaults
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -30,7 +33,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -102,15 +109,7 @@ fun RigWorkspace(modifier: Modifier = Modifier) {
 				Spacer(Modifier.height(6.dp))
 				Text(s.stage, color = Muted, fontSize = 13.sp)
 			}
-			is RigState.Done -> Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp),
-				verticalArrangement = Arrangement.spacedBy(6.dp)) {
-				val o = s.outcome
-				Text("Rigged ${o.name}", color = Text1, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-				Text("${o.drawables} art meshes, ${o.deformers} deformers, ${o.parameters} parameters in ${(o.seconds * 10).toInt() / 10.0} s",
-					color = Text1, fontSize = 14.sp)
-				Text("Saved to Rigs/${o.folder.substringAfterLast('/')}: ${o.files.joinToString()}", color = Muted, fontSize = 13.sp)
-				for (w in o.warnings) Text("• $w", color = Muted, fontSize = 13.sp)
-			}
+			is RigState.Done -> RigResult(s.outcome)
 			is RigState.Failed -> Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp)) {
 				Text("Couldn't rig ${s.name}", color = Danger, fontSize = 16.sp, fontWeight = FontWeight.Bold)
 				Text(s.message, color = Text1, fontSize = 14.sp)
@@ -123,5 +122,44 @@ fun RigWorkspace(modifier: Modifier = Modifier) {
 private fun Button(label: String, onClick: () -> Unit) {
 	Box(Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0xFF2B283C)).clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 10.dp)) {
 		Text(label, color = Accent, fontSize = 15.sp)
+	}
+}
+
+/** A rigged PSD: what was made and saved, and the rig drawn at the pose the sliders set. */
+@Composable
+private fun RigResult(o: RigOutcome) {
+	var values by remember(o) { mutableStateOf(o.preview.parameters.associate { it.id to it.default }) }
+	var image by remember(o) { mutableStateOf<ImageBitmap?>(null) }
+	LaunchedEffect(o) {
+		// Frames draw one after another off the main thread; while one draws, only the latest pose waits.
+		snapshotFlow { values }.conflate().collect { pose ->
+			image = withContext(Dispatchers.Default) { o.preview.render(pose, 900).toImageBitmap() }
+		}
+	}
+	Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+		Text("Rigged ${o.name}", color = Text1, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+		Text("${o.drawables} art meshes, ${o.deformers} deformers, ${o.parameters} parameters in ${(o.seconds * 10).toInt() / 10.0} s",
+			color = Text1, fontSize = 14.sp)
+		Text("Saved to Rigs/${o.folder.substringAfterLast('/')}: ${o.files.joinToString()}", color = Muted, fontSize = 13.sp)
+		for (w in o.warnings) Text("• $w", color = Muted, fontSize = 13.sp)
+		Spacer(Modifier.height(8.dp))
+		Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+			Box(Modifier.weight(1f).height(720.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF101017)), contentAlignment = androidx.compose.ui.Alignment.Center) {
+				image?.let { Image(it, contentDescription = "The rig at the chosen pose", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize()) }
+					?: Text("Drawing…", color = Muted, fontSize = 14.sp)
+			}
+			Column(Modifier.width(340.dp)) {
+				Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+					Text("Parameters", color = Text1, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+					Text("Reset", color = Accent, fontSize = 14.sp, modifier = Modifier.clickable { values = o.preview.parameters.associate { it.id to it.default } })
+				}
+				for (p in o.preview.parameters) {
+					val value = values[p.id] ?: p.default
+					Text("${p.name}  ${(value * 100).toInt() / 100.0}", color = Muted, fontSize = 12.sp)
+					Slider(value = value, onValueChange = { values = values + (p.id to it) }, valueRange = p.min..p.max,
+						colors = SliderDefaults.colors(thumbColor = Accent, activeTrackColor = Accent), modifier = Modifier.height(32.dp))
+				}
+			}
+		}
 	}
 }

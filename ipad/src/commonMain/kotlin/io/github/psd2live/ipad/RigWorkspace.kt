@@ -129,6 +129,8 @@ private fun Button(label: String, onClick: () -> Unit) {
 @Composable
 private fun RigResult(o: RigOutcome) {
 	var values by remember(o) { mutableStateOf(o.preview.parameters.associate { it.id to it.default }) }
+	var saveStatus by remember(o) { mutableStateOf<String?>(null) }
+	val scope = rememberCoroutineScope()
 	var image by remember(o) { mutableStateOf<ImageBitmap?>(null) }
 	LaunchedEffect(o) {
 		// Frames draw one after another off the main thread; while one draws, only the latest pose waits.
@@ -142,6 +144,19 @@ private fun RigResult(o: RigOutcome) {
 			color = Text1, fontSize = 14.sp)
 		Text("Saved to Rigs/${o.folder.substringAfterLast('/')}: ${o.files.joinToString()}", color = Muted, fontSize = 13.sp)
 		for (w in o.warnings) Text("• $w", color = Muted, fontSize = 13.sp)
+		Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+			Button("Save as a PSD2Live project") {
+				if (saveStatus == "Saving…") return@Button
+				saveStatus = "Saving…"
+				scope.launch {
+					saveStatus = try {
+						val path = withContext(Dispatchers.Default) { saveRigProject(o) }
+						"Saved Rigs/${path.substringAfterLast('/')} - it opens in the Mac editor"
+					} catch (failure: Throwable) { "Couldn't save: ${failure.message ?: failure::class.simpleName}" }
+				}
+			}
+			saveStatus?.let { Text(it, color = Muted, fontSize = 13.sp) }
+		}
 		Spacer(Modifier.height(8.dp))
 		Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
 			Box(Modifier.weight(1f).height(720.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF101017)), contentAlignment = androidx.compose.ui.Alignment.Center) {

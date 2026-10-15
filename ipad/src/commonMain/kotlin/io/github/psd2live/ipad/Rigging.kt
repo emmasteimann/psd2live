@@ -1,6 +1,7 @@
 package io.github.psd2live.ipad
 
 import io.github.psd2live.core.IrFrameRenderer
+import io.github.psd2live.project.resolve
 import io.github.psd2live.core.PSD2LivePipeline
 import io.github.psd2live.core.RigIrCompiler
 import io.github.psd2live.core.RigPreviewModel
@@ -21,6 +22,9 @@ class RigOutcome(
 	val warnings: List<String>,
 	val seconds: Double,
 	val preview: RigPreview,
+	/** What the rig was built from, for saving it as a project. */
+	internal val source: org.umamo.format.art.SourceArt,
+	internal val config: PipelineConfig,
 )
 
 /** One parameter's slider: its id, display name and range. */
@@ -60,7 +64,28 @@ fun rigPsd(name: String, bytes: ByteArray, progress: (String, Double) -> Unit): 
 	progress("Done", 1.0)
 	val puppet = model.rig.puppet
 	return RigOutcome(name, puppet.drawables.size, puppet.deformers.size, puppet.parameters.size, outcome.files.sorted(), folder,
-		outcome.warnings, RigFiles.nowSeconds() - started, RigPreview(model))
+		outcome.warnings, RigFiles.nowSeconds() - started, RigPreview(model), source, config)
+}
+
+/**
+ * [outcome] saved as a PSD2Live project (`Rigs/NAME.psd2live`) through the desktop's own project code: the Mac editor
+ * opens it with the same rig. Returns the file's path.
+ */
+suspend fun saveRigProject(outcome: RigOutcome): String {
+	val document = io.github.psd2live.project.WorkspaceDocument(outcome.source, emptyMap(), emptySet(), emptyMap(), emptyMap(),
+		io.github.psd2live.core.RigEditOverlay.Empty, io.github.psd2live.project.WorkspaceSettingsCodec.encode(outcome.config))
+	val revision = io.github.psd2live.project.WorkspaceRevisions.of(document)
+	val history = io.github.psd2live.history.WorkspaceHistoryTree(document, revision, revision)
+	val work = io.github.psd2live.project.Files.createTempDirectory("rig-save-")
+	val target = io.github.psd2live.project.pathOf(RigFiles.projectPath(outcome.name))
+	try {
+		@OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+		val projectId = "project-${kotlin.uuid.Uuid.random()}"
+		io.github.psd2live.project.ProjectRepository().save(io.github.psd2live.project.ProjectSaveCapture(projectId, history.state(),
+			kotlinx.serialization.json.JsonObject(emptyMap()), io.github.psd2live.project.pathOf(RigFiles.psdPath(outcome.name)),
+			io.github.psd2live.project.WorkspaceStore(work.resolve("store"))), target)
+	} finally { RigFiles.deleteTree(work.toString()) }
+	return target.toString()
 }
 
 /** The app's files: PSDs it can rig, and the Rigs folder it writes into (the Files app shows both). */
@@ -71,6 +96,10 @@ expect object RigFiles {
 	/** A fresh folder for [psdName]'s rig: Documents/Rigs/NAME (an older rig of the same name is replaced). */
 	fun folderFor(psdName: String): String
 	fun write(folder: String, relative: String, data: ByteArray)
+	fun psdPath(name: String): String
+	/** Documents/Rigs/NAME.psd2live. */
+	fun projectPath(psdName: String): String
+	fun deleteTree(path: String)
 	fun nowSeconds(): Double
 }
 

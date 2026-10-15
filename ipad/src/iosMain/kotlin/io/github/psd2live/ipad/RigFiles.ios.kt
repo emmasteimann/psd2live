@@ -34,5 +34,15 @@ actual object RigFiles {
 		FileSystem.SYSTEM.write(target) { write(data) }
 	}
 
+	actual fun psdPath(name: String): String = "$documents/$name"
+
+	actual fun projectPath(psdName: String): String {
+		val safe = psdName.substringBeforeLast('.').replace(Regex("[^A-Za-z0-9._ -]+"), "_").trim().ifEmpty { "rig" }
+		FileSystem.SYSTEM.createDirectories("$documents/Rigs".toPath())
+		return "$documents/Rigs/$safe.psd2live"
+	}
+
+	actual fun deleteTree(path: String) = FileSystem.SYSTEM.deleteRecursively(path.toPath())
+
 	actual fun nowSeconds(): Double = NSDate().timeIntervalSince1970
 }

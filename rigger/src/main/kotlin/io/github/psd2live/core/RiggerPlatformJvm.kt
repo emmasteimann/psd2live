@@ -242,3 +242,5 @@ actual fun currentThreadInterrupted(): Boolean = Thread.currentThread().isInterr
 
 actual fun rigResourceText(path: String): String =
 	checkNotNull(PSD2LivePipeline::class.java.getResourceAsStream("/$path")) { "Missing rig resource: $path" }.use { it.readBytes().decodeToString() }
+
+actual fun atlasPagePixels(png: ByteArray): IntArray? = AtlasPagePixels.pixelsOf(png)

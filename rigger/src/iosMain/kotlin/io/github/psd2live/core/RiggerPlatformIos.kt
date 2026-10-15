@@ -33,7 +33,13 @@ actual val RigImage.pixelHeight: Int get() = height
 
 actual fun RigImage.argbPixels(): IntArray = argb
 
-actual fun canonicalPng(image: RigImage): ByteArray = PngEncoder.encode(image.width, image.height, image.argb)
+actual fun canonicalPng(image: RigImage): ByteArray =
+	PngEncoder.encode(image.width, image.height, image.argb).also { png -> synchronized(imagesByPng) { imagesByPng[png] = WeakReference(image) } }
+
+/** The image each canonical encoding was made from, while both live (keys are arrays: identity), as on the desktop. */
+private val imagesByPng = WeakHashMap<ByteArray, WeakReference<RigImage>>()
+
+actual fun atlasPagePixels(png: ByteArray): IntArray? = synchronized(imagesByPng) { imagesByPng[png]?.get() }?.argb
 
 actual class BitSet actual constructor() {
 	private var words = LongArray(1)

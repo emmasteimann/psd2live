@@ -4,10 +4,11 @@ import io.github.psd2live.format.compile.FrameSpec
 import io.github.psd2live.format.compile.PlacedRaster
 import io.github.psd2live.format.compile.PoseGeometry
 import io.github.psd2live.format.compile.RasterImage
+import io.github.psd2live.format.compile.boundedParallel
+import io.github.psd2live.format.compile.decodePngArgb
+import io.github.psd2live.format.compile.forEachBand
+import io.github.psd2live.format.compile.identityHashOf
 import io.github.psd2live.format.model.*
-import java.io.ByteArrayInputStream
-import java.util.IdentityHashMap
-import javax.imageio.ImageIO
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -40,13 +41,19 @@ public class SoftwareRasterizer(
 	private class Texture(val width: Int, val height: Int, val argb: IntArray)
 
 	// Pages decode in parallel; their order is kept.
-	private val textures: List<Texture> = ir.textures.pages.withIndex().toList().parallelStream().map { (index, page) ->
-		val png = page.png.shared()
-		pixels(png)?.takeIf { it.size == page.width * page.height }?.let { Texture(page.width, page.height, it) } ?: run {
-			val image = requireNotNull(ImageIO.read(ByteArrayInputStream(png))) { "Texture page $index is not a PNG" }
-			Texture(image.width, image.height, image.getRGB(0, 0, image.width, image.height, null, 0, image.width))
+	private val textures: List<Texture> = run {
+		val pages = ir.textures.pages
+		val out = arrayOfNulls<Texture>(pages.size)
+		forEachBand(pages.size) { index ->
+			val page = pages[index]
+			val png = page.png.shared()
+			out[index] = pixels(png)?.takeIf { it.size == page.width * page.height }?.let { Texture(page.width, page.height, it) } ?: run {
+				val (width, height, argb) = decodePngArgb(png) ?: throw IllegalArgumentException("Texture page $index is not a PNG")
+				Texture(width, height, argb)
+			}
 		}
-	}.toList()
+		out.map { it!! }
+	}
 
 	private val hidden: Set<String> = run {
 		val out = HashSet<String>()
@@ -78,7 +85,7 @@ public class SoftwareRasterizer(
 	}
 
 	/** The meshes under each group of [tree]. */
-	private val beneath = IdentityHashMap<RenderGroup, List<String>>().also { out ->
+	private val beneath = IdentityMap<RenderGroup, List<String>>().also { out ->
 		fun collect(group: RenderGroup): List<String> = group.children.flatMap { child ->
 			when (child) {
 				is RenderMesh -> listOf(child.id)
@@ -487,20 +494,18 @@ public class SoftwareRasterizer(
 		 * [task] over 0 until [count] in parallel, results in order, holding at most about a third of the heap in
 		 * the [bytes] the tasks say they use at once.
 		 */
-		fun <R> bounded(count: Int, bytes: (Int) -> Long, task: (Int) -> R): List<R> {
-			val results = arrayOfNulls<Any?>(count)
-			if (count <= 1) { for (i in 0 until count) results[i] = task(i) } else {
-				val unit = 1L shl 16
-				val permits = (Runtime.getRuntime().maxMemory() / 3 / unit).coerceIn(1024L, Int.MAX_VALUE.toLong()).toInt()
-				val budget = java.util.concurrent.Semaphore(permits)
-				java.util.stream.IntStream.range(0, count).parallel().forEach { i ->
-					val need = ((bytes(i) + unit - 1) / unit).coerceIn(1L, permits.toLong()).toInt()
-					budget.acquireUninterruptibly(need)
-					try { results[i] = task(i) } finally { budget.release(need) }
-				}
-			}
-			@Suppress("UNCHECKED_CAST")
-			return results.asList() as List<R>
-		}
+		fun <R> bounded(count: Int, bytes: (Int) -> Long, task: (Int) -> R): List<R> = boundedParallel(count, bytes, task)
 	}
+}
+
+/** A map keyed by identity (java.util.IdentityHashMap's lookup; groups are data classes that can be equal). */
+private class IdentityMap<K : Any, V> {
+	private class Key<K : Any>(val value: K) {
+		override fun equals(other: Any?) = other is Key<*> && other.value === value
+		override fun hashCode() = identityHashOf(value)
+	}
+	private val map = LinkedHashMap<Key<K>, V>()
+	operator fun set(key: K, value: V) { map[Key(key)] = value }
+	fun getValue(key: K): V = map[Key(key)] ?: throw NoSuchElementException("Key is missing in the map.")
+	val keys: List<K> get() = map.keys.map { it.value }
 }

@@ -15,9 +15,9 @@ import io.github.psd2live.format.compile.render.SoftwareRasterizer
  * from the software rasterizer (texture-alpha masks, multiply and screen colors, every color and alpha blend mode,
  * isolated parts as layers), and the editor's pendulum physics stepped between frames.
  */
-internal object IrFrameRenderer : FrameRenderer {
+object IrFrameRenderer : FrameRenderer {
 	override fun open(ir: RigIR, physics: Boolean): FrameSession {
-		val rasterizer = SoftwareRasterizer(ir, AtlasPagePixels::pixelsOf)
+		val rasterizer = SoftwareRasterizer(ir, ::atlasPagePixels)
 		val colors = IrColors(ir)
 		val geometry = IrGeometryEvaluator.open(ir)
 		val engine = if (!physics || ir.physics.groups.isEmpty()) null else PhysicsEngine(

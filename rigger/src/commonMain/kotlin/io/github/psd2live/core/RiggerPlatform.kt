@@ -213,3 +213,6 @@ internal expect fun PSD2LivePipeline.exportCmo3(baseName: String, model: RigPrev
 
 /** Upscaled textures for [layers] ([AtlasLayout] with a texture scale above 1): the desktop's local runtime (TextureUpscale). */
 expect fun prepareUpscaledTextures(layers: List<ClassifiedLayer>, config: TextureUpscaleConfig, progress: ProgressListener): Map<String, TextureFile>
+
+/** The ARGB pixels (not to be modified) [png] decodes to, when it is a live canonical encoding of an atlas page. */
+expect fun atlasPagePixels(png: ByteArray): IntArray?

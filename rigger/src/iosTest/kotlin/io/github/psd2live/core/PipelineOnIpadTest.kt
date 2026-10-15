@@ -36,6 +36,18 @@ class PipelineOnIpadTest {
 			FileSystem.SYSTEM.write("$dump/ios-placements.txt".toPath()) { writeUtf8(model.atlas.placementByLayerId.entries.joinToString("\n") { (id, p) -> "$id ${p.x} ${p.y} ${p.width} ${p.height}" }) }
 		}
 		for ((name, data) in files.entries.filter { it.key.endsWith(".png") }) println("PIXELS $name ${hex(MessageDigest.getInstance("SHA-256").digest(org.umamo.format.png.PngCodec.read(data).rgba))}")
+		// The preview: the rig posed and drawn with the shared software rasterizer, as the desktop's raster exports draw it.
+		val ir = RigIrCompiler.compile(model)
+		val session = IrFrameRenderer.open(ir, false)
+		val frame = io.github.psd2live.format.compile.FrameSpec.canvas(ir, 1024)
+		for ((label, pose) in listOf("neutral" to emptyMap(), "angleX30" to mapOf("ParamAngleX" to 30f))) {
+			val image = session.render(pose, 0f, frame, null)
+			val bytes = ByteArray(image.argb.size * 4).also { b -> image.argb.forEachIndexed { i, p -> b[i * 4] = (p ushr 24).toByte(); b[i * 4 + 1] = (p ushr 16).toByte(); b[i * 4 + 2] = (p ushr 8).toByte(); b[i * 4 + 3] = p.toByte() } }
+			println("FRAME $label ${image.width}x${image.height} ${hex(MessageDigest.getInstance("SHA-256").digest(bytes))}")
+			platform.posix.getenv("LAYERLOOM_DUMP")?.toKString()?.let { dump -> FileSystem.SYSTEM.write("$dump/ios-frame-$label.argb".toPath()) { write(bytes) } }
+			assertTrue(image.argb.count { it ushr 24 != 0 } > image.argb.size / 20, "the $label frame draws the character")
+		}
+		session.close()
 		assertTrue(model.rig.puppet.drawables.size > 10, "drawables")
 		assertTrue(model.rig.puppet.deformers.isNotEmpty(), "deformers")
 		assertTrue(model.rig.puppet.parameters.any { it.id.raw == "ParamAngleX" }, "a head angle parameter")

@@ -9,7 +9,7 @@ import org.umamo.render.eval.CpuDeformationEvaluator
 import org.umamo.runtime.model.ParameterId
 
 /** The engine's CPU evaluator over an IR rig, for targets that bake deformation. */
-internal object IrGeometryEvaluator : GeometryEvaluator {
+object IrGeometryEvaluator : GeometryEvaluator {
 	override fun open(ir: RigIR): GeometrySession {
 		val puppet = PuppetIr.toPuppet(ir)
 		val evaluator = CpuDeformationEvaluator()

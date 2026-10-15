@@ -69,7 +69,7 @@ data class RigTuning(
 	val eyeLidCurve: Float = 3f,
 	/** Angle Y: the eyes drawn taller looking up and shorter looking down, percent. */
 	val eyeTiltStretch: Float = 7f,
-	/** Angle X: the iris's shift against the turn, percent of its width. */
+	/** Angle X: the iris's shift against the turn (eye contact kept), percent of its width; negative rolls it with the turn. */
 	val irisShift: Float = 5.5f,
 	/** Angle X: the far iris drawn wider against the eye white narrowing round it, percent; the near one a fifth of it. */
 	val irisKeepWidth: Float = 5f,
@@ -281,7 +281,7 @@ data class RigTuning(
 			Field("eyeTilt", Group.EYES, P, 0f..20f, 0.1f, ADVANCED, { it.eyeTilt }) { t, v -> t.copy(eyeTilt = v) },
 			Field("eyeLidCurve", Group.EYES, P, 0f..10f, 0.1f, ADVANCED, { it.eyeLidCurve }) { t, v -> t.copy(eyeLidCurve = v) },
 			Field("eyeTiltStretch", Group.EYES, P, 0f..20f, 0.1f, ADVANCED, { it.eyeTiltStretch }) { t, v -> t.copy(eyeTiltStretch = v) },
-			Field("irisShift", Group.EYES, P, 0f..15f, 0.1f, ADVANCED, { it.irisShift }) { t, v -> t.copy(irisShift = v) },
+			Field("irisShift", Group.EYES, P, -30f..15f, 0.1f, ADVANCED, { it.irisShift }) { t, v -> t.copy(irisShift = v) },
 			Field("irisKeepWidth", Group.EYES, P, 0f..20f, 0.1f, ADVANCED, { it.irisKeepWidth }) { t, v -> t.copy(irisKeepWidth = v) },
 			Field("irisTilt", Group.EYES, P, 0f..10f, 0.1f, ADVANCED, { it.irisTilt }) { t, v -> t.copy(irisTilt = v) },
 			Field("blinkCorner", Group.EYES, P, 0f..80f, 0.5f, ADVANCED, { it.blinkCorner }) { t, v -> t.copy(blinkCorner = v) },

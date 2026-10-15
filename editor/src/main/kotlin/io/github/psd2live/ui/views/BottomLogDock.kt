@@ -1,4 +1,6 @@
 package io.github.psd2live.ui.views
+import io.github.psd2live.ui.EditorClipboard
+import io.github.psd2live.ui.EditorPointers
 
 import io.github.psd2live.ui.utils.toImageBitmapFast
 import io.github.psd2live.ui.state.effectiveButton
@@ -59,9 +61,6 @@ import io.github.psd2live.ui.state.*
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.ToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
-import java.awt.Cursor
-import java.awt.Toolkit
-import java.awt.datatransfer.StringSelection
 import java.io.ByteArrayInputStream
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -177,8 +176,7 @@ fun BottomLogDock(
 			val time = TIME_FORMATTER.format(entry.timestamp)
 			"[$time] [${entry.level}] [${entry.source}] [${entry.tag}] ${entry.message}"
 		}
-		val selection = StringSelection(text)
-		Toolkit.getDefaultToolkit().systemClipboard.setContents(selection, selection)
+		EditorClipboard.setText(text)
 	}
 
 	var splitterCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
@@ -209,7 +207,7 @@ fun BottomLogDock(
 					.height(4.dp)
 					.background(colors.divider)
 					.onGloballyPositioned { splitterCoords = it }
-					.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.N_RESIZE_CURSOR)))
+					.pointerHoverIcon(EditorPointers.resizeVertical)
 					.pointerInput(density) {
 						awaitEachGesture {
 							val down = awaitFirstDown()
@@ -433,7 +431,7 @@ private fun LogFilterTab(
 			.fillMaxHeight()
 			.hoverable(interactionSource)
 			.clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
-			.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+			.pointerHoverIcon(EditorPointers.hand)
 			.drawBehind {
 				if (selected) {
 					val bar = 2.dp.toPx()
@@ -758,7 +756,7 @@ private fun LogColumnHeader(
 								.fillMaxHeight()
 								.padding(end = LOG_GAP)
 								.fillMaxWidth()
-								.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR)))
+								.pointerHoverIcon(EditorPointers.move)
 								.pointerInput(column) {
 									// Several moves can land before the next composition hands back the layout.
 									var working = current
@@ -794,7 +792,7 @@ private fun LogColumnHeader(
 									.align(Alignment.CenterEnd)
 									.width(LOG_GAP)
 									.fillMaxHeight()
-									.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.E_RESIZE_CURSOR)))
+									.pointerHoverIcon(EditorPointers.resizeHorizontal)
 									.pointerInput(column) {
 										var start = 0f
 										var moved = 0f
@@ -941,7 +939,7 @@ private fun LogEntryRow(
 					.then(
 						if (hasDetail) Modifier
 							.clickable(onClick = onToggle)
-							.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+							.pointerHoverIcon(EditorPointers.hand)
 						else Modifier,
 					),
 				contentAlignment = Alignment.Center,
@@ -1067,7 +1065,7 @@ private fun LogImageCard(entry: AppLogEntry, inset: Dp, onImageClick: (ByteArray
 			.border(BorderStroke(1.dp, if (hovered) colors.accent else colors.border), RoundedCornerShape(4.dp))
 			.hoverable(interaction)
 			.clickable { onImageClick(imgBytes, label) }
-			.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+			.pointerHoverIcon(EditorPointers.hand)
 			.padding(4.dp),
 		verticalAlignment = Alignment.CenterVertically,
 		horizontalArrangement = Arrangement.spacedBy(8.dp),

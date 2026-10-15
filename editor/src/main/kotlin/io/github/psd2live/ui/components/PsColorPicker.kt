@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.components
+import io.github.psd2live.ui.EditorPointers
 import io.github.psd2live.core.Math
 
 import androidx.compose.foundation.BorderStroke
@@ -53,7 +54,6 @@ import androidx.compose.ui.unit.sp
 import io.github.psd2live.i18n.tr
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
-import java.awt.Cursor
 
 /*
  * Photoshop's colour picker, for painting: a saturation/brightness field beside a vertical hue strip, the new colour
@@ -126,7 +126,7 @@ fun PsColorField(
 	Row(modifier.height(height), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
 		Box(
 			Modifier.weight(1f).fillMaxSize().clip(RoundedCornerShape(3.dp)).border(1.dp, colors.border, RoundedCornerShape(3.dp))
-				.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.CROSSHAIR_CURSOR)))
+				.pointerHoverIcon(EditorPointers.crosshair)
 		) {
 			Canvas(Modifier.fillMaxSize().pointerInput(Unit) {
 				awaitEachGesture {
@@ -157,7 +157,7 @@ fun PsColorField(
 					drag(down.id) { it.consume(); at(it.position) }
 					release(state.value.color)
 				}
-			}.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))) {
+			}.pointerHoverIcon(EditorPointers.hand)) {
 				val inset = 5.dp.toPx()
 				val strip = Size(size.width - inset * 2, size.height)
 				drawRect(Brush.verticalGradient(HUES), Offset(inset, 0f), strip)
@@ -186,7 +186,7 @@ fun PsColorCompare(new: Color, current: Color, onRevert: () -> Unit, modifier: M
 		Column(Modifier.padding(top = 2.dp).fillMaxWidth().border(1.dp, colors.border)) {
 			Box(Modifier.fillMaxWidth().height(22.dp).background(new.copy(alpha = 1f)))
 			Box(Modifier.fillMaxWidth().height(22.dp).background(current.copy(alpha = 1f)).clickable(onClick = onRevert)
-				.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR))))
+				.pointerHoverIcon(EditorPointers.hand))
 		}
 		Text(tr("editor.paint.colorCurrent"), style = typography.caption.copy(fontSize = 9.5.sp), color = colors.textMuted,
 			modifier = Modifier.padding(top = 2.dp))
@@ -266,7 +266,7 @@ fun PaintSwatchRow(swatches: List<Color>, selected: Color?, onPick: (Color) -> U
 				Modifier.size(chip).clip(RoundedCornerShape(2.dp)).background(swatch)
 					.border(if (chosen) 1.5.dp else 0.5.dp, if (chosen) colors.accent else colors.border, RoundedCornerShape(2.dp))
 					.clickable { onPick(swatch) }
-					.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+					.pointerHoverIcon(EditorPointers.hand)
 			)
 		}
 	}

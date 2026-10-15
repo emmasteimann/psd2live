@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.components
+import io.github.psd2live.ui.EditorClipboard
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -26,8 +27,6 @@ import io.github.psd2live.ui.theme.LocalToolTypography
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.awt.Toolkit
-import java.awt.datatransfer.StringSelection
 import java.io.File
 
 private val CLIENT_LABELS = mapOf(
@@ -66,8 +65,7 @@ fun AgentMcpDialog(
 	}
 
 	fun copy(text: String, label: String) {
-		val selection = StringSelection(text)
-		Toolkit.getDefaultToolkit().systemClipboard.setContents(selection, selection)
+		EditorClipboard.setText(text)
 		copied = tr("dialog.agent.copied", label)
 	}
 

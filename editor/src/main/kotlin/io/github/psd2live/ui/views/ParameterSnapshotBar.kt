@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.views
+import io.github.psd2live.ui.EditorPointers
 
 import androidx.compose.foundation.BorderStroke
 import io.github.psd2live.ui.state.effectiveButton
@@ -65,7 +66,6 @@ import io.github.psd2live.project.ParameterSnapshot
 import io.github.psd2live.ui.state.ParameterSnapshotPreview
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
-import java.awt.Cursor
 
 /**
  * One-line bar of parameter snapshots: + saves the current pose, hover ghosts it on the canvas, a click loads one,
@@ -211,7 +211,7 @@ private fun ParameterSnapshotChip(
 							}
 						}
 						.clickable(enabled = enabled, interactionSource = interaction, indication = null, onClick = onApply)
-						.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+						.pointerHoverIcon(EditorPointers.hand)
 						.padding(horizontal = 4.dp),
 					contentAlignment = Alignment.Center,
 				) {

@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.views.physics
+import io.github.psd2live.ui.EditorPointers
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -47,7 +48,6 @@ import io.github.psd2live.ui.state.PSD2LiveViewModel
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
 import org.umamo.runtime.model.Parameter
-import java.awt.Cursor
 
 /** The selected group: its pendulum, dynamics, inputs, outputs and the raw numbers. */
 @Composable
@@ -267,7 +267,7 @@ fun GroupTitle(
 		if (group.overridden) {
 			Text(
 				tr("physics.resetDefaults"), style = typography.caption.copy(fontSize = 9.5.sp), color = colors.accent,
-				modifier = Modifier.clickable { viewModel.removePhysicsGroup(group.id) }.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR))),
+				modifier = Modifier.clickable { viewModel.removePhysicsGroup(group.id) }.pointerHoverIcon(EditorPointers.hand),
 			)
 		}
 	}

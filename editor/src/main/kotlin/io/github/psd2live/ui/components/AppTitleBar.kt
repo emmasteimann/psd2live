@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.components
+import io.github.psd2live.ui.EditorPointers
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -91,7 +92,6 @@ import io.github.psd2live.ui.state.ShortcutAction
 import io.github.psd2live.ui.theme.LocalToolTypography
 import io.github.psd2live.ui.utils.DesktopUtils
 import io.github.psd2live.ui.state.SidebarSide
-import java.awt.Cursor
 import java.awt.MouseInfo
 import java.awt.Point
 
@@ -978,7 +978,7 @@ private fun TitleBarMenuItem(
 	Box(
 		modifier = modifier
 			.fillMaxHeight()
-			.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+			.pointerHoverIcon(EditorPointers.hand)
 			.onPointerEvent(PointerEventType.Enter) {
 				isHovered = true
 				onHoverWhenActive()
@@ -1103,7 +1103,7 @@ fun AppMenuItem(
 					else -> Color.Transparent
 				}
 			)
-			.pointerHoverIcon(if (enabled) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)) else PointerIcon.Default)
+			.pointerHoverIcon(if (enabled) EditorPointers.hand else PointerIcon.Default)
 			.onPointerEvent(PointerEventType.Enter) {
 				if (enabled) {
 					isHovered = true
@@ -1214,7 +1214,7 @@ fun AppSubmenuItem(
 						else -> Color.Transparent
 					}
 				)
-				.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+				.pointerHoverIcon(EditorPointers.hand)
 				.onPointerEvent(PointerEventType.Enter) {
 					isHovered = true
 					onOpen()
@@ -1340,7 +1340,7 @@ private fun TitleBarLayoutToggle(
 			modifier = modifier
 				.width(30.dp)
 				.fillMaxHeight()
-				.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+				.pointerHoverIcon(EditorPointers.hand)
 				.onPointerEvent(PointerEventType.Enter) { isHovered = true }
 				.onPointerEvent(PointerEventType.Exit) { isHovered = false }
 				.clickable(onClick = onClick),
@@ -1411,7 +1411,7 @@ private fun TitleBarLanguageButton(
 				.width(30.dp)
 				.fillMaxHeight()
 				.background(if (expanded) colors.selection else Color.Transparent)
-				.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+				.pointerHoverIcon(EditorPointers.hand)
 				.onPointerEvent(PointerEventType.Enter) { isHovered = true }
 				.onPointerEvent(PointerEventType.Exit) { isHovered = false }
 				.clickable(onClick = onToggle),
@@ -1479,7 +1479,7 @@ private fun TitleBarThemeToggle(
 			modifier = Modifier
 				.width(30.dp)
 				.fillMaxHeight()
-				.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+				.pointerHoverIcon(EditorPointers.hand)
 				.onPointerEvent(PointerEventType.Enter) { isHovered = true }
 				.onPointerEvent(PointerEventType.Exit) { isHovered = false }
 				.clickable(onClick = onClick),
@@ -1521,7 +1521,7 @@ private fun WindowControlButton(
 		modifier = Modifier
 			.width(44.dp)
 			.fillMaxHeight()
-			.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+			.pointerHoverIcon(EditorPointers.hand)
 			.onPointerEvent(PointerEventType.Enter) { isHovered = true }
 			.onPointerEvent(PointerEventType.Exit) { isHovered = false }
 			.background(

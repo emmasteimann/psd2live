@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.views
+import io.github.psd2live.ui.EditorPointers
 import io.github.psd2live.core.nanoTime
 
 import io.github.psd2live.ui.parameterKeyMarks
@@ -111,7 +112,6 @@ import io.github.psd2live.ui.state.wheelBindingOf
 import io.github.psd2live.ui.tutorial.expandShortcutMarkup
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
-import java.awt.Cursor
 
 private val ROW_HEIGHT = 22.dp
 private val RULER_HEIGHT = 20.dp
@@ -156,7 +156,7 @@ fun AnimationEditorView(state: PSD2LiveState, viewModel: PSD2LiveViewModel) {
 				state.previewModel?.rig?.puppet?.parts.orEmpty().associate { it.id.raw to it.name })
 			Box(
 				Modifier.width(4.dp).fillMaxHeight().background(colors.divider)
-					.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.E_RESIZE_CURSOR)))
+					.pointerHoverIcon(EditorPointers.resizeHorizontal)
 					.pointerInput(Unit) {
 						detectDragGestures { change, drag ->
 							change.consume()

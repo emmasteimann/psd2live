@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.views
+import io.github.psd2live.ui.EditorPointers
 
 import androidx.compose.foundation.BorderStroke
 import io.github.psd2live.ui.state.effectiveButton
@@ -70,7 +71,6 @@ import androidx.compose.ui.input.pointer.isAltPressed
 import io.github.psd2live.ui.state.isPrimaryPressed
 import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.input.pointer.pointerHoverIcon
-import java.awt.Cursor
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -739,9 +739,9 @@ private fun HierarchyTreeList(
 					}
 				}
 				.pointerHoverIcon(
-					PointerIcon(
-						if (treeDragState.isDragging) Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR)
-						else Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR)
+					(
+						if (treeDragState.isDragging) EditorPointers.move
+						else EditorPointers.default
 					)
 				),
 		) {
@@ -978,7 +978,7 @@ private fun HierarchyTreeList(
 					.fillMaxHeight()
 					.background(colors.divider)
 					.onGloballyPositioned { rulerSplitterCoords = it }
-					.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.E_RESIZE_CURSOR)))
+					.pointerHoverIcon(EditorPointers.resizeHorizontal)
 					.pointerInput(density) {
 						awaitEachGesture {
 							val down = awaitFirstDown()
@@ -1280,7 +1280,7 @@ private fun DeformerTreeItem(
 			Box(
 				modifier = Modifier
 					.size(TREE_CHEVRON_WIDTH_DP.dp)
-					.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+					.pointerHoverIcon(EditorPointers.hand)
 					.clickable(enabled = hasChildren) {
 						treeDragState.clear()
 						val nextExpanded = !isExpanded
@@ -1342,7 +1342,7 @@ private fun DeformerTreeItem(
 					Row(
 						modifier = Modifier
 							.then(if (index == chain.deformers.lastIndex) Modifier.weight(1f, fill = false) else Modifier)
-							.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+							.pointerHoverIcon(EditorPointers.hand)
 							.onGloballyPositioned { coords ->
 								val row = rowCoords
 								if (row != null && row.isAttached && coords.isAttached) {
@@ -1436,7 +1436,7 @@ private fun DeformerTreeItem(
 			Box(
 				modifier = Modifier
 					.size(16.dp)
-					.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+					.pointerHoverIcon(EditorPointers.hand)
 					.clickable {
 						treeDragState.clear()
 						val nextVis = !isDeformerVis
@@ -1810,7 +1810,7 @@ private fun DrawableTreeItem(
 				Box(
 					modifier = Modifier
 						.size(16.dp)
-						.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+						.pointerHoverIcon(EditorPointers.hand)
 						.clickable {
 							treeDragState.clear()
 							viewModel.toggleLayerVisibility(layerId)

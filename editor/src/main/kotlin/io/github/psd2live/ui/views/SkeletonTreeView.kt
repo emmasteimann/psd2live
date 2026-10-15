@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.views
+import io.github.psd2live.ui.EditorPointers
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -73,7 +74,6 @@ import io.github.psd2live.ui.state.PSD2LiveState
 import io.github.psd2live.ui.state.PSD2LiveViewModel
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
-import java.awt.Cursor
 import org.umamo.runtime.model.ParameterId
 import kotlin.math.roundToInt
 import io.github.psd2live.ui.components.IconAdd
@@ -363,7 +363,7 @@ private fun BoneRow(
 		Spacer(Modifier.width(2.dp))
 		Box(
 			Modifier.size(CHEVRON_WIDTH_DP.dp)
-				.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+				.pointerHoverIcon(EditorPointers.hand)
 				.clickable(enabled = hasChildren, onClick = onToggle),
 			contentAlignment = Alignment.Center,
 		) {
@@ -443,7 +443,7 @@ private fun MeshRow(
 		if (editable && hovered) {
 			Box(
 				Modifier.size(14.dp)
-					.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+					.pointerHoverIcon(EditorPointers.hand)
 					.clickable(onClick = onUnbind),
 				contentAlignment = Alignment.Center,
 			) { IconClose(Modifier.size(7.dp), tint = if (selected) colors.selectionText else colors.textMuted) }

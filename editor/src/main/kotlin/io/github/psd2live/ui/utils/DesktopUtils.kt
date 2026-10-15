@@ -1,9 +1,8 @@
 package io.github.psd2live.ui.utils
+import io.github.psd2live.ui.EditorClipboard
 import io.github.psd2live.core.synchronized
 
 import java.awt.Desktop
-import java.awt.Toolkit
-import java.awt.datatransfer.StringSelection
 import java.io.File
 import java.net.URI
 import java.nio.file.Files
@@ -128,8 +127,7 @@ object DesktopUtils {
 	 */
 	fun copyToClipboard(text: String): Boolean {
 		return runCatching {
-			val selection = StringSelection(text)
-			Toolkit.getDefaultToolkit().systemClipboard.setContents(selection, selection)
+			EditorClipboard.setText(text)
 			true
 		}.getOrElse { false }
 	}

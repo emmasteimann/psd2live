@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.components
+import io.github.psd2live.ui.EditorPointers
 import kotlin.concurrent.Volatile
 
 import androidx.compose.foundation.BorderStroke
@@ -72,7 +73,6 @@ import io.github.psd2live.ui.theme.CustomTheme
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
 import io.github.psd2live.ui.theme.ThemeCatalog
-import java.awt.Cursor
 import kotlin.math.roundToInt
 
 /**
@@ -324,7 +324,7 @@ private fun SettingsSidebarRow(
 			}
 			.hoverable(interactionSource)
 			.clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
-			.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+			.pointerHoverIcon(EditorPointers.hand)
 			.padding(start = 12.dp, end = 8.dp),
 		contentAlignment = Alignment.CenterStart,
 	) {
@@ -547,7 +547,7 @@ private fun SettingsCanvasSection() {
 		Row(
 			modifier = Modifier
 				.fillMaxWidth()
-				.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+				.pointerHoverIcon(EditorPointers.hand)
 				.clickable { AppSettings.softwareCanvas = !softwareCanvas }
 				.padding(vertical = 2.dp),
 			verticalAlignment = Alignment.CenterVertically,
@@ -808,7 +808,7 @@ private fun ShortcutRow(
 						Text(
 							text = "×",
 							modifier = Modifier
-								.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+								.pointerHoverIcon(EditorPointers.hand)
 								.clickable { onRemoveBinding(action, index) }
 								.padding(horizontal = 1.dp),
 							style = typography.monoSmall.copy(fontSize = 10.sp),
@@ -883,7 +883,7 @@ private fun KeyChip(
 
 	Box(
 		modifier = Modifier
-			.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+			.pointerHoverIcon(EditorPointers.hand)
 			// Recording: a wheel notch, or a press of any button but a bare left one (which is still a
 			// click on the cell), becomes the binding. Read in the initial pass so the panel's scroll
 			// and the cell's click never see it.

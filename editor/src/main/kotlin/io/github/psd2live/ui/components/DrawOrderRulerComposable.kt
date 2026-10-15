@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.components
+import io.github.psd2live.ui.EditorPointers
 
 import androidx.compose.foundation.BorderStroke
 import io.github.psd2live.ui.state.effectiveButton
@@ -49,7 +50,6 @@ import io.github.psd2live.ui.tutorial.TutorialTargetId
 import io.github.psd2live.ui.tutorial.tutorialTarget
 import io.github.psd2live.ui.views.rememberMeshThumbnail
 import org.umamo.runtime.model.Drawable
-import java.awt.Cursor
 import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.math.roundToInt
@@ -191,12 +191,12 @@ fun DrawOrderRuler(
 				rulerWidthPx = it.size.width.toFloat().coerceAtLeast(1f)
 			}
 			.pointerHoverIcon(
-				PointerIcon(
+				(
 					when {
-						isRightDragging -> Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR)
-						isLeftDragging -> Cursor.getPredefinedCursor(Cursor.N_RESIZE_CURSOR)
-						hoveredEntry != null -> Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-						else -> Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR)
+						isRightDragging -> EditorPointers.move
+						isLeftDragging -> EditorPointers.resizeVertical
+						hoveredEntry != null -> EditorPointers.hand
+						else -> EditorPointers.default
 					}
 				)
 			)

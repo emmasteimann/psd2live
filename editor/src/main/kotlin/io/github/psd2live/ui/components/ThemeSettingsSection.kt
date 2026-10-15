@@ -1,4 +1,6 @@
 package io.github.psd2live.ui.components
+import io.github.psd2live.ui.EditorClipboard
+import io.github.psd2live.ui.EditorPointers
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -46,10 +48,6 @@ import io.github.psd2live.ui.theme.LocalToolTypography
 import io.github.psd2live.ui.theme.ThemeCatalog
 import io.github.psd2live.ui.theme.ThemeCodec
 import io.github.psd2live.ui.theme.ToolColors
-import java.awt.Cursor
-import java.awt.Toolkit
-import java.awt.datatransfer.DataFlavor
-import java.awt.datatransfer.StringSelection
 
 private const val THEME_CARD_COLUMNS = 4
 
@@ -199,7 +197,7 @@ private fun ThemeCard(
 		modifier = modifier
 			.hoverable(interactionSource)
 			.clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
-			.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR))),
+			.pointerHoverIcon(EditorPointers.hand),
 		verticalArrangement = Arrangement.spacedBy(4.dp),
 	) {
 		Box(
@@ -382,10 +380,8 @@ private fun ThemeTokenRow(
 	}
 }
 
-private fun readClipboardText(): String? = runCatching {
-	Toolkit.getDefaultToolkit().systemClipboard.getData(DataFlavor.stringFlavor) as? String
-}.getOrNull()
+private fun readClipboardText(): String? = EditorClipboard.text()
 
 private fun writeClipboardText(text: String) {
-	runCatching { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null) }
+	runCatching { EditorClipboard.setText(text) }
 }

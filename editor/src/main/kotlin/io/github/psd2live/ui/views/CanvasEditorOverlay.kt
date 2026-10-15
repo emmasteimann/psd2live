@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.views
+import io.github.psd2live.ui.EditorPointers
 import io.github.psd2live.core.Math
 import io.github.psd2live.core.WeakHashMap
 
@@ -59,7 +60,6 @@ import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import java.awt.Cursor
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -2059,7 +2059,7 @@ private fun MiniStepper(
                 .clickable(enabled = value > min) {
                     onValueChange((value - step).coerceAtLeast(min))
                 }
-                .pointerHoverIcon(if (value > min) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)) else PointerIcon.Default),
+                .pointerHoverIcon(if (value > min) EditorPointers.hand else PointerIcon.Default),
             contentAlignment = Alignment.Center,
         ) {
             Text(
@@ -2113,7 +2113,7 @@ private fun MiniStepper(
                 .clickable(enabled = value < max) {
                     onValueChange((value + step).coerceAtMost(max))
                 }
-                .pointerHoverIcon(if (value < max) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)) else PointerIcon.Default),
+                .pointerHoverIcon(if (value < max) EditorPointers.hand else PointerIcon.Default),
             contentAlignment = Alignment.Center,
         ) {
             Text(

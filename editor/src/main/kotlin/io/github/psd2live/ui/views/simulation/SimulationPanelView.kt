@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.views.simulation
+import io.github.psd2live.ui.EditorPointers
 
 import androidx.compose.foundation.VerticalScrollbar
 import io.github.psd2live.ui.state.effectiveButton
@@ -100,7 +101,6 @@ import io.github.psd2live.ui.views.PanelResetButton
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import io.github.psd2live.ui.components.CompactTextField
-import java.awt.Cursor
 
 /** The panel's foldable sections: the body list and the selected body's editor sections. */
 private val SECTIONS = setOf("bodies", "bake", "compare", "material", "inputs", "outputs", "glue", "groups")
@@ -603,7 +603,7 @@ private fun OutputRow(id: String, name: String, onRename: (String) -> Unit) {
 		} else {
 			Text(name, style = caption, color = colors.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis,
 				modifier = Modifier.weight(1f).clickable { renaming = true }
-					.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.TEXT_CURSOR))))
+					.pointerHoverIcon(EditorPointers.text))
 		}
 		Text(id, style = caption, color = colors.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
 	}

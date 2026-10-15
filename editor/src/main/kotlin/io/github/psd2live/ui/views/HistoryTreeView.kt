@@ -1,4 +1,6 @@
 package io.github.psd2live.ui.views
+import io.github.psd2live.ui.EditorClipboard
+import io.github.psd2live.ui.EditorPointers
 
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -63,9 +65,6 @@ import io.github.psd2live.ui.state.PSD2LiveViewModel
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
 import io.github.psd2live.ui.theme.frostedGlass
-import java.awt.Cursor
-import java.awt.Toolkit
-import java.awt.datatransfer.StringSelection
 import kotlinx.coroutines.delay
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -293,9 +292,9 @@ fun HistoryTreeView(
 						.fillMaxSize()
 						.onSizeChanged { viewportSize = it }
 						.pointerHoverIcon(
-							PointerIcon(
-								if (isDragging) Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR)
-								else Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR)
+							(
+								if (isDragging) EditorPointers.move
+								else EditorPointers.default
 							)
 						)
 						.pointerInput(Unit) {
@@ -768,7 +767,7 @@ private fun PillButton(
 				.background(if (hovered) colors.controlHover else Color.Transparent, RoundedCornerShape(3.dp))
 				.hoverable(interaction)
 				.clickable(interactionSource = interaction, indication = null, onClick = onClick)
-				.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR))),
+				.pointerHoverIcon(EditorPointers.hand),
 			contentAlignment = Alignment.Center,
 		) {
 			content(if (hovered) colors.textPrimary else colors.textMuted)
@@ -847,8 +846,7 @@ private fun NodeInspector(
 		) {
 			DetailRow(label = tr("history.time"), value = node.createdAt.take(19).replace('T', ' '))
 			DetailRow(label = tr("history.nodeId"), value = node.id) {
-				val copy = StringSelection(node.id)
-				Toolkit.getDefaultToolkit().systemClipboard.setContents(copy, copy)
+				EditorClipboard.setText(node.id)
 			}
 			DetailRow(label = tr("history.parentId"), value = node.parentId ?: "root")
 			DetailRow(label = tr("history.revisionId"), value = node.revisionId.take(16))
@@ -1084,7 +1082,7 @@ private fun ListRow(
 				)
 				.hoverable(interaction)
 				.pointerHoverIcon(
-					PointerIcon(Cursor.getPredefinedCursor(if (canRewind) Cursor.HAND_CURSOR else Cursor.DEFAULT_CURSOR))
+					((if (canRewind) EditorPointers.hand else EditorPointers.default))
 				)
 				.clickable(enabled = canRewind, interactionSource = interaction, indication = null, onClick = onClick)
 				.padding(start = 6.dp, end = 6.dp),
@@ -1173,7 +1171,7 @@ private fun DetailRow(label: String, value: String, onCopy: (() -> Unit)? = null
 			modifier = Modifier.weight(1f).then(
 				if (onCopy == null) Modifier else Modifier
 					.hoverable(interaction)
-					.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+					.pointerHoverIcon(EditorPointers.hand)
 					.clickable(interactionSource = interaction, indication = null, onClick = onCopy)
 			),
 		)

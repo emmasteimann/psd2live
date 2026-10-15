@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.views
+import io.github.psd2live.ui.EditorPointers
 
 import androidx.compose.foundation.Canvas
 import io.github.psd2live.ui.state.effectiveButton
@@ -34,7 +35,6 @@ import io.github.psd2live.ui.components.CompactTextField
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
 import org.umamo.runtime.eval.EPS_SPAN
-import java.awt.Cursor
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -164,7 +164,7 @@ fun ParameterKeyAxis(
             }
         }
         Canvas(Modifier.fillMaxWidth().height(46.dp)
-            .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+            .pointerHoverIcon(EditorPointers.hand)
             .onPointerEvent(PointerEventType.Move) { event -> hoverX = event.changes.firstOrNull()?.position?.x }
             .onPointerEvent(PointerEventType.Exit) { hoverX = null }
             .onPointerEvent(PointerEventType.Press) { event ->

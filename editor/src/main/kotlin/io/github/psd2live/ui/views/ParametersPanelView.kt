@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.views
+import io.github.psd2live.ui.EditorPointers
 
 import androidx.compose.animation.core.animateFloatAsState
 import io.github.psd2live.ui.state.effectiveButton
@@ -149,7 +150,6 @@ import io.github.psd2live.ui.state.AppSettings
 import io.github.psd2live.ui.state.PSD2LiveViewModel
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
-import java.awt.Cursor
 import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.roundToInt
@@ -697,12 +697,12 @@ fun ParametersListView(
 							}
 						}
 						.pointerHoverIcon(
-							PointerIcon(
+							(
 								when {
-									dividerHovered || dividerDrag != null -> Cursor.getPredefinedCursor(Cursor.E_RESIZE_CURSOR)
-									dragState.isDragging -> Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR)
-									else -> Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR)
-								},
+									dividerHovered || dividerDrag != null -> EditorPointers.resizeHorizontal
+									dragState.isDragging -> EditorPointers.move
+									else -> EditorPointers.default
+								}
 							),
 							overrideDescendants = dividerHovered || dividerDrag != null,
 						),
@@ -1142,7 +1142,7 @@ private fun ParameterDragHandle(
 		modifier = Modifier
 			.size(ParamRowHandleWidth)
 			.onGloballyPositioned { handleCoords = it }
-			.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR)))
+			.pointerHoverIcon(EditorPointers.move)
 			.onPointerEvent(PointerEventType.Press) { event ->
 				if (event.effectiveButton != PointerButton.Primary) return@onPointerEvent
 				val row = rowCoords ?: return@onPointerEvent
@@ -1220,7 +1220,7 @@ private fun ParameterFolderRow(
 			.then(
 				if (!renaming) {
 					Modifier
-						.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+						.pointerHoverIcon(EditorPointers.hand)
 						.clickable(
 							interactionSource = interactionSource,
 							indication = null,
@@ -1373,7 +1373,7 @@ private fun ParameterLabelSwatch(
 				RoundedCornerShape(3.dp),
 			)
 			.clickable(onClick = onClick)
-			.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR))),
+			.pointerHoverIcon(EditorPointers.hand),
 	)
 }
 
@@ -1552,7 +1552,7 @@ private fun ParameterTrack(
 			.height(28.dp)
 			.onGloballyPositioned { trackCoords = it }
 			.pointerHoverIcon(
-				if (enabled) PointerIcon(Cursor.getPredefinedCursor(Cursor.CROSSHAIR_CURSOR))
+				if (enabled) EditorPointers.crosshair
 				else PointerIcon.Default,
 			)
 			.onPointerEvent(PointerEventType.Move) { event ->
@@ -1702,7 +1702,7 @@ private fun ParameterLinkSlot(
 				.hoverable(interaction)
 				.clickable(enabled = enabled, interactionSource = interaction, indication = null, onClick = onClick)
 				.pointerHoverIcon(
-					if (enabled) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR))
+					if (enabled) EditorPointers.hand
 					else PointerIcon.Default,
 				),
 			contentAlignment = Alignment.Center,
@@ -1933,7 +1933,7 @@ private fun LinkedParameterPad(
 						.onGloballyPositioned { resizeCoords = it }
 						.hoverable(resizeInteraction)
 						.semantics { contentDescription = tr("parameters.padHeightTooltip") }
-						.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.S_RESIZE_CURSOR)))
+						.pointerHoverIcon(EditorPointers.resizeVertical)
 						.pointerInput(density) {
 							awaitEachGesture {
 								val down = awaitFirstDown()
@@ -2067,7 +2067,7 @@ private fun ParameterPad2D(
 		modifier = modifier
 			.onGloballyPositioned { padCoords = it }
 			.pointerHoverIcon(if (xLocked && yLocked) PointerIcon.Default
-				else PointerIcon(Cursor.getPredefinedCursor(Cursor.CROSSHAIR_CURSOR)))
+				else EditorPointers.crosshair)
 			.onPointerEvent(PointerEventType.Move) { event ->
 				val pos = event.changes.firstOrNull()?.position ?: return@onPointerEvent
 				val insetX = insetHorizontalDp.toPx()
@@ -2422,7 +2422,7 @@ private fun ParameterKeyOwnersFloat(
 													indication = null,
 													onClick = { onSelect(component) },
 												)
-												.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+												.pointerHoverIcon(EditorPointers.hand)
 										} else Modifier.hoverable(interaction),
 									)
 									.padding(horizontal = 4.dp, vertical = 3.dp),

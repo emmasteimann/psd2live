@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.views
+import io.github.psd2live.ui.EditorPointers
 import io.github.psd2live.core.toSortedMap
 
 import androidx.compose.animation.AnimatedVisibility
@@ -85,7 +86,6 @@ import org.umamo.runtime.model.Drawable
 import org.umamo.runtime.model.DrawableId
 import org.umamo.runtime.model.OrgChild
 import org.umamo.runtime.model.PartId
-import java.awt.Cursor
 import kotlin.math.roundToInt
 
 @Composable
@@ -1161,7 +1161,7 @@ private fun InspectorColorRow(
                         .background(Color(intColor))
                         .border(1.dp, colors.border, RoundedCornerShape(2.dp))
                         .clickable { colorPickerOpen = true }
-                        .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+                        .pointerHoverIcon(EditorPointers.hand)
                 )
 
                 if (colorPickerOpen) {
@@ -1262,7 +1262,7 @@ private fun ActionButton(
             .background(colors.panelElevated)
             .border(1.dp, colors.border, RoundedCornerShape(3.dp))
             .clickable(onClick = onClick)
-            .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR))),
+            .pointerHoverIcon(EditorPointers.hand),
         contentAlignment = Alignment.Center,
     ) {
         content()

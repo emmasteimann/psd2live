@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.views
+import io.github.psd2live.ui.EditorPointers
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -61,7 +62,6 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.floatOrNull
-import java.awt.Cursor
 
 /**
  * A group of the model presets, drawn like a parameter folder: chevron, folder icon, name, and on the
@@ -79,7 +79,7 @@ fun PresetFolderRow(title: String, summary: String, expanded: Boolean, enabled: 
 			.height(24.dp)
 			.background(if (hovered && enabled) colors.controlHover.copy(alpha = 0.55f) else colors.panelElevated.copy(alpha = 0.55f))
 			.hoverable(interaction)
-			.pointerHoverIcon(if (enabled) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)) else PointerIcon.Default)
+			.pointerHoverIcon(if (enabled) EditorPointers.hand else PointerIcon.Default)
 			.clickable(enabled = enabled, interactionSource = interaction, indication = null, onClick = onToggle)
 			.padding(start = 6.dp, end = 8.dp),
 		verticalAlignment = Alignment.CenterVertically,
@@ -486,7 +486,7 @@ fun RigTuningPresets(state: PSD2LiveState, viewModel: PSD2LiveViewModel, isBusy:
 				.height(20.dp)
 				.background(if (hovered && !isBusy) colors.controlHover.copy(alpha = 0.55f) else colors.panelElevated.copy(alpha = 0.35f))
 				.hoverable(interaction)
-				.pointerHoverIcon(if (!isBusy) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)) else PointerIcon.Default)
+				.pointerHoverIcon(if (!isBusy) EditorPointers.hand else PointerIcon.Default)
 				.clickable(enabled = !isBusy, interactionSource = interaction, indication = null) {
 					viewModel.setRigTuningAdvancedExpanded(!state.rigTuningAdvancedExpanded)
 				}

@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.views
+import io.github.psd2live.ui.EditorPointers
 
 import androidx.compose.foundation.BorderStroke
 import io.github.psd2live.ui.state.effectiveButton
@@ -80,7 +81,6 @@ import io.github.psd2live.ui.state.displayName
 import io.github.psd2live.ui.state.isCanvasModule
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
-import java.awt.Cursor
 
 /** Dock modules the window menu can show or hide, in menu order. */
 val WINDOW_MODULES = listOf(
@@ -279,7 +279,7 @@ private fun WorkspaceChip(
 				.height(22.dp)
 				.clip(RoundedCornerShape(4.dp))
 				.background(bg)
-				.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+				.pointerHoverIcon(EditorPointers.hand)
 				.onPointerEvent(PointerEventType.Press, pass = PointerEventPass.Initial) { event ->
 					when {
 						event.effectiveButton == PointerButton.Secondary -> {
@@ -382,7 +382,7 @@ private fun WorkspaceChip(
 			Box(
 				modifier = Modifier
 					.size(14.dp)
-					.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+					.pointerHoverIcon(EditorPointers.hand)
 					.clickable(enabled = canClose && (isActive || isHovered)) { onClose() },
 				contentAlignment = Alignment.Center,
 			) {
@@ -437,7 +437,7 @@ fun TabStripButton(
 			.height(22.dp)
 			.clip(RoundedCornerShape(4.dp))
 			.background(if (isHovered) colors.controlHover.copy(alpha = 0.6f) else Color.Transparent)
-			.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+			.pointerHoverIcon(EditorPointers.hand)
 			.clickable(interactionSource = interactionSource, indication = null) { onClick() }
 			.drawBehind {
 				if (highlighted) {

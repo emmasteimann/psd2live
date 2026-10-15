@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.views
+import io.github.psd2live.ui.EditorPointers
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -80,7 +81,6 @@ import io.github.psd2live.ui.state.PSD2LiveState
 import io.github.psd2live.ui.state.PSD2LiveViewModel
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
-import java.awt.Cursor
 
 /*
  * Panel toolbars. Every dock panel opens with one 28dp strip: 22dp controls 3dp apart on the elevated
@@ -379,7 +379,7 @@ fun PanelToolButton(
 				)
 				.hoverable(interaction)
 				.clickable(enabled = enabled, interactionSource = interaction, indication = null, onClick = onClick)
-				.pointerHoverIcon(if (enabled) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)) else PointerIcon.Default)
+				.pointerHoverIcon(if (enabled) EditorPointers.hand else PointerIcon.Default)
 				.padding(horizontal = 5.dp),
 			verticalAlignment = Alignment.CenterVertically,
 		) {
@@ -440,7 +440,7 @@ fun PanelToolSwitch(
 				.background(if (hovered && enabled) colors.controlHover else Color.Transparent, RoundedCornerShape(2.dp))
 				.hoverable(interaction)
 				.clickable(enabled = enabled, interactionSource = interaction, indication = null) { onCheckedChange(!checked) }
-				.pointerHoverIcon(if (enabled) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)) else PointerIcon.Default)
+				.pointerHoverIcon(if (enabled) EditorPointers.hand else PointerIcon.Default)
 				.padding(horizontal = 4.dp),
 			verticalAlignment = Alignment.CenterVertically,
 		) {
@@ -505,7 +505,7 @@ fun PanelSectionRow(
 			.fillMaxWidth()
 			.background(if (hovered) colors.controlHover.copy(alpha = 0.55f) else colors.panelElevated.copy(alpha = 0.55f))
 			.hoverable(interaction)
-			.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+			.pointerHoverIcon(EditorPointers.hand)
 			.clickable(interactionSource = interaction, indication = null, onClick = onToggle)
 			.padding(start = 4.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
 		verticalAlignment = Alignment.CenterVertically,

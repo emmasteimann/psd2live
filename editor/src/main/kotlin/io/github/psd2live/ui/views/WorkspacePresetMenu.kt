@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.views
+import io.github.psd2live.ui.EditorPointers
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -55,7 +56,6 @@ import io.github.psd2live.ui.state.CanvasMode
 import io.github.psd2live.ui.state.WorkspacePreset
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
-import java.awt.Cursor
 
 /**
  * "+" menu of the workspace strip: presets on the left, each with its icon and a small layout
@@ -142,7 +142,7 @@ private fun PresetRow(
 			.fillMaxWidth()
 			.height(30.dp)
 			.background(if (highlighted) colors.selection else Color.Transparent)
-			.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+			.pointerHoverIcon(EditorPointers.hand)
 			.onPointerEvent(PointerEventType.Enter) { onHover() }
 			.clickable(onClick = onClick)
 			.padding(horizontal = 10.dp),

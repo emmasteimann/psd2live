@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.views
+import io.github.psd2live.ui.EditorPointers
 import io.github.psd2live.core.transparentRasterFiles
 
 import androidx.compose.foundation.BorderStroke
@@ -123,7 +124,6 @@ import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
 import io.github.psd2live.ui.utils.NativeFilePicker
 import io.github.psd2live.ui.components.SidebarToggle
-import java.awt.Cursor
 import java.awt.Desktop
 import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
@@ -1063,7 +1063,7 @@ private fun StatusBar(
 					.background(colors.controlBackground, RoundedCornerShape(3.dp))
 					.border(BorderStroke(1.dp, colors.border), RoundedCornerShape(3.dp))
 					.clickable { showZoomMenu = true }
-					.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+					.pointerHoverIcon(EditorPointers.hand)
 					.padding(horizontal = 6.dp),
 				verticalAlignment = Alignment.CenterVertically,
 				horizontalArrangement = Arrangement.spacedBy(4.dp),

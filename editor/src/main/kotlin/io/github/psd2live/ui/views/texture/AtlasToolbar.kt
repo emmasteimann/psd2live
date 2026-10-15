@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.views.texture
+import io.github.psd2live.ui.EditorPointers
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
@@ -590,7 +591,7 @@ fun BarValueChip(
 					.background(background)
 					.border(0.5.dp, if (dragging || open) colors.accent.copy(alpha = 0.45f) else colors.border.copy(alpha = 0.35f), RoundedCornerShape(4.dp))
 					.hoverable(interactionSource)
-					.pointerHoverIcon(PointerIcon(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.E_RESIZE_CURSOR)))
+					.pointerHoverIcon(EditorPointers.resizeHorizontal)
 					.pointerInput(enabled) {
 						if (!enabled) return@pointerInput
 						awaitEachGesture {

@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.components
+import io.github.psd2live.ui.EditorPointers
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -113,7 +114,6 @@ import androidx.compose.ui.unit.sp
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
 import io.github.psd2live.ui.theme.frostedGlass
-import java.awt.Cursor
 
 /**
  * Click-to-dismiss for a full-window dialog scrim. Without a MaterialTheme the default indication
@@ -640,7 +640,7 @@ fun CompactMenuItem(
 			.height(26.dp)
 			.clip(RoundedCornerShape(4.dp))
 			.background(itemBg)
-			.pointerHoverIcon(if (enabled) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)) else PointerIcon.Default)
+			.pointerHoverIcon(if (enabled) EditorPointers.hand else PointerIcon.Default)
 			.onPointerEvent(PointerEventType.Enter) { if (enabled) isHovered = true }
 			.onPointerEvent(PointerEventType.Exit) { isHovered = false }
 			.clickable(enabled = enabled, onClick = onClick)
@@ -905,7 +905,7 @@ fun CompactButton(
 			.border(BorderStroke(1.dp, borderColor), RoundedCornerShape(2.dp))
 			.hoverable(interactionSource)
 			.clickable(enabled = enabled, interactionSource = interactionSource, indication = null) { onClick() }
-			.pointerHoverIcon(if (enabled) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)) else PointerIcon.Default)
+			.pointerHoverIcon(if (enabled) EditorPointers.hand else PointerIcon.Default)
 			.padding(horizontal = 6.dp),
 		contentAlignment = Alignment.Center,
 	) {
@@ -964,7 +964,7 @@ fun CompactIconButton(
 				.border(BorderStroke(1.dp, if (isHovered && enabled) colors.borderHover else colors.border), RoundedCornerShape(2.dp))
 				.hoverable(interactionSource)
 				.clickable(enabled = enabled, interactionSource = interactionSource, indication = null) { onClick() }
-				.pointerHoverIcon(if (enabled) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)) else PointerIcon.Default),
+				.pointerHoverIcon(if (enabled) EditorPointers.hand else PointerIcon.Default),
 			contentAlignment = Alignment.Center,
 		) {
 			content()
@@ -1291,7 +1291,7 @@ fun CompactSlider(
 			.height(height)
 			.hoverable(interactionSource)
 			.pointerHoverIcon(
-				if (enabled) PointerIcon(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR))
+				if (enabled) EditorPointers.hand
 				else PointerIcon.Default,
 			)
 			.pointerInput(valueRange, enabled) {
@@ -1378,7 +1378,7 @@ fun CompactCheckbox(
 			.clickable(enabled = enabled, interactionSource = interactionSource, indication = null) {
 				onCheckedChange(!checked)
 			}
-			.pointerHoverIcon(if (enabled) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)) else PointerIcon.Default)
+			.pointerHoverIcon(if (enabled) EditorPointers.hand else PointerIcon.Default)
 			.padding(vertical = 2.dp),
 		verticalAlignment = Alignment.CenterVertically,
 	) {
@@ -1459,7 +1459,7 @@ fun CompactToggleChip(
 				.border(BorderStroke(1.dp, borderColor), RoundedCornerShape(2.dp))
 				.hoverable(interactionSource)
 				.clickable(enabled = enabled, interactionSource = interactionSource, indication = null) { onToggle() }
-				.pointerHoverIcon(if (enabled) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)) else PointerIcon.Default)
+				.pointerHoverIcon(if (enabled) EditorPointers.hand else PointerIcon.Default)
 				.padding(horizontal = 4.dp),
 			contentAlignment = Alignment.Center,
 		) {
@@ -1588,7 +1588,7 @@ fun <T> CompactDropdown(
 				.fillMaxWidth()
 				.background(colors.inputBackground, RoundedCornerShape(2.dp))
 				.border(BorderStroke(1.dp, colors.border), RoundedCornerShape(2.dp))
-				.pointerHoverIcon(if (enabled) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)) else PointerIcon.Default)
+				.pointerHoverIcon(if (enabled) EditorPointers.hand else PointerIcon.Default)
 				.clickable(enabled = enabled) { expanded = true }
 				.padding(horizontal = 6.dp),
 			verticalAlignment = Alignment.CenterVertically,
@@ -1626,7 +1626,7 @@ fun <T> CompactDropdown(
 					modifier = Modifier
 						.height(26.dp)
 						.background(if (isSelected) colors.selection else Color.Transparent)
-						.pointerHoverIcon(if (isItemEnabled) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)) else PointerIcon.Default),
+						.pointerHoverIcon(if (isItemEnabled) EditorPointers.hand else PointerIcon.Default),
 				) {
 					Text(
 						text = itemLabel(item),
@@ -1690,7 +1690,7 @@ fun CompactTabBar(
 							)
 						}
 					}
-					.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+					.pointerHoverIcon(EditorPointers.hand)
 					.clickable(interactionSource = interactionSource, indication = null) {
 						onTabSelected(index)
 					}

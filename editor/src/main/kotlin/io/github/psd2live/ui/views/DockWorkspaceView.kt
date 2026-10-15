@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.views
+import io.github.psd2live.ui.EditorPointers
 
 import io.github.psd2live.ui.views.physics.PhysicsPanelView
 import io.github.psd2live.ui.state.effectiveButton
@@ -55,7 +56,6 @@ import io.github.psd2live.ui.tutorial.TutorialId
 import io.github.psd2live.ui.tutorial.tutorialTarget
 import kotlinx.coroutines.delay
 import java.awt.MouseInfo
-import java.awt.Cursor
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 
@@ -427,8 +427,8 @@ private fun DockTree(node: DockNode, session: DockSession, modifier: Modifier, w
             val hovered by interaction.collectIsHoveredAsState()
             var resizing by remember(node.id) { mutableStateOf(false) }
             val splitter = Modifier.background(colors.windowBackground).hoverable(interaction)
-                .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(
-                    if (node.horizontal) Cursor.E_RESIZE_CURSOR else Cursor.N_RESIZE_CURSOR)))
+                .pointerHoverIcon(((
+                    if (node.horizontal) EditorPointers.resizeHorizontal else EditorPointers.resizeVertical)))
                 .drawBehind {
                     val color = if (hovered || resizing || node.id in session.junctionHighlights) colors.accent else colors.windowBackground
                     if (node.horizontal) drawLine(color, Offset(size.width / 2, 0f),
@@ -585,7 +585,7 @@ private fun DockTabStrip(node: DockNode, session: DockSession, window: java.awt.
         if (scroll.maxValue > 0) {
             Box {
                 Box(Modifier.size(22.dp)
-                    .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+                    .pointerHoverIcon(EditorPointers.hand)
                     .clickable { listMenu = true }, contentAlignment = Alignment.Center) {
                     io.github.psd2live.ui.components.IconChevron(expanded = true, tint = colors.textMuted,
                         modifier = Modifier.size(10.dp))
@@ -730,7 +730,7 @@ private fun DockJunctionOverlay(root: DockNode, session: DockSession, window: ja
                     IntOffset((junction.center.x - halfHandle).roundToInt(), (junction.center.y - halfHandle).roundToInt())
                 }.size(handle)
                     .hoverable(interaction)
-                    .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR)))
+                    .pointerHoverIcon(EditorPointers.move)
                     .drawBehind {
                         if (hovered || dragging) {
                             drawCircle(colors.accent.copy(alpha = .16f))
@@ -832,10 +832,10 @@ private fun DockHeader(id: String, session: DockSession, modifier: Modifier,
             modifier = (if (tab) Modifier.widthIn(max = 120.dp) else Modifier.weight(1f))
                 // The move cursor appears only once a drag passes the slop; until then the
                 // cursor reflects what a click does (switch tab vs. nothing).
-                .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(when {
-                    session.dragging == id -> Cursor.MOVE_CURSOR
-                    tab && !selected -> Cursor.HAND_CURSOR
-                    else -> Cursor.DEFAULT_CURSOR
+                .pointerHoverIcon(((when {
+                    session.dragging == id -> EditorPointers.move
+                    tab && !selected -> EditorPointers.hand
+                    else -> EditorPointers.default
                 })))
                 .onPointerEvent(PointerEventType.Press) { event ->
                     when (event.effectiveButton) {
@@ -951,7 +951,7 @@ private fun DockHeaderIcon(onClick: () -> Unit, content: @Composable () -> Unit)
     Box(Modifier.size(14.dp).clip(RoundedCornerShape(3.dp))
         .background(if (hovered) colors.controlHover else Color.Transparent)
         .hoverable(interaction)
-        .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+        .pointerHoverIcon(EditorPointers.hand)
         .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center) {
         content()
@@ -968,7 +968,7 @@ private fun CanvasModeChip(label: String, active: Boolean, modifier: Modifier, o
         style = typography.body.copy(fontSize = 10.sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal),
         maxLines = 1,
         modifier = modifier
-            .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+            .pointerHoverIcon(EditorPointers.hand)
             .clickable(onClick = onClick)
             .padding(horizontal = 4.dp),
     )

@@ -1,4 +1,5 @@
 package io.github.psd2live.ui.views
+import io.github.psd2live.ui.EditorPointers
 
 import io.github.psd2live.project.displayedRect
 import io.github.psd2live.ui.state.effectiveButton
@@ -48,7 +49,6 @@ import androidx.compose.ui.input.pointer.isAltPressed
 import io.github.psd2live.ui.state.isPrimaryPressed
 import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.input.pointer.pointerHoverIcon
-import java.awt.Cursor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -421,7 +421,7 @@ private fun CompactSwitchParamField(
 				Box(
 					modifier = Modifier
 						.size(16.dp)
-						.pointerHoverIcon(if (enabled) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)) else PointerIcon.Default)
+						.pointerHoverIcon(if (enabled) EditorPointers.hand else PointerIcon.Default)
 						.clickable(enabled = enabled) { expanded = !expanded },
 					contentAlignment = Alignment.Center,
 				) {
@@ -618,7 +618,7 @@ fun LayersTableView(
 							modifier = Modifier
 								.weight(1.0f)
 								.fillMaxHeight()
-								.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+								.pointerHoverIcon(EditorPointers.hand)
 								.onPointerEvent(PointerEventType.Press) { event ->
 									if (event.effectiveButton != PointerButton.Primary) return@onPointerEvent
 									val ordered = layers.map { it.source.id.raw }
@@ -819,7 +819,7 @@ fun LayersTableView(
 						Box(
 							modifier = Modifier
 								.size(20.dp)
-								.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+								.pointerHoverIcon(EditorPointers.hand)
 								.clickable { viewModel.deleteLayer(layerId) }
 								.padding(2.dp),
 							contentAlignment = Alignment.Center,

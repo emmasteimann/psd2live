@@ -38,6 +38,28 @@ object PoseTweaks {
 		return reached
 	}
 
+	/** Each mesh's triangle edges at [pose] as canvas-pixel segments (x0, y0, x1, y1, ...), front-most first. */
+	fun wireframes(model: PuppetModel, pose: Map<String, Float>, only: Set<String>? = null): List<Pair<String, FloatArray>> {
+		val defaults = model.parameters.associate { it.id to it.default }
+		val worlds = buildDeformerWorlds(model.deformers, { pose[it.raw] ?: defaults[it] ?: 0f }, { defaults[it] ?: 0f })
+		return model.drawables.withIndex().sortedByDescending { (index, d) -> d.drawOrder * 10_000 + index }.mapNotNull { (_, drawable) ->
+			val mesh = drawable.mesh ?: return@mapNotNull null
+			if (only != null && drawable.id.raw !in only) return@mapNotNull null
+			val geometry = runCatching { RigGeometryTools.geometry(model, "mesh", drawable.id.raw, pose) }.getOrNull() ?: return@mapNotNull null
+			val world = DrawableSpaceMapping(geometry.parent?.let { worlds[DeformerId(it)] ?: return@let null }).localToWorld(geometry.points)
+			val edges = HashSet<Long>()
+			val out = ArrayList<Float>()
+			val idx = mesh.indices
+			fun edge(a: Int, b: Int) {
+				val key = minOf(a, b).toLong() shl 32 or maxOf(a, b).toLong()
+				if (edges.add(key)) { out += world[a * 2]; out += -world[a * 2 + 1]; out += world[b * 2]; out += -world[b * 2 + 1] }
+			}
+			var t = 0
+			while (t + 2 < idx.size) { edge(idx[t], idx[t + 1]); edge(idx[t + 1], idx[t + 2]); edge(idx[t + 2], idx[t]); t += 3 }
+			drawable.id.raw to out.toFloatArray()
+		}
+	}
+
 	/**
 	 * Starts a stroke at ([x], [y]) over [meshes] at [pose]: each mesh's keyform at the pose's coordinate is what moves
 	 * ([CanvasDeformStroke.Mode.DEFORM]), so a tweak at "looking left" changes looking left and blends toward the rest.

@@ -70,6 +70,8 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 	var strength by remember { mutableStateOf(0.6f) }
 	var smooth by remember { mutableStateOf(false) }
 	var view by remember { mutableStateOf(CanvasView()) }
+	var showMesh by remember { mutableStateOf(false) }
+	var wires by remember { mutableStateOf<List<FloatArray>>(emptyList()) }
 	var tick by remember { mutableStateOf(0L) }
 	var image by remember { mutableStateOf<Pair<ImageBitmap, FloatArray>?>(null) }
 	var cursor by remember { mutableStateOf<Offset?>(null) }
@@ -89,7 +91,7 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 	LaunchedEffect(tweaking) {
 		// Draws only what is on screen, so zooming in stays sharp: a quick draft (~0.35 MP) while the pencil or a slider
 		// moves, the full-resolution frame (~2.2 MP) once things rest for a moment. A newer change drops both.
-		snapshotFlow { listOf(tick, pose, view, box) }.collectLatest {
+		snapshotFlow { listOf(tick, pose, view, box, showMesh) }.collectLatest {
 			val (w, h) = box
 			if (w < 2f || h < 2f) return@collectLatest
 			val l = layout(w, h, view)
@@ -105,6 +107,7 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 				val raster = tweaking.frame(shownPose, x0, y0, x1 - x0, y1 - y0, outW, outH)
 				raster.toImageBitmap() to floatArrayOf(left + x0 * scale, top + y0 * scale, (x1 - x0) * scale, (y1 - y0) * scale)
 			}
+			wires = if (showMesh) withContext(Dispatchers.Default) { tweaking.wires(shownPose) } else emptyList()
 			image = draw(350_000f)
 			delay(180)
 			image = draw(2_200_000f)
@@ -152,6 +155,13 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 						drawImage(bitmap, dstOffset = IntOffset(at[0].roundToInt(), at[1].roundToInt()),
 							dstSize = androidx.compose.ui.unit.IntSize(at[2].roundToInt(), at[3].roundToInt()))
 					}
+					if (wires.isNotEmpty()) {
+						// The meshes' triangles, so it shows where a part can bend and where it can only stretch.
+						val l = layout(w, h, view)
+						val points = ArrayList<Offset>(wires.sumOf { it.size / 2 })
+						for (wire in wires) { var i = 0; while (i + 1 < wire.size) { points += Offset(l[1] + wire[i] * l[0], l[2] + wire[i + 1] * l[0]); i += 2 } }
+						drawPoints(points, androidx.compose.ui.graphics.PointMode.Lines, Color(0xFF7FE0FF).copy(alpha = 0.55f), strokeWidth = 1f)
+					}
 					cursor?.let { c ->
 						val l = layout(w, h, view)
 						drawCircle(Color.White.copy(alpha = 0.8f), radius * l[0], c, style = Stroke(1.5f))
@@ -166,6 +176,7 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 					Chip("Push", !smooth) { smooth = false }
 					Chip("Smooth", smooth) { smooth = true }
 					Chip("Fit view", false) { view = CanvasView() }
+					Chip("Mesh", showMesh) { showMesh = !showMesh }
 				}
 				Text("Brush size  ${(radius * 2).roundToInt()} px", color = Muted, fontSize = 12.sp)
 				Slider(radius, { radius = it }, valueRange = 4f..300f, colors = sliderColors(), modifier = Modifier.height(30.dp))

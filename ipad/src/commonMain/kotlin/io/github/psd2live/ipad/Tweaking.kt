@@ -80,6 +80,9 @@ class RigTweaking(val outcome: RigOutcome) {
 			renderer!!.render(pose, 0f, FrameSpec(left, top, width, height, outWidth, outHeight), null)
 		}
 
+	/** Every mesh's triangle edges at [pose], canvas pixels (x0, y0, x1, y1, ...), for the wireframe overlay. */
+	fun wires(pose: Map<String, Float>): List<FloatArray> = PoseTweaks.wireframes(shown, pose).map { it.second }
+
 	/** The tweaked rig's runtime files written over the rig's folder, as the outcome the Rig tab shows. Blocking. */
 	fun finish(progress: (String, Double) -> Unit): RigOutcome {
 		val started = RigFiles.nowSeconds()

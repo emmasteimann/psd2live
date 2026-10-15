@@ -64,9 +64,15 @@ internal fun buildRig(name: String, source: org.umamo.format.art.SourceArt, conf
 	progress: (String, Double) -> Unit): RigOutcome {
 	val pipeline = PSD2LivePipeline()
 	val model = pipeline.buildPreview(source, config, ProgressListener { stage, fraction -> progress(stage, 0.04 + fraction * 0.8) })
+	return writeRig(name, source, config, model, started, progress)
+}
+
+/** [model]'s runtime files written into Rigs/NAME, and the outcome that describes them. */
+internal fun writeRig(name: String, source: org.umamo.format.art.SourceArt, config: PipelineConfig, model: RigPreviewModel,
+	started: Double, progress: (String, Double) -> Unit): RigOutcome {
 	progress("Writing the runtime files", 0.86)
 	val folder = RigFiles.folderFor(name)
-	val outcome = pipeline.exportFiles(model, name) { relative, data -> RigFiles.write(folder, relative, data); relative }
+	val outcome = PSD2LivePipeline().exportFiles(model, name) { relative, data -> RigFiles.write(folder, relative, data); relative }
 	progress("Done", 1.0)
 	val puppet = model.rig.puppet
 	return RigOutcome(name, puppet.drawables.size, puppet.deformers.size, puppet.parameters.size, outcome.files.sorted(), folder,
@@ -79,7 +85,7 @@ internal fun buildRig(name: String, source: org.umamo.format.art.SourceArt, conf
  */
 suspend fun saveRigProject(outcome: RigOutcome): String {
 	val document = io.github.psd2live.project.WorkspaceDocument(outcome.source, emptyMap(), emptySet(), emptyMap(), emptyMap(),
-		io.github.psd2live.core.RigEditOverlay.Empty, io.github.psd2live.project.WorkspaceSettingsCodec.encode(outcome.config),
+		outcome.config.rigEdits, io.github.psd2live.project.WorkspaceSettingsCodec.encode(outcome.config),
 		generationSource = outcome.config.generationSource)
 	val revision = io.github.psd2live.project.WorkspaceRevisions.of(document)
 	val history = io.github.psd2live.history.WorkspaceHistoryTree(document, revision, revision)

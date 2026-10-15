@@ -83,3 +83,19 @@ object AtlasPagePixels {
 
 @Suppress("NOTHING_TO_INLINE")
 actual inline fun <R> synchronized(lock: Any, block: () -> R): R = kotlin.synchronized(lock, block)
+
+actual typealias PriorityQueue<E> = java.util.PriorityQueue<E>
+actual typealias WeakHashMap<K, V> = java.util.WeakHashMap<K, V>
+actual typealias IdentityHashMap<K, V> = java.util.IdentityHashMap<K, V>
+actual typealias CopyOnWriteArrayList<E> = java.util.concurrent.CopyOnWriteArrayList<E>
+actual typealias SoftReference<T> = java.lang.ref.SoftReference<T>
+actual typealias WeakReference<T> = java.lang.ref.WeakReference<T>
+actual typealias AtomicLong = java.util.concurrent.atomic.AtomicLong
+actual typealias AtomicInteger = java.util.concurrent.atomic.AtomicInteger
+actual typealias AtomicBoolean = java.util.concurrent.atomic.AtomicBoolean
+
+actual fun <K, V> synchronizedMapOf(map: MutableMap<K, V>): MutableMap<K, V> = java.util.Collections.synchronizedMap(map)
+actual fun <T> synchronizedListOf(list: MutableList<T>): MutableList<T> = java.util.Collections.synchronizedList(list)
+
+actual fun normalizeNfkc(text: String): String = java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFKC)
+

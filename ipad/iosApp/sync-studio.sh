@@ -17,7 +17,7 @@ cp "$STUDIO"/node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.{
 mkdir -p "$CACHE/onnx"
 for f in config.json preprocessor_config.json processor_config.json \
          onnx/vision_encoder_fp16.onnx onnx/vision_encoder_fp16.onnx_data \
-         onnx/prompt_encoder_mask_decoder_fp16.onnx onnx/prompt_encoder_mask_decoder_fp16.onnx_data; do
+         onnx/prompt_encoder_mask_decoder.onnx onnx/prompt_encoder_mask_decoder.onnx_data; do
   [ -s "$CACHE/$f" ] || curl -sfL "https://huggingface.co/$MODEL/resolve/main/$f" -o "$CACHE/$f"
 done
 mkdir -p "$HERE/studio/models/$MODEL"

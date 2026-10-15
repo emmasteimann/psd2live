@@ -1,9 +1,5 @@
 package io.github.psd2live.core
 
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import java.nio.file.Files
-import java.nio.file.Path
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.log10
@@ -31,27 +27,14 @@ object LipSync {
 		val duration: Float get() = open.size / fps
 	}
 
-	/** [file] as mono audio: a PCM WAV is read as it is; anything else macOS can read is converted first (afconvert). */
-	fun read(file: Path): Audio {
-		runCatching { return readWav(Files.readAllBytes(file)) }
-		val wav = Files.createTempFile("lipsync", ".wav")
-		try {
-			val process = ProcessBuilder("afconvert", "-f", "WAVE", "-d", "LEI16@16000", "-c", "1", file.toString(), wav.toString())
-				.redirectErrorStream(true).start()
-			val output = process.inputStream.readAllBytes().decodeToString()
-			require(process.waitFor() == 0) { "Couldn't read ${file.fileName} as audio: ${output.trim().take(200)}" }
-			return readWav(Files.readAllBytes(wav))
-		} finally { Files.deleteIfExists(wav) }
-	}
-
 	/** A RIFF WAV: 16-bit or 24-bit PCM, or 32-bit float, mixed down to mono. */
 	fun readWav(bytes: ByteArray): Audio {
-		val b = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
-		require(bytes.size > 12 && String(bytes, 0, 4) == "RIFF" && String(bytes, 8, 4) == "WAVE") { "Not a WAV file" }
+		val b = LittleEndian(bytes)
+		require(bytes.size > 12 && bytes.decodeToString(0, 4) == "RIFF" && bytes.decodeToString(8, 12) == "WAVE") { "Not a WAV file" }
 		var format = 0; var channels = 0; var rate = 0; var bits = 0
 		var at = 12
 		while (at + 8 <= bytes.size) {
-			val id = String(bytes, at, 4); val size = b.getInt(at + 4); val body = at + 8
+			val id = bytes.decodeToString(at, at + 4); val size = b.getInt(at + 4); val body = at + 8
 			when (id) {
 				"fmt " -> { format = b.getShort(body).toInt() and 0xffff; channels = b.getShort(body + 2).toInt(); rate = b.getInt(body + 4); bits = b.getShort(body + 14).toInt()
 					if (format == 0xFFFE && size >= 26) format = b.getShort(body + 24).toInt() and 0xffff }
@@ -80,6 +63,14 @@ object LipSync {
 			at = body + size + (size and 1)
 		}
 		throw IllegalArgumentException("WAV has no audio data")
+	}
+
+	/** Little-endian reads at absolute offsets (ByteBuffer.order(LITTLE_ENDIAN)'s getShort/getInt/getFloat). */
+	private class LittleEndian(private val bytes: ByteArray) {
+		fun getShort(at: Int): Short = ((bytes[at].toInt() and 0xff) or (bytes[at + 1].toInt() shl 8)).toShort()
+		fun getInt(at: Int): Int = (bytes[at].toInt() and 0xff) or ((bytes[at + 1].toInt() and 0xff) shl 8) or
+			((bytes[at + 2].toInt() and 0xff) shl 16) or (bytes[at + 3].toInt() shl 24)
+		fun getFloat(at: Int): Float = Float.fromBits(getInt(at))
 	}
 
 	fun analyze(audio: Audio, fps: Float): Result {

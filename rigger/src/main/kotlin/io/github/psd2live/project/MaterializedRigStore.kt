@@ -1,4 +1,6 @@
 package io.github.psd2live.project
+import io.github.psd2live.core.addFolder
+import io.github.psd2live.core.writeTo
 import io.github.psd2live.core.AccessOrderMap
 import io.github.psd2live.core.SoftReference
 

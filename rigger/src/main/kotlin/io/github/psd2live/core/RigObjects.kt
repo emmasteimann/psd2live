@@ -1,19 +1,25 @@
 package io.github.psd2live.core
 
-import java.io.IOException
-import java.nio.file.Files
-import java.nio.file.Path
-import java.util.concurrent.ConcurrentHashMap
+import okio.IOException
 
 /**
  * Stored rig objects ([io.github.psd2live.format.compile.RigIrObjects]) by the SHA-256 of their bytes: those this
  * process made, held in memory until a folder that is read back holds them, and those folders hold. A project's
- * working store and an opened archive register their object folders; a save copies what its revisions reference.
+ * working store and an opened archive register their object folders (on the desktop, RigObjectFolders.kt); a save
+ * copies what its revisions reference.
  */
 object RigObjects {
-	private val HASH = Regex("[0-9a-f]{64}")
-	private val held = ConcurrentHashMap<String, ByteArray>()
-	private val folders = CopyOnWriteArrayList<Path>()
+	/** A place stored objects are read from: a project's object folder. [key] tells two registrations of one apart. */
+	interface Folder {
+		val key: Any
+		/** The bytes stored under [hash], or null when this folder has none. */
+		fun read(hash: String): ByteArray?
+		fun has(hash: String): Boolean
+	}
+
+	internal val HASH = Regex("[0-9a-f]{64}")
+	private val held = Collections.synchronizedMap(HashMap<String, ByteArray>())
+	private val folders = CopyOnWriteArrayList<Folder>()
 
 	/** Holds [bytes] and returns their hash. */
 	fun put(bytes: ByteArray): String = sha256(bytes).also { held.putIfAbsent(it, bytes) }
@@ -23,44 +29,28 @@ object RigObjects {
 		require(hash.matches(HASH)) { "Invalid rig object name" }
 		held[hash]?.let { return it }
 		for (folder in folders) {
-			val path = folder.resolve("$hash.bin")
-			if (!Files.isRegularFile(path)) continue
-			val bytes = Files.readAllBytes(path)
+			val bytes = folder.read(hash) ?: continue
 			if (sha256(bytes) != hash) throw IOException("Rig object checksum mismatch: $hash")
 			return bytes
 		}
 		throw IOException("Rig object is missing: $hash")
 	}
 
-	fun has(hash: String): Boolean = hash.matches(HASH) && (held.containsKey(hash) || folders.any { Files.isRegularFile(it.resolve("$hash.bin")) })
+	fun has(hash: String): Boolean = hash.matches(HASH) && (held.containsKey(hash) || folders.any { it.has(hash) })
 
-	/** Reads objects from [folder] too (an archive's or a working store's object folder). */
-	fun addFolder(folder: Path) {
-		val normalized = folder.toAbsolutePath().normalize()
-		if (normalized !in folders) folders.add(0, normalized)
+	/** Reads objects from [folder] too, before the folders registered earlier. */
+	fun addFolder(folder: Folder) {
+		if (folders.none { it.key == folder.key }) folders.add(0, folder)
 	}
 
-	/**
-	 * Writes the objects [hashes] name into [folder], linking or copying those another folder has. Objects held in
-	 * memory that [folder] - a registered folder - now holds are let go.
-	 */
-	fun writeTo(folder: Path, hashes: Collection<String>) {
-		Files.createDirectories(folder)
-		val registered = folder.toAbsolutePath().normalize() in folders
-		for (hash in hashes.toSet()) {
-			require(hash.matches(HASH)) { "Invalid rig object name" }
-			val target = folder.resolve("$hash.bin")
-			if (!Files.exists(target)) {
-				val bytes = held[hash]
-				if (bytes != null) Files.write(target, bytes) else {
-					val source = folders.map { it.resolve("$hash.bin") }.firstOrNull { it != target && Files.isRegularFile(it) }
-						?: throw IOException("Rig object is missing: $hash")
-					try { Files.createLink(target, source) } catch (_: Exception) { Files.copy(source, target) }
-				}
-			}
-			if (registered) held.remove(hash)
-		}
-	}
+	/** The registered folders, newest first. */
+	fun folders(): List<Folder> = folders.toList()
+
+	/** The bytes held in memory for [hash], if any. */
+	fun held(hash: String): ByteArray? = held[hash]
+
+	/** Lets go of the bytes held for [hash] (a registered folder now holds them). */
+	fun release(hash: String) { held.remove(hash) }
 
 	/** Forgets held objects and folders: for tests that need a cold process. */
 	fun clear() { held.clear(); folders.clear() }

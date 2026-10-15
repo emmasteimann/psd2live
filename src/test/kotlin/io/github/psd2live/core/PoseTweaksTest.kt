@@ -85,4 +85,23 @@ class PoseTweaksTest {
 		assertEquals(0, diff(frame(plain, emptyMap()), frame(remeshed, emptyMap())), "and still not at rest")
 		assertEquals(0, diff(frame(remeshed, pose), frame(pipeline.buildPreview(source, remeshed.config), pose)), "a full re-rig keeps it")
 	}
+
+	@Test fun aWarpPushMovesTheWholeRegionAtThatPose() {
+		val psd = System.getenv("LAYERLOOM_PSD") ?: return
+		val source = PsdReader.read(java.nio.file.Files.readAllBytes(java.nio.file.Path.of(psd)))
+		val pipeline = PSD2LivePipeline()
+		val model = pipeline.buildPreview(source, PipelineConfig(exportCmo3 = false))
+		val pose = mapOf("ParamAngleX" to 30f)
+		val restBefore = frame(model, emptyMap()); val poseBefore = frame(model, pose)
+		val puppet = model.rig.puppet
+		val x = puppet.canvasWidth / 2f; val y = puppet.canvasHeight * 0.22f
+		val warp = requireNotNull(PoseTweaks.warpUnder(puppet, pose, x, y)) { "a warp holds the head" }
+		val session = PoseTweaks.beginWarp(puppet, pose, warp.id, x, y, 120f)
+		for (i in 1..10) PoseTweaks.step(session, x + i * 5f, y)
+		val config = requireNotNull(PoseTweaks.journaled(model, session))
+		val tweaked = PoseTweaks.rebuilt(pipeline, model, config)
+		assertTrue(diff(poseBefore, frame(tweaked, pose)) > 0, "the pose moved (${warp.name})")
+		assertEquals(0, diff(restBefore, frame(tweaked, emptyMap())), "rest is untouched")
+		assertEquals(0, diff(frame(tweaked, pose), frame(pipeline.buildPreview(source, config), pose)), "a full re-rig keeps it")
+	}
 }

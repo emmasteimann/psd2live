@@ -38,6 +38,46 @@ object PoseTweaks {
 		return reached
 	}
 
+	/** A warp's lattice at [pose] in canvas pixels (x, y per control point, row by row), with its rows and columns. */
+	class Lattice(val id: String, val name: String, val rows: Int, val columns: Int, val points: FloatArray)
+
+	/** Every warp deformer's lattice at [pose]. */
+	fun lattices(model: PuppetModel, pose: Map<String, Float>): List<Lattice> {
+		val defaults = model.parameters.associate { it.id to it.default }
+		val worlds = buildDeformerWorlds(model.deformers, { pose[it.raw] ?: defaults[it] ?: 0f }, { defaults[it] ?: 0f })
+		return model.deformers.filterIsInstance<org.umamo.runtime.model.Deformer.Warp>().mapNotNull { warp ->
+			val geometry = runCatching { RigGeometryTools.geometry(model, "warp", warp.id.raw, pose) }.getOrNull() ?: return@mapNotNull null
+			val world = DrawableSpaceMapping(geometry.parent?.let { worlds[DeformerId(it)] ?: return@let null }).localToWorld(geometry.points)
+			for (i in 1 until world.size step 2) world[i] = -world[i]
+			Lattice(warp.id.raw, warp.name, warp.rows, warp.columns, world)
+		}
+	}
+
+	/**
+	 * The warp to push at ([x], [y]): of the lattices whose outline holds the point, the smallest - the most local
+	 * deformer there (an eye's before the face's, the face's before the head's). Physics and sway warps are left out:
+	 * their shape is the simulation's.
+	 */
+	fun warpUnder(model: PuppetModel, pose: Map<String, Float>, x: Float, y: Float): Lattice? =
+		lattices(model, pose).filter { !it.id.endsWith("Physics") && !it.id.startsWith("ParamSwing") && !it.id.contains("Swing") }
+			.mapNotNull { lattice ->
+				val xs = (lattice.points.indices step 2).map { lattice.points[it] }; val ys = (1 until lattice.points.size step 2).map { lattice.points[it] }
+				val (l, r, t, b) = listOf(xs.min(), xs.max(), ys.min(), ys.max())
+				if (x in l..r && y in t..b) lattice to (r - l) * (b - t) else null
+			}.minByOrNull { it.second }?.first
+
+	/** A stroke on warp [warpId]'s lattice at [pose], as [begin] does on meshes. */
+	fun beginWarp(model: PuppetModel, pose: Map<String, Float>, warpId: String, x: Float, y: Float, radius: Float,
+		hardness: Float = 0.5f, strength: Float = 1f, action: CanvasDeformStroke.Action = CanvasDeformStroke.Action.BRUSH): CanvasDeformStroke.Session {
+		val defaults = model.parameters.associate { it.id.raw to it.default }
+		val posed = pose.filter { (id, value) -> defaults[id]?.let { kotlin.math.abs(value - it) > 1e-4f } == true }.keys.toList()
+		val geometry = RigGeometryTools.geometry(model, "warp", warpId, pose)
+		val target = CanvasDeformStroke.Target("warp", warpId, canvasDeformationCoordinate(model, geometry.axes, pose, posed))
+		val tip = CanvasBrushTip(radius.coerceIn(0.5f, 4096f), hardness.coerceIn(0f, 0.95f), CanvasBrushShape.CIRCLE, 0f, 1f, CanvasBrushFalloff.SMOOTH)
+		val request = CanvasDeformStroke.Request(action, CanvasDeformStroke.Mode.DEFORM, listOf(target), pose, tip, strength.coerceIn(0f, 1f), false)
+		return CanvasDeformStroke.begin(model, request, CanvasDeformStroke.Sample(CanvasBrushPoint(x, y)))
+	}
+
 	/** Each mesh's triangle edges at [pose] as canvas-pixel segments (x0, y0, x1, y1, ...), front-most first. */
 	fun wireframes(model: PuppetModel, pose: Map<String, Float>, only: Set<String>? = null): List<Pair<String, FloatArray>> {
 		val defaults = model.parameters.associate { it.id to it.default }

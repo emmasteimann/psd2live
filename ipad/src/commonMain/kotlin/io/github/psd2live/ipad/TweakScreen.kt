@@ -72,6 +72,9 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 	var view by remember { mutableStateOf(CanvasView()) }
 	var showMesh by remember { mutableStateOf(false) }
 	var mirror by remember { mutableStateOf(false) }
+	var warpMode by remember { mutableStateOf(false) }
+	val warpOn by rememberUpdatedState(warpMode)
+	var lattice by remember { mutableStateOf<io.github.psd2live.core.PoseTweaks.Lattice?>(null) }
 	val mirrorOn by rememberUpdatedState(mirror)
 	var wires by remember { mutableStateOf<List<FloatArray>>(emptyList()) }
 	var tick by remember { mutableStateOf(0L) }
@@ -93,7 +96,7 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 	LaunchedEffect(tweaking) {
 		// Draws only what is on screen, so zooming in stays sharp: a quick draft (~0.35 MP) while the pencil or a slider
 		// moves, the full-resolution frame (~2.2 MP) once things rest for a moment. A newer change drops both.
-		snapshotFlow { listOf(tick, pose, view, box, showMesh) }.collectLatest {
+		snapshotFlow { listOf(tick, pose, view, box, showMesh, warpMode) }.collectLatest {
 			val (w, h) = box
 			if (w < 2f || h < 2f) return@collectLatest
 			val l = layout(w, h, view)
@@ -110,6 +113,7 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 				raster.toImageBitmap() to floatArrayOf(left + x0 * scale, top + y0 * scale, (x1 - x0) * scale, (y1 - y0) * scale)
 			}
 			wires = if (showMesh) withContext(Dispatchers.Default) { tweaking.wires(shownPose) } else emptyList()
+			lattice?.takeIf { warpMode }?.let { held -> lattice = withContext(Dispatchers.Default) { tweaking.lattice(shownPose, held.id) } }
 			image = draw(350_000f)
 			delay(180)
 			image = draw(2_200_000f)
@@ -138,7 +142,8 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 							val p = toCanvas(at); val p0 = currentPose
 							cursor = at
 							// The Pencil's pressure scales how hard this stroke pushes.
-							scope.launch(worker) { stroking = tweaking.begin(p0, p.x, p.y, r, 0.5f, (s * pressure).coerceIn(0.02f, 1f), sm) }
+							scope.launch(worker) { stroking = tweaking.begin(p0, p.x, p.y, r, 0.5f, (s * pressure).coerceIn(0.02f, 1f), sm, warpOn)
+								if (warpOn) { val l = tweaking.warpAt(p0, p.x, p.y); scope.launch(Dispatchers.Main) { lattice = l } } }
 						}
 						override fun move(at: Offset, pressure: Float) {
 							val p = toCanvas(at); cursor = at
@@ -157,6 +162,18 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 						drawImage(bitmap, dstOffset = IntOffset(at[0].roundToInt(), at[1].roundToInt()),
 							dstSize = androidx.compose.ui.unit.IntSize(at[2].roundToInt(), at[3].roundToInt()))
 					}
+					lattice?.takeIf { warpMode }?.let { lat ->
+						// The pushed warp's lattice: its grid lines and control points.
+						val l = layout(w, h, view)
+						fun at(i: Int) = Offset(l[1] + lat.points[i * 2] * l[0], l[2] + lat.points[i * 2 + 1] * l[0])
+						val cols = lat.columns + 1; val rows = lat.rows + 1
+						for (row in 0 until rows) for (col in 0 until cols) {
+							val i = row * cols + col
+							if (col + 1 < cols) drawLine(Color(0xFFFFC46B), at(i), at(i + 1), 1.5f)
+							if (row + 1 < rows) drawLine(Color(0xFFFFC46B), at(i), at(i + cols), 1.5f)
+							drawCircle(Color(0xFFFFC46B), 3.5f, at(i))
+						}
+					}
 					if (wires.isNotEmpty()) {
 						// The meshes' triangles, so it shows where a part can bend and where it can only stretch.
 						val l = layout(w, h, view)
@@ -174,6 +191,10 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 			}
 			Column(Modifier.width(330.dp).height(820.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
 				@Suppress("UNUSED_VARIABLE") val changes = tick
+				Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+					Chip("Meshes", !warpMode) { warpMode = false; lattice = null }
+					Chip("Warp", warpMode) { warpMode = true }
+				}
 				Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
 					Chip("Push", !smooth) { smooth = false }
 					Chip("Smooth", smooth) { smooth = true }

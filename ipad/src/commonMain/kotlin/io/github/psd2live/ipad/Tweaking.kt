@@ -34,9 +34,25 @@ class RigTweaking(val outcome: RigOutcome) {
 	val canRedo get() = redos.isNotEmpty() && session == null
 	val edits get() = model.config.rigEdits.authoringJournal.size - outcome.model.config.rigEdits.authoringJournal.size
 
-	/** Starts a stroke at canvas ([x], [y]); false when nothing is under the brush. */
-	fun begin(pose: Map<String, Float>, x: Float, y: Float, radius: Float, hardness: Float, strength: Float, smooth: Boolean): Boolean {
+	/** Warp [id]'s lattice as shown now (the stroke in progress included) at [pose]. */
+	fun lattice(pose: Map<String, Float>, id: String): PoseTweaks.Lattice? = PoseTweaks.lattices(shown, pose).firstOrNull { it.id == id }
+
+	/** The warp a Warp-mode press at ([x], [y]) would push, for the overlay. */
+	fun warpAt(pose: Map<String, Float>, x: Float, y: Float): PoseTweaks.Lattice? = PoseTweaks.warpUnder(shown, pose, x, y)
+
+	/**
+	 * Starts a stroke at canvas ([x], [y]); false when nothing is under the brush. With [warp], the most local warp
+	 * deformer under the press is pushed instead of the meshes: one push moves the whole region it shapes.
+	 */
+	fun begin(pose: Map<String, Float>, x: Float, y: Float, radius: Float, hardness: Float, strength: Float, smooth: Boolean,
+		warp: Boolean = false): Boolean {
 		val puppet = model.rig.puppet
+		if (warp) {
+			val lattice = PoseTweaks.warpUnder(puppet, pose, x, y) ?: return false
+			session = PoseTweaks.beginWarp(puppet, pose, lattice.id, x, y, radius, hardness, strength,
+				if (smooth) CanvasDeformStroke.Action.SMOOTH else CanvasDeformStroke.Action.BRUSH)
+			return true
+		}
 		val meshes = PoseTweaks.meshesUnder(puppet, pose, x, y, radius)
 		if (meshes.isEmpty()) return false
 		session = PoseTweaks.begin(puppet, pose, meshes, x, y, radius, hardness, strength,

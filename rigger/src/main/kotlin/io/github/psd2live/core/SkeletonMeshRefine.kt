@@ -53,7 +53,7 @@ object SkeletonMeshRefine {
 	private class Refined(val edit: MeshTopologyEdit, val frame: FloatArray)
 
 	private const val CACHE_CAPACITY = 128
-	private val cache = object : LinkedHashMap<String, SoftReference<Refined>>(16, 0.75f, true) {
+	private val cache = object : AccessOrderMap<String, SoftReference<Refined>>(16, 0.75f, true) {
 		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, SoftReference<Refined>>?): Boolean = size > CACHE_CAPACITY
 	}
 	/** Marks a cached "nothing to add", which a soft reference cannot hold. */

@@ -1,4 +1,5 @@
 package io.github.psd2live.project
+import io.github.psd2live.core.AccessOrderMap
 import io.github.psd2live.core.hex
 import io.github.psd2live.core.MessageDigest
 
@@ -86,7 +87,7 @@ object ProjectArchive {
      */
     object Digests {
         private const val LIMIT = 200_000
-        private val cache = object : LinkedHashMap<String, Digest>(1024, 0.75f, true) {
+        private val cache = object : AccessOrderMap<String, Digest>(1024, 0.75f, true) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Digest>?) = size > LIMIT
         }
         private fun key(name: String, file: Path): String {

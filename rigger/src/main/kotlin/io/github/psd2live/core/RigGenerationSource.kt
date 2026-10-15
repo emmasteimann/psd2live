@@ -31,7 +31,7 @@ object RigGenerationSource {
                 stage == other.stage && config == other.config
             override fun hashCode() = (System.identityHashCode(source) * 31 + System.identityHashCode(reference)) * 31 + stage.hashCode()
         }
-        private val entries = object : LinkedHashMap<Key, PipelineAnalysis>(8, 0.75f, true) {
+        private val entries = object : AccessOrderMap<Key, PipelineAnalysis>(8, 0.75f, true) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Key, PipelineAnalysis>?) = size > 4
         }
 

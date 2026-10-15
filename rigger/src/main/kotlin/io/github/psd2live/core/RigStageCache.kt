@@ -19,7 +19,7 @@ import kotlin.concurrent.Volatile
  */
 class RigStageCache {
 	private class Kind(val capacity: Int) {
-		val entries = object : LinkedHashMap<Any, Any>(16, 0.75f, true) {
+		val entries = object : AccessOrderMap<Any, Any>(16, 0.75f, true) {
 			override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Any, Any>?) = size > capacity
 		}
 		val hits = AtomicLong()

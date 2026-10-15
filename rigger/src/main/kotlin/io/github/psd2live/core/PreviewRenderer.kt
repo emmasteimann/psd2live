@@ -21,7 +21,7 @@ object PreviewRenderer {
 	}
 	private data class CompositeKey(val width: Int, val height: Int, val layers: List<LayerKey>)
 
-	private val composites = object : LinkedHashMap<CompositeKey, SoftReference<BufferedImage>>(4, 0.75f, true) {
+	private val composites = object : AccessOrderMap<CompositeKey, SoftReference<BufferedImage>>(4, 0.75f, true) {
 		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<CompositeKey, SoftReference<BufferedImage>>?) = size > 3
 	}
 

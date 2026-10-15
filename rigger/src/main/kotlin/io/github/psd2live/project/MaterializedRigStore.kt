@@ -1,4 +1,5 @@
 package io.github.psd2live.project
+import io.github.psd2live.core.AccessOrderMap
 import io.github.psd2live.core.SoftReference
 
 import io.github.psd2live.core.synchronized
@@ -47,7 +48,7 @@ object MaterializedRigStore {
 		@Volatile var decoded: SoftReference<Entry>? = null
 	}
 
-	private val live = object : LinkedHashMap<String, SoftReference<Live>>(64, 0.75f, true) {
+	private val live = object : AccessOrderMap<String, SoftReference<Live>>(64, 0.75f, true) {
 		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, SoftReference<Live>>?) = size > LIVE_CAPACITY
 	}
 	private val stored = HashMap<String, Stored>()

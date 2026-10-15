@@ -105,7 +105,7 @@ object RigIrCompiler {
 	 * each preset's generated-track lookup costs more than the rest of the IR; a geometry edit changes none of
 	 * the inputs, and the clips are a pure function of the key.
 	 */
-	private val clipCache = object : LinkedHashMap<ClipsKey, List<Clip>>(8, 0.75f, true) {
+	private val clipCache = object : AccessOrderMap<ClipsKey, List<Clip>>(8, 0.75f, true) {
 		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<ClipsKey, List<Clip>>?) = size > 4
 	}
 

@@ -41,7 +41,7 @@ class GeneratedGeometryCache {
 	)
 
 	private var newest: Pair<Key, Entry>? = null
-	private val older = object : LinkedHashMap<Key, SoftReference<Entry>>(8, 0.75f, true) {
+	private val older = object : AccessOrderMap<Key, SoftReference<Entry>>(8, 0.75f, true) {
 		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Key, SoftReference<Entry>>?) = size > CAPACITY - 1
 	}
 

@@ -118,3 +118,39 @@ fun base64Encode(bytes: ByteArray): String = kotlin.io.encoding.Base64.encode(by
 /** java.util.Base64's basic decoder: padding optional, anything outside the alphabet rejected. */
 fun base64Decode(text: String): ByteArray =
 	kotlin.io.encoding.Base64.withPadding(kotlin.io.encoding.Base64.PaddingOption.PRESENT_OPTIONAL).decode(text)
+
+/**
+ * java.util.LinkedHashMap's access-order constructor and removeEldestEntry hook, for the rigger's small
+ * least-recently-used caches (`object : AccessOrderMap<K, V>(4, 0.75f, true) { override fun removeEldestEntry... }`):
+ * a read or write moves an entry last when [accessOrder], and a new entry may evict the eldest. Shared code on both
+ * platforms; the caches lock around it as they did around LinkedHashMap.
+ */
+open class AccessOrderMap<K, V> constructor(initialCapacity: Int, @Suppress("UNUSED_PARAMETER") loadFactor: Float, private val accessOrder: Boolean) :
+	AbstractMutableMap<K, V>() {
+	private val map = LinkedHashMap<K, V>(initialCapacity)
+
+	protected open fun removeEldestEntry(eldest: MutableMap.MutableEntry<K, V>?): Boolean = false
+
+	override val size: Int get() = map.size
+	override fun containsKey(key: K): Boolean = map.containsKey(key)
+
+	override fun get(key: K): V? {
+		if (!map.containsKey(key)) return null
+		@Suppress("UNCHECKED_CAST") val value = map[key] as V
+		if (accessOrder) { map.remove(key); map[key] = value }
+		return value
+	}
+
+	override fun put(key: K, value: V): V? {
+		val had = map.containsKey(key)
+		// A replaced key keeps its place in insertion order (LinkedHashMap's put does), and moves last in access order.
+		val old = if (had && accessOrder) map.remove(key) else null
+		val previous = map.put(key, value) ?: old
+		if (!had) map.entries.firstOrNull()?.let { if (removeEldestEntry(it)) map.remove(it.key) }
+		return previous
+	}
+
+	override fun remove(key: K): V? = map.remove(key)
+	override fun clear() = map.clear()
+	override val entries: MutableSet<MutableMap.MutableEntry<K, V>> get() = map.entries
+}

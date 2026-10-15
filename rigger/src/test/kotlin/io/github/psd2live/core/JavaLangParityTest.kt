@@ -97,6 +97,29 @@ class JavaLangParityTest {
 		}
 	}
 
+	/** The caches' LRU: same order and evictions as an access-ordered java.util.LinkedHashMap under the same operations. */
+	@Test
+	fun accessOrderMapMatchesLinkedHashMap() {
+		for (accessOrder in listOf(true, false)) {
+			val java = object : java.util.LinkedHashMap<Int, Int>(4, 0.75f, accessOrder) {
+				override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, Int>?) = size > 5
+			}
+			val ours = object : AccessOrderMap<Int, Int>(4, 0.75f, accessOrder) {
+				override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, Int>?) = size > 5
+			}
+			repeat(20000) { step ->
+				val key = random.nextInt(9)
+				when (step % 5) {
+					0, 1 -> assertEquals(java.put(key, step), ours.put(key, step))
+					2 -> assertEquals(java[key], ours[key])
+					3 -> assertEquals(java.getOrPut(key) { -step }, ours.getOrPut(key) { -step })
+					else -> if (step % 7 == 0) assertEquals(java.remove(key), ours.remove(key)) else assertEquals(java.containsKey(key), ours.containsKey(key))
+				}
+				assertEquals(java.entries.map { it.key to it.value }, ours.entries.map { it.key to it.value })
+			}
+		}
+	}
+
 	@Test
 	fun bitSetBytesRoundTrip() {
 		val set = BitSet(300)

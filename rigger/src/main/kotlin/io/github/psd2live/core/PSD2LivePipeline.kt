@@ -220,7 +220,7 @@ class PSD2LivePipeline {
 		override fun hashCode() = java.util.Objects.hash(System.identityHashCode(geometry), geometryPlacements, geometryPages, placements, pages, layers, created)
 	}
 
-	private val boundBases = object : LinkedHashMap<BoundBaseKey, BuiltRig>(8, 0.75f, true) {
+	private val boundBases = object : AccessOrderMap<BoundBaseKey, BuiltRig>(8, 0.75f, true) {
 		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<BoundBaseKey, BuiltRig>?) = size > 4
 	}
 

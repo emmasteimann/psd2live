@@ -218,7 +218,7 @@ object SkeletonRig {
 	const val BAKE_VERSION = "skeleton-6"
 
 	private const val CACHE_CAPACITY = 4
-	private val bakes = object : LinkedHashMap<String, Bake>(16, 0.75f, true) {
+	private val bakes = object : AccessOrderMap<String, Bake>(16, 0.75f, true) {
 		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Bake>?): Boolean = size > CACHE_CAPACITY
 	}
 	private var hits = 0
@@ -1733,7 +1733,7 @@ object SkeletonRig {
 	/** Version of [skinKey]; raise it whenever [skinDrawable] or what the key covers changes. */
 	private const val SKIN_VERSION = "skin-4"
 	private const val SKIN_CAPACITY = 128
-	private val skins = object : LinkedHashMap<String, SoftReference<Skin>>(16, 0.75f, true) {
+	private val skins = object : AccessOrderMap<String, SoftReference<Skin>>(16, 0.75f, true) {
 		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, SoftReference<Skin>>?): Boolean = size > SKIN_CAPACITY
 	}
 	@Volatile private var skinHits = 0

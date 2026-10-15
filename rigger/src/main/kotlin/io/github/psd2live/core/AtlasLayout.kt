@@ -329,7 +329,7 @@ object AtlasLayout {
 
     private data class SolveKey(val items: List<List<Any?>>, val pageSize: Int, val padding: Int, val maxPages: Int)
 
-    private val solved = object : LinkedHashMap<SolveKey, Solved>(16, 0.75f, true) {
+    private val solved = object : AccessOrderMap<SolveKey, Solved>(16, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<SolveKey, Solved>?) = size > 8
     }
 
@@ -431,7 +431,7 @@ object AtlasLayout {
     /** All a 1:1 page's pixels depend on: its side and its tiles, top to bottom. */
     data class Recipe(val size: Int, val tiles: List<TileKey>)
 
-    private val pageCache = object : LinkedHashMap<Recipe, SoftReference<AtlasPage>>(32, 0.75f, true) {
+    private val pageCache = object : AccessOrderMap<Recipe, SoftReference<AtlasPage>>(32, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Recipe, SoftReference<AtlasPage>>?) = size > PAGE_CACHE_CAPACITY
     }
     private const val PAGE_CACHE_CAPACITY = 8

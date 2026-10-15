@@ -47,7 +47,7 @@ object MaterializedMeshRebuild {
                 meshOverrides = mapOf(layerId to settings),
                 rigEdits = RigEditOverlay.Empty.copy(splitDrawableIds = mapOf(layerId to raw)))
             val neutralAnalysis = current.analysis.copy(source = input, layers = listOf(classified), calibration = null,
-                preview = PreviewRenderer.composite(input))
+                preview = compositePreview(input))
             val generatedProgress = ProgressListener { message, fraction -> progress.update(message, (index + fraction * 0.45) / changed.size) }
             val generated = if (layer is MouthLipLayer) {
                 // A ribbon is generated from its owner's aperture and stroke, not from an

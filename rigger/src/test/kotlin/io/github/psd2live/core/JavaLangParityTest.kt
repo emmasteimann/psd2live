@@ -69,6 +69,34 @@ class JavaLangParityTest {
 		assertEquals(java.util.zip.CRC32().apply { update(head); update(body) }.value, AtlasPagePng.crc32(body, AtlasPagePng.crc32(head)))
 	}
 
+	/** History stores createdAt as text: kotlin.time.Instant must write and read what java.time.Instant did. */
+	@OptIn(kotlin.time.ExperimentalTime::class)
+	@Test
+	fun instantTextMatchesJava() {
+		repeat(20000) {
+			val seconds = random.nextLong(0, 4_000_000_000L)
+			val nanos = when (it % 4) { 0 -> 0; 1 -> random.nextInt(1000) * 1_000_000; 2 -> random.nextInt(1_000_000) * 1000; else -> random.nextInt(1_000_000_000) }
+			val java = java.time.Instant.ofEpochSecond(seconds, nanos.toLong()).toString()
+			assertEquals(java, kotlin.time.Instant.fromEpochSeconds(seconds, nanos).toString())
+			assertEquals(kotlin.time.Instant.fromEpochSeconds(seconds, nanos), kotlin.time.Instant.parse(java))
+		}
+	}
+
+	/** The iPad computes Java2D's source-over table; the desktop reads it off Java2D. They must be the same bytes. */
+	@Test
+	fun java2dSourceOverTableMatchesJava2d() {
+		assertContentEquals(platformSourceOverTable(), java2dSourceOverTable())
+	}
+
+	@Test
+	fun fixedFormatMatchesStringFormat() {
+		val samples = edgeDoubles.filter { it.isFinite() && kotlin.math.abs(it) < 1e18 } + listOf(0.05, 0.15, 0.25, 0.35, 1.45, 2.675, 99.95, 9.95, -0.05, 100.0) +
+			List(20000) { when (it % 3) { 0 -> random.nextDouble(-1e5, 1e5); 1 -> random.nextInt(-100000, 100000) / 100.0 + 0.05; else -> random.nextDouble() * 100 } }
+		for (d in samples) for (places in listOf(0, 1, 2, 3)) {
+			assertEquals(String.format(java.util.Locale.ROOT, "%.${places}f", d), formatFixedRoot(d, places), "%.${places}f of $d")
+		}
+	}
+
 	@Test
 	fun bitSetBytesRoundTrip() {
 		val set = BitSet(300)

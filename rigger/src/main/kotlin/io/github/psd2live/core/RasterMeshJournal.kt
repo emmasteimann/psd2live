@@ -5,7 +5,6 @@ import org.umamo.edit.MeshTopologyEdit
 import org.umamo.edit.VertexSource
 import org.umamo.edit.withMeshTopologyEdit
 import org.umamo.runtime.model.*
-import java.nio.ByteBuffer
 import kotlin.math.abs
 import io.github.psd2live.core.legacy.VanishedParent
 
@@ -211,11 +210,14 @@ object RasterMeshJournal {
     /** UVs are intentionally excluded: a repack changes addresses, never vertex identity. */
     fun fingerprint(mesh: DrawableMesh): String {
         val digest = MessageDigest.getInstance("SHA-256")
-        val word = ByteBuffer.allocate(4)
-        fun add(value: Int) { word.clear(); word.putInt(value); digest.update(word.array()) }
+        val word = ByteArray(4)
+        fun add(value: Int) {
+            word[0] = (value ushr 24).toByte(); word[1] = (value ushr 16).toByte(); word[2] = (value ushr 8).toByte(); word[3] = value.toByte()
+            digest.update(word)
+        }
         add(mesh.positions.size); mesh.positions.forEach { add(it.toRawBits()) }
         add(mesh.indices.size); mesh.indices.forEach(::add)
-        return digest.digest().joinToString("") { "%02x".format(it) }
+        return hex(digest.digest())
     }
 
     /** Page and tile UVs both lower to source canvas pixels, including rotated/scaled atlas tiles. */

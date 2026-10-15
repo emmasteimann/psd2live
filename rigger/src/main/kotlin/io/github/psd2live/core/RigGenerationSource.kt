@@ -6,7 +6,6 @@ import org.umamo.format.art.SourceArt
 import org.umamo.format.art.SourceLayer
 import org.umamo.runtime.model.DrawableMesh
 import kotlinx.serialization.json.*
-import java.awt.image.BufferedImage
 import io.github.psd2live.core.legacy.RigGenerationTextures
 
 /** Rebuild geometry from its saved input while packing the currently painted pixels. */
@@ -16,7 +15,7 @@ object RigGenerationSource {
     fun analyze(source: SourceArt, config: PipelineConfig): PipelineAnalysis = AnalysisMemo.get(source, config.generationSource, config, "source") {
         val input = generationReference(source, config)?.let { geometrySource(source, it, config.rigEdits) } ?: source
         // The analysis stands for the current art, so it composites that, never the generation input.
-        val analysis = CharacterAnalyzer.analyze(input, RigLayerDeletion.generationConfig(config)) { PreviewRenderer.composite(source) }
+        val analysis = CharacterAnalyzer.analyze(input, RigLayerDeletion.generationConfig(config)) { compositePreview(source) }
         if (input === source) analysis else analysis.copy(source = source)
     }
 
@@ -426,49 +425,9 @@ object RigGenerationSource {
      * function of (a, v) that keeps alpha.
      */
     object SourceOver {
-        val table: ByteArray? by lazy {
-            val source = BufferedImage(256, 256, BufferedImage.TYPE_INT_ARGB)
-            for (a in 0 until 256) for (v in 0 until 256) source.setRGB(v, a, (a shl 24) or (v shl 16) or ((255 - v) shl 8) or v)
-            val drawn = BufferedImage(256, 256, BufferedImage.TYPE_INT_ARGB)
-            val graphics = drawn.createGraphics()
-            try { graphics.drawImage(source, 0, 0, 256, 256, null) } finally { graphics.dispose() }
-            val table = ByteArray(256 * 256)
-            for (a in 0 until 256) for (v in 0 until 256) {
-                val pixel = drawn.getRGB(v, a)
-                if (a == 0) { if (pixel != 0) return@lazy null; continue }
-                if ((pixel ushr 24) != a || (pixel ushr 16 and 255) != (pixel and 255)) return@lazy null
-                if (a == 255 && (pixel and 255) != v) return@lazy null
-                table[(a shl 8) or v] = pixel.toByte()
-            }
-            // Green carried 255 - v: the same function must give it.
-            for (a in 1 until 256) for (v in 0 until 256)
-                if ((drawn.getRGB(v, a) ushr 8 and 255) != (table[(a shl 8) or (255 - v)].toInt() and 255)) return@lazy null
-            table
-        }
+        val table: ByteArray? by lazy { platformSourceOverTable() }
     }
 
-    /** The padding as it was always made: the raster drawn into the larger image with Java2D. */
-    fun legacyPadded(current: SourceLayer, bounds: LayerBounds): LayerRaster {
-        val left = bounds.left; val top = bounds.top
-        val raster = BufferedImage(current.raster.width, current.raster.height, BufferedImage.TYPE_INT_ARGB)
-        for (y in 0 until raster.height) for (x in 0 until raster.width) {
-            val offset = (y * raster.width + x) * 4
-            val rgba = current.raster.rgba
-            raster.setRGB(x, y, ((rgba[offset + 3].toInt() and 255) shl 24) or
-                ((rgba[offset].toInt() and 255) shl 16) or ((rgba[offset + 1].toInt() and 255) shl 8) or
-                (rgba[offset + 2].toInt() and 255))
-        }
-        val image = BufferedImage(bounds.width, bounds.height, BufferedImage.TYPE_INT_ARGB)
-        val graphics = image.createGraphics()
-        try { graphics.drawImage(raster, current.bounds.left - left, current.bounds.top - top,
-            current.bounds.width, current.bounds.height, null) } finally { graphics.dispose() }
-        val rgba = ByteArray(Math.multiplyExact(Math.multiplyExact(bounds.width, bounds.height), 4))
-        for (y in 0 until bounds.height) for (x in 0 until bounds.width) {
-            val pixel = image.getRGB(x, y)
-            val offset = (y * bounds.width + x) * 4
-            rgba[offset] = (pixel ushr 16).toByte(); rgba[offset + 1] = (pixel ushr 8).toByte()
-            rgba[offset + 2] = pixel.toByte(); rgba[offset + 3] = (pixel ushr 24).toByte()
-        }
-        return LayerRaster(bounds.width, bounds.height, rgba)
-    }
+    /** The padding as it was always made: the raster drawn into the larger image with Java2D ([legacyPaddedRaster]). */
+    fun legacyPadded(current: SourceLayer, bounds: LayerBounds): LayerRaster = legacyPaddedRaster(current, bounds)
 }

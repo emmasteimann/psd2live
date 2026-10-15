@@ -7,7 +7,6 @@ import org.umamo.format.art.LayerId
 import org.umamo.format.art.LayerRaster
 import org.umamo.format.art.SourceLayer
 import org.umamo.format.art.SourceLayerKind
-import java.util.ArrayDeque
 
 /**
  * Mesh-based bilateral layer splitter.

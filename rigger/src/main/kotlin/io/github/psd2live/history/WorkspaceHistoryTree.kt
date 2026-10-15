@@ -1,7 +1,10 @@
+@file:OptIn(kotlin.time.ExperimentalTime::class, kotlin.uuid.ExperimentalUuidApi::class)
+
 package io.github.psd2live.history
 
-import java.time.Instant
-import java.util.UUID
+import kotlin.time.Clock
+import kotlin.time.Instant
+import kotlin.uuid.Uuid
 
 /** Immutable metadata for one committed workspace state. */
 data class WorkspaceHistoryNode(
@@ -45,8 +48,8 @@ class WorkspaceHistoryTree<T>(
 	initialSnapshot: T,
 	initialRevisionId: String,
 	initialSnapshotHash: String,
-	private val clock: () -> Instant = Instant::now,
-	private var newId: () -> String = { "history-${UUID.randomUUID()}" },
+	private val clock: () -> Instant = { Clock.System.now() },
+	private var newId: () -> String = { "history-${Uuid.random()}" },
 ) {
 	private data class Stored<T>(val node: WorkspaceHistoryNode, val snapshot: T)
 
@@ -152,8 +155,8 @@ class WorkspaceHistoryTree<T>(
 		fun <T> restore(
 			selections: List<WorkspaceHistorySelection<T>>,
 			headNodeId: String,
-			clock: () -> Instant = Instant::now,
-			newId: () -> String = { "history-${UUID.randomUUID()}" },
+			clock: () -> Instant = { Clock.System.now() },
+			newId: () -> String = { "history-${Uuid.random()}" },
 		): WorkspaceHistoryTree<T> {
 			require(selections.isNotEmpty()) { "Persisted history must contain at least one node" }
 			val ids = selections.map { it.node.id }

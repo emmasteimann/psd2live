@@ -145,7 +145,7 @@ class WorkspaceStore(
 				summary = nodeJson.requiredString("summary"),
 				actor = nodeJson.requiredString("actor"),
 				taskId = nodeJson.optionalString("taskId"),
-				createdAt = Instant.parse(nodeJson.requiredString("createdAt")),
+				createdAt = kotlin.time.Instant.parse(nodeJson.requiredString("createdAt")),
 			)
 		}.sortedWith(compareBy<WorkspaceHistoryNode> { it.createdAt }.thenBy { it.id })
 		val shared = SharedContent()

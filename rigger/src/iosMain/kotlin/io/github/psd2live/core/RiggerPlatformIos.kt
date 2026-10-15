@@ -11,6 +11,7 @@ import kotlinx.cinterop.sizeOf
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.usePinned
 import okio.Buffer
+import org.umamo.format.art.isEffectivelyVisible
 import platform.zlib.Z_DEFAULT_STRATEGY
 import platform.zlib.Z_DEFLATED
 import platform.zlib.Z_FULL_FLUSH
@@ -185,3 +186,70 @@ actual fun nanoTime(): Long = clockStart.elapsedNow().inWholeNanoseconds
 actual open class InterruptedException actual constructor() : Exception()
 
 actual fun callerInterruptCheck(): () -> Unit = {}
+
+actual fun newRigImage(width: Int, height: Int): RigImage = RigImage(width, height)
+
+actual fun RigImage.writablePixels(): IntArray = argb
+
+actual fun rigImageOf(width: Int, height: Int, rgba: ByteArray): RigImage = RigImage(width, height, IntArray(width * height) { i ->
+	val o = i * 4
+	((rgba[o + 3].toInt() and 0xff) shl 24) or ((rgba[o].toInt() and 0xff) shl 16) or ((rgba[o + 1].toInt() and 0xff) shl 8) or (rgba[o + 2].toInt() and 0xff)
+})
+
+/**
+ * The flattened artwork, straight alpha, source-over with each layer's opacity: a layer covering its bounds one to one
+ * is copied there, else stretched over them (sampled at pixel centres). For previews only - nothing rigs from it.
+ */
+actual fun compositePreview(source: org.umamo.format.art.SourceArt): RigImage {
+	val w = maxOf(1, source.widthPx); val h = maxOf(1, source.heightPx)
+	val out = IntArray(w * h)
+	for (layer in source.layers) {
+		if (!source.isEffectivelyVisible(layer) || layer.opacity <= 0f) continue
+		val r = layer.raster
+		if (r.width <= 0 || r.height <= 0) continue
+		val b = layer.bounds
+		val opacity = layer.opacity.coerceIn(0f, 1f)
+		for (y in maxOf(0, b.top) until minOf(h, b.top + b.height)) for (x in maxOf(0, b.left) until minOf(w, b.left + b.width)) {
+			val sx = ((x - b.left + 0.5f) * r.width / b.width).toInt().coerceIn(0, r.width - 1)
+			val sy = ((y - b.top + 0.5f) * r.height / b.height).toInt().coerceIn(0, r.height - 1)
+			val o = (sy * r.width + sx) * 4
+			val sa = (r.rgba[o + 3].toInt() and 0xff) / 255f * opacity
+			if (sa <= 0f) continue
+			val d = out[y * w + x]
+			val da = (d ushr 24) / 255f
+			val oa = sa + da * (1 - sa)
+			fun mix(s: Int, dc: Int) = ((s * sa + dc * da * (1 - sa)) / oa).toInt().coerceIn(0, 255)
+			out[y * w + x] = ((oa * 255 + 0.5f).toInt() shl 24) or
+				(mix(r.rgba[o].toInt() and 0xff, d ushr 16 and 0xff) shl 16) or
+				(mix(r.rgba[o + 1].toInt() and 0xff, d ushr 8 and 0xff) shl 8) or
+				mix(r.rgba[o + 2].toInt() and 0xff, d and 0xff)
+		}
+	}
+	return RigImage(w, h, out)
+}
+
+/** The iPad has no desktop texture jobs; a texture file is never handed to it. */
+actual interface TextureFile
+
+actual fun readTexturePixels(file: TextureFile): TexturePixels = throw UnsupportedOperationException("No texture files on the iPad")
+
+actual fun platformSourceOverTable(): ByteArray? = java2dSourceOverTable()
+
+/** Never reached on the iPad ([platformSourceOverTable] is always a table); the same table applied, for safety. */
+actual fun legacyPaddedRaster(current: org.umamo.format.art.SourceLayer, bounds: org.umamo.format.art.LayerBounds): org.umamo.format.art.LayerRaster {
+	val table = java2dSourceOverTable()
+	val rgba = ByteArray(bounds.width * bounds.height * 4)
+	val src = current.raster
+	for (y in 0 until src.height) for (x in 0 until src.width) {
+		val tx = current.bounds.left - bounds.left + x; val ty = current.bounds.top - bounds.top + y
+		if (tx !in 0 until bounds.width || ty !in 0 until bounds.height) continue
+		val s = (y * src.width + x) * 4; val d = (ty * bounds.width + tx) * 4
+		val a = src.rgba[s + 3].toInt() and 0xff
+		if (a == 0) continue
+		for (c in 0 until 3) rgba[d + c] = table[(a shl 8) or (src.rgba[s + c].toInt() and 0xff)]
+		rgba[d + 3] = a.toByte()
+	}
+	return org.umamo.format.art.LayerRaster(bounds.width, bounds.height, rgba)
+}
+
+actual fun <T> parallelMap(count: Int, parallel: Boolean, body: (Int) -> T): List<T> = List(count) { body(it) }

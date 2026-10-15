@@ -45,6 +45,11 @@ actual fun parallelFor(indices: IntArray, body: (Int) -> Unit) {
 	(if (indices.size > 2) work.parallel() else work).forEach(body)
 }
 
+actual fun <T> parallelMap(count: Int, parallel: Boolean, body: (Int) -> T): List<T> {
+	val stream = IntStream.range(0, count).mapToObj { body(it) }
+	return (if (parallel) stream.parallel() else stream).toList()
+}
+
 actual fun checkInterrupted() {
 	if (Thread.currentThread().isInterrupted) throw InterruptedException()
 }
@@ -109,4 +114,70 @@ actual typealias InterruptedException = java.lang.InterruptedException
 actual fun callerInterruptCheck(): () -> Unit {
 	val caller = Thread.currentThread()
 	return { if (caller.isInterrupted) throw InterruptedException() }
+}
+
+actual fun newRigImage(width: Int, height: Int): RigImage = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
+
+actual fun RigImage.writablePixels(): IntArray {
+	val buffer = raster.dataBuffer
+	check(type == BufferedImage.TYPE_INT_ARGB && buffer is java.awt.image.DataBufferInt && buffer.numBanks == 1 &&
+		buffer.data.size == width * height) { "Not a plain ARGB image" }
+	return buffer.data
+}
+
+actual fun rigImageOf(width: Int, height: Int, rgba: ByteArray): RigImage = PreviewRenderer.rasterImage(width, height, rgba)
+
+actual fun compositePreview(source: org.umamo.format.art.SourceArt): RigImage = PreviewRenderer.composite(source)
+
+actual typealias TextureFile = java.nio.file.Path
+
+actual fun readTexturePixels(file: TextureFile): TexturePixels {
+	val image = requireNotNull(ImageIO.read(file.toFile())) { "Invalid upscaled PNG" }
+	return TexturePixels(image.width, image.height, image.getRGB(0, 0, image.width, image.height, null, 0, image.width), image.colorModel.hasAlpha())
+}
+
+/** Read off Java2D itself once; null should it ever not be one per-channel function of (a, v) that keeps alpha. */
+actual fun platformSourceOverTable(): ByteArray? {
+	val source = BufferedImage(256, 256, BufferedImage.TYPE_INT_ARGB)
+	for (a in 0 until 256) for (v in 0 until 256) source.setRGB(v, a, (a shl 24) or (v shl 16) or ((255 - v) shl 8) or v)
+	val drawn = BufferedImage(256, 256, BufferedImage.TYPE_INT_ARGB)
+	val graphics = drawn.createGraphics()
+	try { graphics.drawImage(source, 0, 0, 256, 256, null) } finally { graphics.dispose() }
+	val table = ByteArray(256 * 256)
+	for (a in 0 until 256) for (v in 0 until 256) {
+		val pixel = drawn.getRGB(v, a)
+		if (a == 0) { if (pixel != 0) return null; continue }
+		if ((pixel ushr 24) != a || (pixel ushr 16 and 255) != (pixel and 255)) return null
+		if (a == 255 && (pixel and 255) != v) return null
+		table[(a shl 8) or v] = pixel.toByte()
+	}
+	// Green carried 255 - v: the same function must give it.
+	for (a in 1 until 256) for (v in 0 until 256)
+		if ((drawn.getRGB(v, a) ushr 8 and 255) != (table[(a shl 8) or (255 - v)].toInt() and 255)) return null
+	return table
+}
+
+/** The padding as it was always made: the raster drawn into the larger image with Java2D. */
+actual fun legacyPaddedRaster(current: org.umamo.format.art.SourceLayer, bounds: org.umamo.format.art.LayerBounds): org.umamo.format.art.LayerRaster {
+	val left = bounds.left; val top = bounds.top
+	val raster = BufferedImage(current.raster.width, current.raster.height, BufferedImage.TYPE_INT_ARGB)
+	for (y in 0 until raster.height) for (x in 0 until raster.width) {
+		val offset = (y * raster.width + x) * 4
+		val rgba = current.raster.rgba
+		raster.setRGB(x, y, ((rgba[offset + 3].toInt() and 255) shl 24) or
+			((rgba[offset].toInt() and 255) shl 16) or ((rgba[offset + 1].toInt() and 255) shl 8) or
+			(rgba[offset + 2].toInt() and 255))
+	}
+	val image = BufferedImage(bounds.width, bounds.height, BufferedImage.TYPE_INT_ARGB)
+	val graphics = image.createGraphics()
+	try { graphics.drawImage(raster, current.bounds.left - left, current.bounds.top - top,
+		current.bounds.width, current.bounds.height, null) } finally { graphics.dispose() }
+	val rgba = ByteArray(Math.multiplyExact(Math.multiplyExact(bounds.width, bounds.height), 4))
+	for (y in 0 until bounds.height) for (x in 0 until bounds.width) {
+		val pixel = image.getRGB(x, y)
+		val offset = (y * bounds.width + x) * 4
+		rgba[offset] = (pixel ushr 16).toByte(); rgba[offset + 1] = (pixel ushr 8).toByte()
+		rgba[offset + 2] = pixel.toByte(); rgba[offset + 3] = (pixel ushr 24).toByte()
+	}
+	return org.umamo.format.art.LayerRaster(bounds.width, bounds.height, rgba)
 }

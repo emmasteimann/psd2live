@@ -8,10 +8,6 @@ import io.github.psd2live.project.TextureFootprint
 import io.github.psd2live.project.TextureOverride
 import io.github.psd2live.project.TexturePin
 import org.umamo.format.art.SourceLayer
-import java.awt.image.BufferedImage
-import java.nio.file.Path
-import java.util.Locale
-import javax.imageio.ImageIO
 
 /**
  * Where layer rasters go on the atlas pages, and the pages themselves.
@@ -112,7 +108,7 @@ object AtlasLayout {
         upscale: TextureUpscaleConfig,
         progress: ProgressListener = ProgressListener { _, _ -> },
         previous: PackedAtlas? = null,
-        prepareTextures: (List<ClassifiedLayer>, TextureUpscaleConfig) -> Map<String, Path>,
+        prepareTextures: (List<ClassifiedLayer>, TextureUpscaleConfig) -> Map<String, TextureFile>,
     ): PackedAtlas = packWithTextures(layers, unlimited(requestedSize, padding), emptyMap(), upscale, progress, previous, prepareTextures = prepareTextures)
 
     private fun unlimited(requestedSize: Int, padding: Int) = AtlasBudget(requestedSize.coerceAtLeast(1), UNLIMITED_PAGES, padding.coerceAtLeast(0))
@@ -125,7 +121,7 @@ object AtlasLayout {
         progress: ProgressListener = ProgressListener { _, _ -> },
         previous: PackedAtlas? = null,
         arrangement: AtlasArrangement? = null,
-        prepareTextures: (List<ClassifiedLayer>, TextureUpscaleConfig) -> Map<String, Path>,
+        prepareTextures: (List<ClassifiedLayer>, TextureUpscaleConfig) -> Map<String, TextureFile>,
     ): PackedAtlas {
         val safePadding = budget.padding.coerceIn(0, 32)
         val items = items(layers, upscale.scale, overrides)
@@ -146,14 +142,13 @@ object AtlasLayout {
         }
         val byPage = items.groupBy { placements.getValue(it.id).page }
         // Pages compose independently, in parallel; the list keeps page order. Workers watch the caller's interrupt.
-        val caller = Thread.currentThread()
-        val compose = java.util.stream.IntStream.range(0, pageCount).mapToObj { index ->
-            if (caller.isInterrupted) throw InterruptedException()
+        val interrupted = callerInterruptCheck()
+        val pages: List<AtlasPage> = parallelMap(pageCount, pageCount > 1) { index ->
+            interrupted()
             val tiles = byPage[index].orEmpty().map { Tile(it.texture, placements.getValue(it.id), masks[it.id]) }
-            page(pageSize, tiles, previous?.pages?.getOrNull(index), caller)
+            page(pageSize, tiles, previous?.pages?.getOrNull(index), interrupted)
         }
-        val pages: List<AtlasPage> = (if (pageCount > 1) compose.parallel() else compose).toList()
-        if (caller.isInterrupted) throw InterruptedException()
+        interrupted()
         return PackedAtlas(pages, placements, solved.fit, solved.notices, solved.footprints, arrangement != null)
     }
 
@@ -209,7 +204,7 @@ object AtlasLayout {
         // Tiles new to the arrangement or that lost their stored spot fill free space quietly.
         if (kept.pageCount > maxPages) notices += "Textures need ${kept.pageCount} atlas pages, more than the budget of $maxPages."
         if (arrangement.fitStep < AtlasArrangement.FIT_STEPS)
-            notices += "Textures are scaled to ${String.format(Locale.ROOT, "%.1f", fit * 100)}% to fit the atlas budget of $maxPages page(s) of ${pageSize}px."
+            notices += "Textures are scaled to ${formatFixedRoot((fit * 100).toDouble(), 1)}% to fit the atlas budget of $maxPages page(s) of ${pageSize}px."
         return Solved(placements, kept.pageCount, fit.toFloat(), notices, masks, footprints)
     }
 
@@ -358,7 +353,7 @@ object AtlasLayout {
         }
         if (best != null) {
             val fit = bestStep.toDouble() / FIT_STEPS
-            notices += "Textures are scaled to ${String.format(Locale.ROOT, "%.1f", fit * 100)}% to fit the atlas budget of $maxPages page(s) of ${pageSize}px."
+            notices += "Textures are scaled to ${formatFixedRoot((fit * 100).toDouble(), 1)}% to fit the atlas budget of $maxPages page(s) of ${pageSize}px."
             return Solved(best.placements, best.pageCount, fit.toFloat(), notices)
         }
         val fallback = requireNotNull(layout(items, 1.0, pageSize, padding, UNLIMITED_PAGES, honour = false)) { tr("error.layerTooLarge") }
@@ -454,7 +449,7 @@ object AtlasLayout {
      * [base]'s other strips. A tile whose size is not its raster's is resampled ([RasterResample]); its digest
      * and size together still determine its pixels.
      */
-    private fun page(size: Int, tiles: List<Tile>, base: AtlasPage?, caller: Thread): AtlasPage {
+    private fun page(size: Int, tiles: List<Tile>, base: AtlasPage?, interrupted: () -> Unit): AtlasPage {
         val recipe = Recipe(size, tiles.map { tile ->
             TileKey(tile.at.x, tile.at.y, tile.at.width, tile.at.height, digest(tile.texture.raster.rgba), tile.mask?.key ?: "", tile.at.rotation)
         }.sortedWith(compareBy<TileKey> { it.y }.thenBy { it.x }))
@@ -464,11 +459,11 @@ object AtlasLayout {
             val kept = old.tiles.toHashSet().apply { retainAll(recipe.tiles.toSet()) }
             BitSet().apply { for (tile in old.tiles + recipe.tiles) if (tile !in kept) tile.rows.let { set(maxOf(0, it.first), maxOf(0, it.last + 1)) } }
         }
-        val image = BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB)
+        val image = newRigImage(size, size)
         // The page's own pixels (ARGB, as setRGB stores them on this image type), written directly.
-        val data = (image.raster.dataBuffer as java.awt.image.DataBufferInt).data
+        val data = image.writablePixels()
         for (tile in tiles) {
-            if (caller.isInterrupted) throw InterruptedException()
+            interrupted()
             val raster = tile.texture.raster; val at = tile.at
             val rgba = RasterResample.resize(raster.rgba, raster.width, raster.height, at.width, at.height)
             // Direct pixel copy retains RGB even when alpha is zero (Graphics may discard it).
@@ -477,10 +472,10 @@ object AtlasLayout {
             if (at.rotation != 0f) writeTurned(data, size, size, at, pixels, mask)
             else if (mask == null) {
                 // As setRGB would, refuse a rectangle off the page.
-                if (at.x < 0 || at.y < 0 || at.x + at.width > size || at.y + at.height > size) throw ArrayIndexOutOfBoundsException("Coordinate out of bounds!")
-                for (row in 0 until at.height) System.arraycopy(pixels, row * at.width, data, (at.y + row) * size + at.x, at.width)
+                if (at.x < 0 || at.y < 0 || at.x + at.width > size || at.y + at.height > size) throw IndexOutOfBoundsException("Coordinate out of bounds!")
+                for (row in 0 until at.height) pixels.copyInto(data, (at.y + row) * size + at.x, row * at.width, row * at.width + at.width)
             }
-            else writeMasked(image, at, mask) { x, y, length, offset -> System.arraycopy(pixels, offset, data, y * size + x, length) }
+            else writeMasked(size, size, at, mask) { x, y, length, offset -> pixels.copyInto(data, y * size + x, offset, offset + length) }
         }
         val page = AtlasPage.composed(image, recipe, base, dirtyRows)
         synchronized(pageCache) { pageCache[recipe] = SoftReference(page) }
@@ -491,14 +486,14 @@ object AtlasLayout {
      * The runs of [at] that [mask] owns, row by row, as (page x, page y, length, offset into the tile's pixels): a
      * tile arranged by its meshes writes only its own cells, so a neighbour reaching into its rectangle keeps its pixels.
      */
-    private inline fun writeMasked(image: BufferedImage, at: AtlasPlacement, mask: AtlasArrange.Shape, write: (Int, Int, Int, Int) -> Unit) {
-        for (y in at.y until minOf(at.y + at.height, image.height)) {
+    private inline fun writeMasked(pageWidth: Int, pageHeight: Int, at: AtlasPlacement, mask: AtlasArrange.Shape, write: (Int, Int, Int, Int) -> Unit) {
+        for (y in at.y until minOf(at.y + at.height, pageHeight)) {
             val r = y / AtlasArrange.CELL - mask.row
             if (r !in 0 until mask.height) continue
             val run = mask.runs[r]
             for (k in run.indices step 2) {
                 val from = maxOf(at.x, (mask.column + run[k]) * AtlasArrange.CELL)
-                val to = minOf(at.x + at.width, (mask.column + run[k + 1]) * AtlasArrange.CELL, image.width)
+                val to = minOf(at.x + at.width, (mask.column + run[k + 1]) * AtlasArrange.CELL, pageWidth)
                 if (to > from) write(from, y, to - from, (y - at.y) * at.width + (from - at.x))
             }
         }
@@ -509,16 +504,6 @@ object AtlasLayout {
      * tile's pixel there, [pixels] (ARGB, the tile's size) sampled bilinearly through the turn, colours weighted by
      * alpha so transparent texels lend no colour.
      */
-    private fun writeTurned(image: BufferedImage, at: AtlasPlacement, pixels: IntArray, mask: AtlasArrange.Shape?) {
-        val buffer = image.raster.dataBuffer
-        if (image.type == BufferedImage.TYPE_INT_ARGB && buffer is java.awt.image.DataBufferInt && buffer.numBanks == 1 &&
-            buffer.data.size == image.width * image.height) return writeTurned(buffer.data, image.width, image.height, at, pixels, mask)
-        val data = IntArray(image.width * image.height)
-        image.getRGB(0, 0, image.width, image.height, data, 0, image.width)
-        writeTurned(data, image.width, image.height, at, pixels, mask)
-        image.setRGB(0, 0, image.width, image.height, data, 0, image.width)
-    }
-
     /** [writeTurned] into [data], the ARGB pixels of a [pageWidth] x [pageHeight] page. */
     private fun writeTurned(data: IntArray, pageWidth: Int, pageHeight: Int, at: AtlasPlacement, pixels: IntArray, mask: AtlasArrange.Shape?) {
         val box = TileTurn.bounds(at.x.toFloat(), at.y.toFloat(), at.width.toFloat(), at.height.toFloat(), at.rotation)
@@ -567,44 +552,47 @@ object AtlasLayout {
      * another size - and extrude its edge into the padding.
      */
     private fun upscaledPages(items: List<Item>, placements: Map<String, AtlasPlacement>, masks: Map<String, AtlasArrange.Shape>, pageSize: Int, pageCount: Int,
-                              padding: Int, textures: Map<String, Path>): List<AtlasPage> = (0 until pageCount).map { index ->
-        if (Thread.currentThread().isInterrupted) throw InterruptedException()
-        val page = BufferedImage(pageSize, pageSize, BufferedImage.TYPE_INT_ARGB)
+                              padding: Int, textures: Map<String, TextureFile>): List<AtlasPage> = (0 until pageCount).map { index ->
+        checkInterrupted()
+        val page = newRigImage(pageSize, pageSize)
+        val data = page.writablePixels()
         for (item in items) {
             val placement = placements.getValue(item.id)
             if (placement.page != index) continue
-            if (Thread.currentThread().isInterrupted) throw InterruptedException()
-            val upscaled = requireNotNull(ImageIO.read(textures.getValue(item.id).toFile())) { "Invalid upscaled PNG" }
+            checkInterrupted()
+            val upscaled = readTexturePixels(textures.getValue(item.id))
             val width = placement.width; val height = placement.height
-            val image = if (upscaled.width == width && upscaled.height == height) upscaled else {
-                val pixels = upscaled.getRGB(0, 0, upscaled.width, upscaled.height, null, 0, upscaled.width)
-                val rgba = ByteArray(pixels.size * 4)
-                for (i in pixels.indices) {
-                    val p = pixels[i]
+            val pixels = if (upscaled.width == width && upscaled.height == height) {
+                require(upscaled.hasAlpha) { "Upscaled RGBA texture size mismatch" }
+                upscaled.argb
+            } else {
+                val rgba = ByteArray(upscaled.argb.size * 4)
+                for (i in upscaled.argb.indices) {
+                    val p = upscaled.argb[i]
                     rgba[i * 4] = (p ushr 16).toByte(); rgba[i * 4 + 1] = (p ushr 8).toByte(); rgba[i * 4 + 2] = p.toByte(); rgba[i * 4 + 3] = (p ushr 24).toByte()
                 }
-                PreviewRenderer.rasterImage(width, height, RasterResample.resize(rgba, upscaled.width, upscaled.height, width, height))
+                rigImageOf(width, height, RasterResample.resize(rgba, upscaled.width, upscaled.height, width, height)).argbPixels()
             }
-            require(image.colorModel.hasAlpha()) { "Upscaled RGBA texture size mismatch" }
-            val pixels = image.getRGB(0, 0, width, height, null, 0, width)
             val mask = masks[item.id]
             if (placement.rotation != 0f) {
                 // A turned tile writes through its turn; its edge is not extruded.
-                writeTurned(page, placement, pixels, mask)
+                writeTurned(data, pageSize, pageSize, placement, pixels, mask)
                 continue
             }
             if (mask != null) {
                 // A mesh-arranged tile writes only its own cells; its edge is not extruded over a neighbour.
-                writeMasked(page, placement, mask) { x, y, length, offset -> page.setRGB(x, y, length, 1, pixels, offset, width) }
+                writeMasked(pageSize, pageSize, placement, mask) { x, y, length, offset -> pixels.copyInto(data, y * pageSize + x, offset, offset + length) }
                 continue
             }
-            page.setRGB(placement.x, placement.y, width, height, pixels, 0, width)
+            // As setRGB would, refuse a rectangle off the page.
+            if (placement.x < 0 || placement.y < 0 || placement.x + width > pageSize || placement.y + height > pageSize) throw IndexOutOfBoundsException("Coordinate out of bounds!")
+            for (row in 0 until height) pixels.copyInto(data, (placement.y + row) * pageSize + placement.x, row * width, row * width + width)
             if (padding > 0) {
                 for (dy in -padding until height + padding) for (dx in -padding until width + padding) {
                     if (dx in 0 until width && dy in 0 until height) continue
                     val tx = placement.x + dx; val ty = placement.y + dy
                     if (tx in 0 until pageSize && ty in 0 until pageSize) {
-                        page.setRGB(tx, ty, image.getRGB(dx.coerceIn(0, width - 1), dy.coerceIn(0, height - 1)) and 0x00ffffff)
+                        data[ty * pageSize + tx] = pixels[dy.coerceIn(0, height - 1) * width + dx.coerceIn(0, width - 1)] and 0x00ffffff
                     }
                 }
             }

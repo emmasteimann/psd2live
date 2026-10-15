@@ -25,7 +25,7 @@ object CharacterAnalyzer {
 	 * replaces it (an analysis of a generation input that stands for the current art) passes its own.
 	 */
 	fun analyze(source: SourceArt, config: PipelineConfig,
-	            preview: () -> java.awt.image.BufferedImage = { PreviewRenderer.composite(source) }): PipelineAnalysis {
+	            preview: () -> RigImage = { compositePreview(source) }): PipelineAnalysis {
 		// A depth copy retains its original texture rectangle even when completely erased: its
 		// welded mesh must sample transparent pixels, never a neighbour's tile after a repack.
 		val depthLayerIds = config.rigEdits.authoringJournal.filter {

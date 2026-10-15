@@ -54,6 +54,9 @@ fun RigSettingsScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onCa
 	val tuning = config.rigTuning
 	var advanced by remember { mutableStateOf(false) }
 	var meshes by remember { mutableStateOf(false) }
+	// Choosing a layer for an anchor or a glue: "anchor", "glue", or "target:<layer>" (choosing what that layer is glued to).
+	var picking by remember { mutableStateOf<String?>(null) }
+	val layerNames = remember(outcome) { paintableLayers(outcome).map { it.name }.distinct() }
 	var applying by remember { mutableStateOf<Pair<String, Double>?>(null) }
 	var failure by remember { mutableStateOf<String?>(null) }
 	val scope = rememberCoroutineScope()
@@ -69,7 +72,8 @@ fun RigSettingsScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onCa
 		Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
 			Chip(if (advanced) "Hide advanced values" else "Show advanced values", advanced) { advanced = !advanced }
 			Chip("Defaults", false) { config = config.copy(rigTuning = RigTuning(), headTurnStrength = 1f, bodyStrength = 1f,
-				hairTurnDepth = 0f, hairTurnDepthY = 0f, physicsFrontHair = true, physicsBackHair = true) }
+				hairTurnDepth = 0f, hairTurnDepthY = 0f, physicsFrontHair = true, physicsBackHair = true,
+				hairAnchors = emptyMap(), layerGlues = emptyMap()) }
 			val progress = applying
 			if (progress != null) {
 				Column(Modifier.width(320.dp)) {
@@ -107,6 +111,65 @@ fun RigSettingsScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onCa
 				config = config.copy(physicsFrontHair = !config.physicsFrontHair) }
 			Chip(if (config.physicsBackHair) "Back hair sways: on" else "Back hair sways: off", config.physicsBackHair) {
 				config = config.copy(physicsBackHair = !config.physicsBackHair) }
+		}
+
+		Section("Hair anchors and glue")
+		Text("For hair that drifts off the head on a turn. An anchor pins a front-hair layer to the back hair below a band " +
+			"(the part above still moves as front hair). Glue makes part of a layer move exactly with another layer. " +
+			"Fractions run down the layer from 0 (top) to 1 (bottom).", color = Muted, fontSize = 12.sp)
+		for ((name, anchor) in config.hairAnchors.entries.sortedBy { it.key }.map { it.key to it.value }) {
+			Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+				Text("Anchor: $name", color = Text1, fontSize = 14.sp)
+				Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+					Chip(if (anchor.pinTop) "Pinned at the top" else "Pinned at the bottom", anchor.pinTop) {
+						config = config.copy(hairAnchors = config.hairAnchors + (name to anchor.copy(pinTop = !anchor.pinTop))) }
+					Chip("Remove", false) { config = config.copy(hairAnchors = config.hairAnchors - name) }
+				}
+			}
+			ValueRow("Band starts", "Above this the layer moves as front hair.", anchor.from, 0f..1f, 0.05f) { v ->
+				config = config.copy(hairAnchors = config.hairAnchors + (name to anchor.copy(from = v, to = maxOf(v, anchor.to)))) }
+			ValueRow("Band ends", "Below this it moves exactly with the back hair.", anchor.to, 0f..1f, 0.05f) { v ->
+				config = config.copy(hairAnchors = config.hairAnchors + (name to anchor.copy(to = v, from = minOf(v, anchor.from)))) }
+		}
+		for ((name, glue) in config.layerGlues.entries.sortedBy { it.key }.map { it.key to it.value }) {
+			Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+				Text("Glue: $name → ${glue.target}", color = Text1, fontSize = 14.sp)
+				Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+					Chip(if (glue.horizontal) "Across" else "Down", glue.horizontal) {
+						config = config.copy(layerGlues = config.layerGlues + (name to glue.copy(horizontal = !glue.horizontal))) }
+					Chip(if (glue.glueTop) (if (glue.horizontal) "Left glued" else "Top glued") else (if (glue.horizontal) "Right glued" else "Bottom glued"), glue.glueTop) {
+						config = config.copy(layerGlues = config.layerGlues + (name to glue.copy(glueTop = !glue.glueTop))) }
+					Chip("Remove", false) { config = config.copy(layerGlues = config.layerGlues - name) }
+				}
+			}
+			ValueRow("Glued up to", "The glued part ends here…", glue.from, 0f..1f, 0.05f) { v ->
+				config = config.copy(layerGlues = config.layerGlues + (name to glue.copy(from = v, to = maxOf(v, glue.to)))) }
+			ValueRow("Free from", "…and blends to moving freely by here.", glue.to, 0f..1f, 0.05f) { v ->
+				config = config.copy(layerGlues = config.layerGlues + (name to glue.copy(to = v, from = minOf(v, glue.from)))) }
+		}
+		Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+			Chip("Anchor a front-hair layer…", picking == "anchor") { picking = if (picking == "anchor") null else "anchor" }
+			Chip("Glue a layer…", picking == "glue" || picking?.startsWith("target:") == true) { picking = if (picking == null) "glue" else null }
+		}
+		picking?.let { mode ->
+			Text(when {
+				mode == "anchor" -> "Which front-hair layer?"
+				mode == "glue" -> "Which layer gets glued?"
+				else -> "Glue ${mode.removePrefix("target:")} to which layer?"
+			}, color = Muted, fontSize = 12.sp)
+			for (name in layerNames) {
+				Text(name, color = Accent, fontSize = 14.sp, modifier = Modifier.fillMaxWidth().clickable {
+					when {
+						mode == "anchor" -> { config = config.copy(hairAnchors = config.hairAnchors + (name to io.github.psd2live.core.HairAnchor(0.3f, 0.6f))); picking = null }
+						mode == "glue" -> picking = "target:$name"
+						else -> {
+							val glued = mode.removePrefix("target:")
+							if (glued != name) config = config.copy(layerGlues = config.layerGlues + (glued to io.github.psd2live.core.LayerGlue(name, 0.2f, 0.5f)))
+							picking = null
+						}
+					}
+				}.padding(vertical = 6.dp))
+			}
 		}
 
 		Section("Mesh detail per layer")

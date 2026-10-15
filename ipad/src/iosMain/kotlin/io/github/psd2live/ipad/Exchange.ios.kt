@@ -26,10 +26,10 @@ private var pickerDelegate: NSObject? = null
 
 @OptIn(ExperimentalForeignApi::class)
 actual object Exchange {
-	actual fun pick(onPicked: (List<String>) -> Unit) {
+	actual fun pick(extensions: Set<String>, multiple: Boolean, onPicked: (List<String>) -> Unit) {
 		val controller = topController() ?: return
 		val picker = UIDocumentPickerViewController(forOpeningContentTypes = listOf(UTTypeItem), asCopy = true)
-		picker.allowsMultipleSelection = true
+		picker.allowsMultipleSelection = multiple
 		val delegate = object : NSObject(), UIDocumentPickerDelegateProtocol {
 			override fun documentPicker(controller: UIDocumentPickerViewController, didPickDocumentsAtURLs: List<*>) {
 				// The picker hands copies in a temporary inbox: each moves into Documents (an older file of the name is replaced).
@@ -37,7 +37,7 @@ actual object Exchange {
 				val names = didPickDocumentsAtURLs.mapNotNull { it as? NSURL }.mapNotNull { url ->
 					val name = url.lastPathComponent ?: return@mapNotNull null
 					val ext = name.substringAfterLast('.', "").lowercase()
-					if (ext != "psd" && ext != "psd2live") return@mapNotNull null
+					if (ext !in extensions) return@mapNotNull null
 					val target = "$documents/$name"
 					val files = NSFileManager.defaultManager
 					files.removeItemAtPath(target, null)

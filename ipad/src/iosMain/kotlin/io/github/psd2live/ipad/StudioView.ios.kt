@@ -13,6 +13,7 @@ import platform.Foundation.NSHTTPURLResponse
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLRequest
 import platform.Foundation.dataWithContentsOfFile
+import platform.Foundation.dataUsingEncoding
 import platform.WebKit.WKURLSchemeHandlerProtocol
 import platform.WebKit.WKURLSchemeTaskProtocol
 import platform.WebKit.WKWebView
@@ -26,6 +27,7 @@ import platform.darwin.NSObject
 
 /** The scheme the bundled studio is served under, so it has an origin of its own (storage, module scripts). */
 private const val SCHEME = "layerloom"
+private const val COPY_PAGE = "_copy-projects"
 
 /**
  * Serves the studio's built files (the app bundle's `studio/` folder, the layerloom repo's `dist/client`) under
@@ -39,6 +41,15 @@ private class StudioFiles : NSObject(), WKURLSchemeHandlerProtocol {
 	override fun webView(webView: WKWebView, startURLSchemeTask: WKURLSchemeTaskProtocol) {
 		val url = startURLSchemeTask.request.URL ?: return
 		val path = url.path.orEmpty().trimStart('/').ifEmpty { "index.html" }
+		if (path == COPY_PAGE) {
+			// An empty page in the studio's origin, so the native studio can read the saved projects without running the app.
+			val headers = mapOf<Any?, Any?>("Content-Type" to "text/html; charset=utf-8", "Cache-Control" to "no-store")
+			startURLSchemeTask.didReceiveResponse(NSHTTPURLResponse(uRL = url, statusCode = 200, HTTPVersion = "HTTP/1.1", headerFields = headers)!!)
+			startURLSchemeTask.didReceiveData(@Suppress("CAST_NEVER_SUCCEEDS") ("<!doctype html><title>copy</title>" as platform.Foundation.NSString)
+				.dataUsingEncoding(platform.Foundation.NSUTF8StringEncoding)!!)
+			startURLSchemeTask.didFinish()
+			return
+		}
 		val safe = !path.split('/').any { it == ".." }
 		var file = if (safe && root != null) "$root/$path" else null
 		var data = file?.let { NSData.dataWithContentsOfFile(it) }
@@ -128,7 +139,7 @@ private class StudioKeeper : NSObject(), WKNavigationDelegateProtocol {
 /** One studio for the app's life: switching to the Rig tab and back keeps it as it was instead of reloading it. */
 @OptIn(ExperimentalForeignApi::class)
 private object Studio {
-	private val handler = StudioFiles()
+	val handler = StudioFiles()
 	private val keeper = StudioKeeper()
 	val view: WKWebView by lazy {
 		val configuration = WKWebViewConfiguration().apply {
@@ -160,4 +171,52 @@ actual fun StudioView(modifier: Modifier) {
 		// which delayed taps and would make Pencil strokes lag. Nothing of Compose's scrolls over the studio.
 		properties = UIKitInteropProperties(interactionMode = UIKitInteropInteractionMode.NonCooperative),
 	)
+}
+
+/**
+ * Reads the web studio's saved projects (IndexedDB `layerloom-studio`, store `projects`) out of the web view's storage
+ * for the native studio: a hidden web view opens an empty page in the studio's origin and returns each slot as JSON.
+ */
+@OptIn(ExperimentalForeignApi::class)
+actual object WebStudioCopy {
+	private var view: WKWebView? = null
+	private var delegate: NSObject? = null
+
+	actual fun read(onDone: (slots: Map<String, String>, error: String?) -> Unit) {
+		val configuration = WKWebViewConfiguration().apply {
+			setURLSchemeHandler(Studio.handler, forURLScheme = SCHEME)
+			websiteDataStore = WKWebsiteDataStore.defaultDataStore()
+		}
+		val web = WKWebView(frame = kotlinx.cinterop.cValue { }, configuration = configuration)
+		val slots = listOf("current", "recovery", "previous")
+		val found = mutableMapOf<String, String>()
+		fun finish(error: String?) { view = null; delegate = null; onDone(found, error) }
+		fun next(index: Int) {
+			if (index == slots.size) { finish(null); return }
+			val script = """
+				const db = await new Promise((ok, fail) => { const r = indexedDB.open("layerloom-studio", 1);
+					r.onupgradeneeded = () => r.result.createObjectStore("projects"); r.onsuccess = () => ok(r.result); r.onerror = () => fail(r.error); });
+				const value = await new Promise((ok, fail) => { const t = db.transaction("projects"); const q = t.objectStore("projects").get(slot);
+					q.onsuccess = () => ok(q.result); q.onerror = () => fail(q.error); });
+				db.close();
+				return value ? JSON.stringify(value) : "";
+			""".trimIndent()
+			web.callAsyncJavaScript(script, arguments = mapOf<Any?, Any?>("slot" to slots[index]), inFrame = null,
+				inContentWorld = platform.WebKit.WKContentWorld.pageWorld) { result, error ->
+				if (error != null) { finish(error.localizedDescription); return@callAsyncJavaScript }
+				(result as? String)?.takeIf { it.isNotEmpty() }?.let { found[slots[index]] = it }
+				next(index + 1)
+			}
+		}
+		val keeper = object : NSObject(), WKNavigationDelegateProtocol {
+			override fun webView(webView: WKWebView, didFinishNavigation: WKNavigation?) { next(0) }
+			@ObjCSignatureOverride
+			override fun webView(webView: WKWebView, didFailProvisionalNavigation: WKNavigation?, withError: NSError) { finish(withError.localizedDescription) }
+			@ObjCSignatureOverride
+			override fun webView(webView: WKWebView, didFailNavigation: WKNavigation?, withError: NSError) { finish(withError.localizedDescription) }
+		}
+		view = web; delegate = keeper
+		web.navigationDelegate = keeper
+		web.loadRequest(NSURLRequest.requestWithURL(NSURL.URLWithString("$SCHEME://studio/$COPY_PAGE")!!))
+	}
 }

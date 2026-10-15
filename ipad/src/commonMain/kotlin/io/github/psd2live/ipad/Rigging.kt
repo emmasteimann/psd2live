@@ -184,8 +184,11 @@ expect fun RasterImage.toImageBitmap(): androidx.compose.ui.graphics.ImageBitmap
 
 /** Files in and out of the app: the system document picker and share sheet. */
 expect object Exchange {
-	/** Lets the user pick PSDs and projects anywhere in Files; they are copied into the app's folder. Calls back with their names. */
-	fun pick(onPicked: (List<String>) -> Unit)
+	/**
+	 * Lets the user pick files with one of [extensions] (lowercase, no dot) anywhere in Files; they are copied into the
+	 * app's folder. Calls back with their names.
+	 */
+	fun pick(extensions: Set<String> = setOf("psd", "psd2live"), multiple: Boolean = true, onPicked: (List<String>) -> Unit)
 	/** The share sheet for [paths] (files or folders): VTube Studio, AirDrop, Save to Files... */
 	fun share(paths: List<String>)
 }

@@ -35,15 +35,21 @@ interface CanvasTouch {
 /**
  * One finger or the Pencil draws; two fingers pan and pinch-zoom (the point under the pinch stays under it); a quick
  * two-finger tap undoes and a three-finger tap redoes. A Pencil stroke ignores fingers resting on the glass.
+ * With [fingersPan] on (Procreate's "Pencil only"), only the Pencil draws and one finger pans. [onStylus] hears every
+ * Pencil touch, so a screen can switch to Pencil-only the first time one is used.
  */
-fun Modifier.canvasTouch(key: Any, touch: () -> CanvasTouch): Modifier = pointerInput(key) {
+fun Modifier.canvasTouch(key: Any, fingersPan: () -> Boolean = { false }, onStylus: () -> Unit = {}, touch: () -> CanvasTouch): Modifier = pointerInput(key) {
 	awaitEachGesture {
 		val down = awaitFirstDown(requireUnconsumed = false)
 		val t = touch()
 		val stylus = down.type == PointerType.Stylus
+		if (stylus) onStylus()
 		val startTime = down.uptimeMillis
-		var drawing = true
-		t.start(down.position, if (stylus) down.pressure.coerceIn(0.05f, 1f) else 1f)
+		val panning = !stylus && fingersPan()
+		var drawing = !panning
+		if (drawing) t.start(down.position, if (stylus) down.pressure.coerceIn(0.05f, 1f) else 1f)
+		var panFrom: Offset? = if (panning) down.position else null
+		var viewAtPan = t.view()
 		down.consume()
 		var pinchFrom: Pair<Offset, Float>? = null
 		var viewAtPinch = t.view()
@@ -62,11 +68,20 @@ fun Modifier.canvasTouch(key: Any, touch: () -> CanvasTouch): Modifier = pointer
 				val mid = Offset((a.x + b.x) / 2f, (a.y + b.y) / 2f); val dist = hypot(a.x - b.x, a.y - b.y).coerceAtLeast(1f)
 				val from = pinchFrom ?: (mid to dist).also { pinchFrom = it; viewAtPinch = t.view() }
 				moved = maxOf(moved, hypot(mid.x - from.first.x, mid.y - from.first.y), kotlin.math.abs(dist - from.second))
-				val zoom = (viewAtPinch.zoom * dist / from.second).coerceIn(0.25f, 24f)
+				val zoom = (viewAtPinch.zoom * dist / from.second).coerceIn(0.1f, 40f)
 				val l0 = t.layout(viewAtPinch)
 				val cx = (from.first.x - l0[1]) / l0[0]; val cy = (from.first.y - l0[2]) / l0[0]
 				val l1 = t.layout(CanvasView(zoom))
 				t.setView(CanvasView(zoom, mid.x - (l1[1] + cx * l1[0]), mid.y - (l1[2] + cy * l1[0])))
+				event.changes.forEach { it.consume() }
+				continue
+			}
+			if (panFrom != null && pinchFrom == null) {
+				// One finger in Pencil-only mode: move the canvas.
+				val change = event.changes.firstOrNull { it.id == down.id } ?: continue
+				val from = panFrom!!
+				moved = maxOf(moved, hypot(change.position.x - from.x, change.position.y - from.y))
+				t.setView(viewAtPan.copy(panX = viewAtPan.panX + change.position.x - from.x, panY = viewAtPan.panY + change.position.y - from.y))
 				event.changes.forEach { it.consume() }
 				continue
 			}
@@ -75,7 +90,8 @@ fun Modifier.canvasTouch(key: Any, touch: () -> CanvasTouch): Modifier = pointer
 			t.move(change.position, if (stylus) change.pressure.coerceIn(0.05f, 1f) else 1f)
 			change.consume()
 		}
-		if (drawing) t.end()
+		if (panning && fingers < 2) { /* a one-finger pan: nothing to finish */ }
+		else if (drawing) t.end()
 		// A quick multi-finger tap that barely moved: two fingers undo, three redo.
 		else if (moved < 12f && endTime - startTime < 350) {
 			if (fingers == 2) t.undo() else if (fingers >= 3) t.redo()

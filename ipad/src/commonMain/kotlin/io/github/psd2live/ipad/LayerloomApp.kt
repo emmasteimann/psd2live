@@ -26,8 +26,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** The app's workspaces, as the Mac app's tabs: the studio, and rigging with the shared rigger. */
-private enum class Workspace(val title: String) { STUDIO("Studio"), RIG("Rig") }
+/** The app's workspaces, as the Mac app's tabs: the studio, rigging with the shared rigger, and the old web studio. */
+private enum class Workspace(val title: String) { STUDIO("Studio"), RIG("Rig"), WEB("Web studio") }
 
 private val Background = Color(0xFF14141C)
 private val Bar = Color(0xFF1C1C27)
@@ -61,7 +61,9 @@ fun LayerloomApp() {
 		}
 		Box(Modifier.fillMaxSize()) {
 			when (workspace) {
-				Workspace.STUDIO -> StudioView(Modifier.fillMaxSize())
+				Workspace.STUDIO -> io.github.psd2live.ipad.studio.NativeStudio(Modifier.fillMaxSize()) { workspace = Workspace.WEB }
+				// The web studio, kept until the native one covers everything it does.
+				Workspace.WEB -> StudioView(Modifier.fillMaxSize())
 				Workspace.RIG -> RigWorkspace(Modifier.fillMaxSize())
 			}
 		}
@@ -71,3 +73,8 @@ fun LayerloomApp() {
 /** The studio (the web app), running offline from the app's own files. */
 @Composable
 expect fun StudioView(modifier: Modifier)
+
+/** The web studio's saved projects, read out of its storage once for the native studio: slot name to project JSON. */
+expect object WebStudioCopy {
+	fun read(onDone: (slots: Map<String, String>, error: String?) -> Unit)
+}

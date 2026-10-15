@@ -22,5 +22,6 @@ kotlin {
 			implementation("io.github.psd2live:editor")
 			implementation("com.squareup.okio:okio:3.17.0")
 		}
+		commonTest.dependencies { implementation(kotlin("test")) }
 	}
 }

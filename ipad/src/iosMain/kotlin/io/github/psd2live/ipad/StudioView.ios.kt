@@ -3,6 +3,8 @@ package io.github.psd2live.ipad
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.viewinterop.UIKitInteropInteractionMode
+import androidx.compose.ui.viewinterop.UIKitInteropProperties
 import androidx.compose.ui.viewinterop.UIKitView
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCSignatureOverride
@@ -73,7 +75,7 @@ private class StudioFiles : NSObject(), WKURLSchemeHandlerProtocol {
 	}
 }
 
-@OptIn(ExperimentalForeignApi::class)
+@OptIn(ExperimentalForeignApi::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 actual fun StudioView(modifier: Modifier) {
 	val handler = remember { StudioFiles() }
@@ -90,5 +92,8 @@ actual fun StudioView(modifier: Modifier) {
 			}
 		},
 		modifier = modifier,
+		// The studio takes every touch at once: Compose's default holds touches 150 ms to decide whether it scrolls,
+		// which delayed taps and would make Pencil strokes lag. Nothing of Compose's scrolls over the studio.
+		properties = UIKitInteropProperties(interactionMode = UIKitInteropInteractionMode.NonCooperative),
 	)
 }

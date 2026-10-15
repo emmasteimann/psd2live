@@ -5,6 +5,7 @@ import io.github.psd2live.core.PaintRasterSession
 import io.github.psd2live.core.PaintSpace
 import io.github.psd2live.core.RasterPaintCommit
 import io.github.psd2live.core.RasterPaintEngine
+import io.github.psd2live.core.RasterPaintShape
 import io.github.psd2live.core.Rectangle
 import io.github.psd2live.core.RigImage
 import io.github.psd2live.core.height
@@ -73,6 +74,88 @@ class LayerPainting(val outcome: RigOutcome, val layer: SourceLayer) {
 		return if (px in 0 until image.width && py in 0 until image.height) image.readArgb(px, py, 1, 1)[0] else 0
 	}
 
+	// ---- Shapes: previewed while the two corners are dragged, landed as one stroke when the pencil lifts. ----
+	private var shapeFrom: Pair<Float, Float>? = null
+
+	fun shapeBegin(x: Float, y: Float) { shapeFrom = space.canvasToImageX(x) to space.canvasToImageY(y) }
+
+	/** The shape from the press to canvas ([x], [y]), redrawn over what was there before it. */
+	fun shapeTo(x: Float, y: Float, shape: RasterPaintShape, color: Int, opacity: Float, width: Float, filled: Boolean) {
+		val (x0, y0) = shapeFrom ?: return
+		session.abandonStroke()
+		val x1 = space.canvasToImageX(x); val y1 = space.canvasToImageY(y)
+		val w = space.imageLength(width)
+		val area = RasterPaintEngine.shapeArea(x0.toInt(), y0.toInt(), x1.toInt(), y1.toInt(), w, Rectangle(0, 0, image.width, image.height))
+		session.edit(area) { RasterPaintEngine.drawShape(it, x0.toInt(), y0.toInt(), x1.toInt(), y1.toInt(), shape, color, opacity, w, filled, Rectangle(0, 0, image.width, image.height)) }
+	}
+
+	fun shapeEnd() { if (shapeFrom != null) { shapeFrom = null; session.recordStroke("Shape") } }
+
+	// ---- The mask: which part of the layer a cut takes. Its own raster and history, painted like the layer. ----
+	/** How much of each pixel the mask holds, as the alpha of a red overlay (the same grid as [image]). */
+	val mask: RigImage = newRigImage(image.width, image.height)
+	private val maskSession = PaintRasterSession("mask", "Mask", mask, newRigImage(image.width, image.height)).also { it.onChanged = { version++ } }
+	private var masking = false
+	val canUndoMask: Boolean get() = !masking && maskSession.canUndo()
+	val canRedoMask: Boolean get() = !masking && maskSession.canRedo()
+	val hasMask: Boolean get() = maskSession.isDirty
+
+	fun maskSegment(x0: Float, y0: Float, x1: Float, y1: Float, radius: Float, hardness: Float, erase: Boolean) {
+		if (!masking) { maskSession.beginStroke(); masking = true }
+		val tip = RasterPaintEngine.Tip(space.imageLength(radius), hardness)
+		maskSession.stroke().addSegment(space.canvasToImageX(x0), space.canvasToImageY(y0), space.canvasToImageX(x1), space.canvasToImageY(y1), tip)
+			?.let { maskSession.landSegment(it, (0xFF shl 24) or MASK_COLOR, 1f, erase) }
+	}
+
+	fun maskEnd() { if (masking) { maskSession.recordStroke("Mask"); masking = false } }
+	fun maskCancel() { if (masking) { maskSession.abandonStroke(); masking = false } }
+
+	/** Adds to the mask the region of the layer around canvas point ([x], [y]) whose colour is within [tolerance]. */
+	fun maskByColour(x: Float, y: Float, tolerance: Int) {
+		val px = kotlin.math.floor(space.canvasToImageX(x)).toInt(); val py = kotlin.math.floor(space.canvasToImageY(y)).toInt()
+		if (px !in 0 until image.width || py !in 0 until image.height) return
+		val probe = copy(image)
+		val area = RasterPaintEngine.floodFill(probe, px, py, 0x01FF00FE, tolerance, Rectangle(0, 0, image.width, image.height)) ?: return
+		val before = image.readArgb(area.x, area.y, area.width, area.height); val after = probe.readArgb(area.x, area.y, area.width, area.height)
+		maskSession.willWrite(area)
+		val current = mask.readArgb(area.x, area.y, area.width, area.height)
+		for (i in current.indices) if (before[i] != after[i] && (before[i] ushr 24) > 0) current[i] = (0xFF shl 24) or MASK_COLOR
+		mask.writeArgb(area.x, area.y, area.width, area.height, current)
+		maskSession.recordStroke("Select by colour")
+	}
+
+	fun clearMask() { maskSession.willWrite(Rectangle(0, 0, mask.width, mask.height)); RasterPaintEngine.clear(mask); maskSession.recordStroke("Clear mask") }
+	fun undoMask() { maskSession.undo() }
+	fun redoMask() { maskSession.redo() }
+
+	/** Erases the masked part of the layer (softly, by the mask's alpha), as one paint stroke. */
+	fun eraseMasked() {
+		val w = image.width; val h = image.height
+		val pixels = image.readArgb(0, 0, w, h); val m = mask.readArgb(0, 0, w, h)
+		session.willWrite(Rectangle(0, 0, w, h))
+		for (i in pixels.indices) { val a = pixels[i] ushr 24; val cut = (a * (m[i] ushr 24) + 127) / 255; pixels[i] = ((a - cut) shl 24) or (pixels[i] and 0xFFFFFF) }
+		image.writeArgb(0, 0, w, h, pixels)
+		session.recordStroke("Erase masked")
+		clearMask()
+	}
+
+	/**
+	 * Cuts the masked part out into a new layer named [name], directly above this one, and re-rigs. Paint on this layer
+	 * so far goes with it. Hand tweaks on this layer's meshes are dropped (both pieces get new meshes); the count is
+	 * in [RigOutcome.warnings]. Blocking.
+	 */
+	@OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+	fun cutToNewLayer(name: String, progress: (String, Double) -> Unit): RigOutcome {
+		val started = RigFiles.nowSeconds()
+		progress("Cutting the layer", 0.02)
+		val r = io.github.psd2live.core.LayerSplit.split(outcome.model, layer.id.raw, space, image, mask, name.ifBlank { "${layer.name} part" },
+			"split-${kotlin.uuid.Uuid.random()}", outcome.config.generationSource)
+		val config = outcome.config.copy(generationSource = r.generationSource, rigEdits = r.rigEdits)
+		val rigged = buildRig(outcome.name, r.source, config, started, progress)
+		return if (r.droppedEdits == 0) rigged else rigged.withWarning(
+			"${r.droppedEdits} hand tweak${if (r.droppedEdits == 1) "" else "s"} on ${layer.name} were dropped: the cut gave it a new mesh.")
+	}
+
 	fun undo() { session.undo() }
 	fun redo() { session.redo() }
 
@@ -92,6 +175,7 @@ class LayerPainting(val outcome: RigOutcome, val layer: SourceLayer) {
 	}
 
 	private companion object {
+		const val MASK_COLOR = 0xFF4060
 		fun copy(image: RigImage) = newRigImage(image.width, image.height).also {
 			it.writeArgb(0, 0, image.width, image.height, image.readArgb(0, 0, image.width, image.height))
 		}

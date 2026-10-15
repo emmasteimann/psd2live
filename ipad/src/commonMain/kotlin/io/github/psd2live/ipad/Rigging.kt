@@ -30,6 +30,10 @@ class RigOutcome(
 	internal val model: RigPreviewModel,
 )
 
+/** [this] with [warning] added at the top of its warnings. */
+internal fun RigOutcome.withWarning(warning: String) = RigOutcome(name, drawables, deformers, parameters, files, folder,
+	listOf(warning) + warnings, seconds, preview, source, config, model)
+
 /** One parameter's slider: its id, display name and range. */
 class PreviewParameter(val id: String, val name: String, val min: Float, val max: Float, val default: Float)
 

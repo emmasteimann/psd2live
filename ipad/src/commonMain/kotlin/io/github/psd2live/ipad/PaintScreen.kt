@@ -61,7 +61,9 @@ private val Muted = Color(0xFF9793A7)
 private val Accent = Color(0xFFC9B7FF)
 private val Danger = Color(0xFFFF9A9A)
 
-private enum class PaintTool(val label: String) { BRUSH("Brush"), ERASER("Eraser"), FILL("Fill"), PICK("Pick") }
+private enum class PaintTool(val label: String) { BRUSH("Brush"), ERASER("Eraser"), FILL("Fill"), PICK("Pick"), SHAPE("Shape"), MASK("Mask") }
+
+private enum class MaskMode(val label: String) { PAINT("Mask"), UNMASK("Unmask"), COLOUR("By colour") }
 
 private val Swatches = listOf(
 	0xFF000000, 0xFFFFFFFF, 0xFF6B6B7A, 0xFFF6D7C3, 0xFFE8B49A, 0xFF8A5A44, 0xFFE0453A, 0xFFF29A38,
@@ -106,6 +108,13 @@ private fun LayerPaintView(painting: LayerPainting, onApplied: (RigOutcome) -> U
 	var opacity by remember { mutableStateOf(1f) }
 	var color by remember { mutableStateOf(Swatches[0]) }
 	var pressureSize by remember { mutableStateOf(true) }
+	var shape by remember { mutableStateOf(io.github.psd2live.core.RasterPaintShape.LINE) }
+	var shapeFilled by remember { mutableStateOf(false) }
+	var shapeWidth by remember { mutableStateOf(4f) }
+	var maskMode by remember { mutableStateOf(MaskMode.PAINT) }
+	var pieceName by remember(painting) { mutableStateOf("${painting.layer.name} part") }
+	val shapeNow by rememberUpdatedState(Triple(shape, shapeFilled, shapeWidth))
+	val maskModeNow by rememberUpdatedState(maskMode)
 	var ghost by remember { mutableStateOf(true) }
 	var view by remember { mutableStateOf(CanvasView()) }
 	var tick by remember { mutableStateOf(0L) }
@@ -124,10 +133,10 @@ private fun LayerPaintView(painting: LayerPainting, onApplied: (RigOutcome) -> U
 
 	LaunchedEffect(painting) {
 		// Only what is on screen is drawn, at screen resolution: a draft while things move, sharp once they rest.
-		snapshotFlow { listOf(tick, view, box, ghost) }.collectLatest {
+		snapshotFlow { listOf(tick, view, box, ghost, tool == PaintTool.MASK || painting.hasMask) }.collectLatest {
 			val (w, h) = box
 			if (w < 2f || h < 2f) return@collectLatest
-			val l = layout(w, h, view); val showGhost = ghost
+			val l = layout(w, h, view); val showGhost = ghost; val showMask = tool == PaintTool.MASK || painting.hasMask
 			suspend fun draw(budget: Float): PaintFrame? = withContext(Dispatchers.Default) {
 				val scale = l[0]; val left = l[1]; val top = l[2]
 				val x0 = maxOf(0f, -left / scale); val y0 = maxOf(0f, -top / scale)
@@ -141,7 +150,9 @@ private fun LayerPaintView(painting: LayerPainting, onApplied: (RigOutcome) -> U
 				val layer = painting.image.regionBitmap(sp.canvasToImageX(x0), sp.canvasToImageY(y0),
 					sp.canvasToImageX(x1) - sp.canvasToImageX(x0), sp.canvasToImageY(y1) - sp.canvasToImageY(y0), outW, outH)
 				val under = if (!showGhost) null else painting.outcome.preview.render(rest, x0, y0, x1 - x0, y1 - y0, outW, outH).toImageBitmap()
-				PaintFrame(layer, under, at)
+				val maskBitmap = if (!showMask) null else painting.mask.regionBitmap(sp.canvasToImageX(x0), sp.canvasToImageY(y0),
+					sp.canvasToImageX(x1) - sp.canvasToImageX(x0), sp.canvasToImageY(y1) - sp.canvasToImageY(y0), outW, outH)
+				PaintFrame(layer, under, at, maskBitmap)
 			}
 			frame = draw(300_000f)
 			delay(160)
@@ -169,7 +180,15 @@ private fun LayerPaintView(painting: LayerPainting, onApplied: (RigOutcome) -> U
 						if (applying != null) return
 						val s = current; val p = toCanvas(at)
 						when (s.tool) {
-							PaintTool.FILL -> scope.launch(worker) { painting.fill(p.x, p.y, s.color, s.opacity, 24); bump() }
+							PaintTool.SHAPE -> { last = p; scope.launch(worker) { painting.shapeBegin(p.x, p.y) } }
+							PaintTool.MASK -> when (maskModeNow) {
+								MaskMode.COLOUR -> scope.launch(worker) { painting.maskByColour(p.x, p.y, 24); bump() }
+								else -> {
+									val r = size(pressure, s); last = p; cursor = at to r
+									scope.launch(worker) { painting.maskSegment(p.x, p.y, p.x, p.y, r, s.hardness, maskModeNow == MaskMode.UNMASK); bump() }
+								}
+							}
+							PaintTool.FILL -> { rememberColourUse(s.color); scope.launch(worker) { painting.fill(p.x, p.y, s.color, s.opacity, 24); bump() } }
 							PaintTool.PICK -> scope.launch(worker) {
 								// The layer's own colour where it has one, else what the character shows there.
 								val own = painting.pixelAt(p.x, p.y)
@@ -187,16 +206,33 @@ private fun LayerPaintView(painting: LayerPainting, onApplied: (RigOutcome) -> U
 					}
 					override fun move(at: Offset, pressure: Float) {
 						val s = current; val from = last ?: return; val p = toCanvas(at); val r = size(pressure, s)
+						if (s.tool == PaintTool.SHAPE) {
+							val (kind, filled, width) = shapeNow
+							scope.launch(worker) { painting.shapeTo(p.x, p.y, kind, s.color, s.opacity, width, filled); bump() }
+							return
+						}
+						if (s.tool == PaintTool.MASK) {
+							last = p; cursor = at to r
+							scope.launch(worker) { painting.maskSegment(from.x, from.y, p.x, p.y, r, s.hardness, maskModeNow == MaskMode.UNMASK); bump() }
+							return
+						}
 						last = p; cursor = at to r
 						scope.launch(worker) { painting.segment(from.x, from.y, p.x, p.y, r, s.hardness, s.color, s.opacity, s.tool == PaintTool.ERASER); bump() }
 					}
 					override fun end() {
 						val s = current; cursor = null
-						if (last != null) { last = null; scope.launch(worker) { painting.endStroke(s.tool.label); bump() } }
+						if (last != null) {
+							last = null
+							scope.launch(worker) {
+								when (s.tool) { PaintTool.SHAPE -> painting.shapeEnd(); PaintTool.MASK -> painting.maskEnd(); else -> painting.endStroke(s.tool.label) }
+								if (s.tool == PaintTool.BRUSH || s.tool == PaintTool.SHAPE) scope.launch(Dispatchers.Main) { rememberColourUse(s.color) }
+								bump()
+							}
+						}
 					}
-					override fun cancel() { cursor = null; last = null; scope.launch(worker) { painting.cancelStroke(); bump() } }
-					override fun undo() { scope.launch(worker) { painting.undo(); bump() } }
-					override fun redo() { scope.launch(worker) { painting.redo(); bump() } }
+					override fun cancel() { cursor = null; last = null; scope.launch(worker) { painting.cancelStroke(); painting.maskCancel(); bump() } }
+					override fun undo() { scope.launch(worker) { if (current.tool == PaintTool.MASK) painting.undoMask() else painting.undo(); bump() } }
+					override fun redo() { scope.launch(worker) { if (current.tool == PaintTool.MASK) painting.redoMask() else painting.redo(); bump() } }
 					override fun view() = view
 					override fun setView(view: CanvasView) { setPaintView(view) }
 					override fun layout(view: CanvasView) = layout(w, h, view)
@@ -223,6 +259,7 @@ private fun LayerPaintView(painting: LayerPainting, onApplied: (RigOutcome) -> U
 					val dst = IntOffset(f.at[0].roundToInt(), f.at[1].roundToInt()); val dsz = IntSize(f.at[2].roundToInt(), f.at[3].roundToInt())
 					f.under?.let { drawImage(it, dstOffset = dst, dstSize = dsz, alpha = 0.3f) }
 					drawImage(f.layer, dstOffset = dst, dstSize = dsz)
+					f.mask?.let { drawImage(it, dstOffset = dst, dstSize = dsz, alpha = 0.5f) }
 				}
 				cursor?.let { (c, r) ->
 					drawCircle(Color.White.copy(alpha = 0.8f), r * l[0], c, style = Stroke(1.5f))
@@ -234,7 +271,51 @@ private fun LayerPaintView(painting: LayerPainting, onApplied: (RigOutcome) -> U
 		Column(Modifier.width(320.dp).height(860.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
 			// Read on every change, so undo, redo and apply follow the session.
 			@Suppress("UNUSED_VARIABLE") val changes = tick
-			Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { for (t in PaintTool.entries) Chip(t.label, tool == t) { tool = t } }
+			Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { for (t in PaintTool.entries.take(4)) Chip(t.label, tool == t) { tool = t } }
+			Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { for (t in PaintTool.entries.drop(4)) Chip(t.label, tool == t) { tool = t } }
+			if (tool == PaintTool.SHAPE) {
+				Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+					for ((kind, label) in listOf(io.github.psd2live.core.RasterPaintShape.LINE to "Line", io.github.psd2live.core.RasterPaintShape.RECTANGLE to "Rectangle",
+						io.github.psd2live.core.RasterPaintShape.ELLIPSE to "Ellipse")) Chip(label, shape == kind) { shape = kind }
+				}
+				if (shape != io.github.psd2live.core.RasterPaintShape.LINE) Chip(if (shapeFilled) "Filled" else "Outline", shapeFilled) { shapeFilled = !shapeFilled }
+				Text("Line width  ${shapeWidth.roundToInt()} px", color = Muted, fontSize = 12.sp)
+				Slider(shapeWidth, { shapeWidth = it }, valueRange = 1f..60f, colors = sliderColors(), modifier = Modifier.height(32.dp))
+			}
+			if (tool == PaintTool.MASK) {
+				Text("Paint over the part to cut out (red). Soft edges split pixels between the two layers, so nothing along the edge is lost.",
+					color = Muted, fontSize = 12.sp)
+				Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { for (m in MaskMode.entries) Chip(m.label, maskMode == m) { maskMode = m } }
+				if (maskMode != MaskMode.COLOUR) {
+					Text("Size  ${radius.roundToInt() * 2} px", color = Muted, fontSize = 12.sp)
+					Slider(radius, { radius = it }, valueRange = 0.5f..150f, colors = sliderColors(), modifier = Modifier.height(32.dp))
+					Text("Edge softness  ${((1f - hardness) * 100).roundToInt()}%", color = Muted, fontSize = 12.sp)
+					Slider(1f - hardness, { hardness = 1f - it }, valueRange = 0f..1f, colors = sliderColors(), modifier = Modifier.height(32.dp))
+				} else Text("Tap a colour region of the layer to add it to the mask.", color = Muted, fontSize = 12.sp)
+				Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+					Chip("Undo", false, enabled = painting.canUndoMask) { scope.launch(worker) { painting.undoMask(); bump() } }
+					Chip("Redo", false, enabled = painting.canRedoMask) { scope.launch(worker) { painting.redoMask(); bump() } }
+					Chip("Clear mask", false, enabled = painting.hasMask) { scope.launch(worker) { painting.clearMask(); bump() } }
+				}
+				Text("New layer's name", color = Muted, fontSize = 12.sp)
+				androidx.compose.foundation.text.BasicTextField(pieceName, { pieceName = it }, singleLine = true,
+					textStyle = androidx.compose.ui.text.TextStyle(color = Text1, fontSize = 15.sp), cursorBrush = androidx.compose.ui.graphics.SolidColor(Accent),
+					modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(Color(0xFF2B283C)).padding(10.dp))
+				Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+					Chip("Cut to a new layer", true, enabled = painting.hasMask && applying == null) {
+						applying = "Cutting" to 0.0; failure = null
+						scope.launch {
+							try {
+								val updated = withContext(worker) {
+									painting.cutToNewLayer(pieceName) { stage, fraction -> scope.launch(Dispatchers.Main) { if (applying != null) applying = stage to fraction } }
+								}
+								applying = null; onApplied(updated)
+							} catch (error: Throwable) { applying = null; failure = error.message ?: error::class.simpleName }
+						}
+					}
+					Chip("Erase the masked part", false, enabled = painting.hasMask) { scope.launch(worker) { painting.eraseMasked(); bump() } }
+				}
+			}
 			if (tool == PaintTool.BRUSH || tool == PaintTool.ERASER) {
 				Text("Size  ${radius.roundToInt() * 2} px", color = Muted, fontSize = 12.sp)
 				Slider(radius, { radius = it }, valueRange = 0.5f..150f, colors = sliderColors(), modifier = Modifier.height(32.dp))
@@ -244,7 +325,15 @@ private fun LayerPaintView(painting: LayerPainting, onApplied: (RigOutcome) -> U
 			}
 			Text("Opacity  ${(opacity * 100).roundToInt()}%", color = Muted, fontSize = 12.sp)
 			Slider(opacity, { opacity = it }, valueRange = 0.02f..1f, colors = sliderColors(), modifier = Modifier.height(32.dp))
-			if (tool != PaintTool.ERASER) ColourPicker(color) { color = it }
+			if (tool != PaintTool.ERASER && tool != PaintTool.MASK) {
+				ColourPicker(color) { color = it }
+				Text("Swatches", color = Muted, fontSize = 12.sp)
+				for (chunk in Swatches.chunked(8)) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+					for (swatch in chunk) Box(Modifier.size(30.dp).clip(CircleShape).background(Color(swatch))
+						.border(if (swatch == color) 3.dp else 1.dp, if (swatch == color) Accent else Color(0xFF55526A), CircleShape)
+						.clickable { color = swatch })
+				}
+			}
 			Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
 				Chip("Undo", false, enabled = painting.canUndo) { scope.launch(worker) { painting.undo(); bump() } }
 				Chip("Redo", false, enabled = painting.canRedo) { scope.launch(worker) { painting.redo(); bump() } }
@@ -279,53 +368,7 @@ private fun LayerPaintView(painting: LayerPainting, onApplied: (RigOutcome) -> U
 }
 
 /** What the canvas shows: the layer and, faintly, the character under it, both covering [at] (x, y, w, h on screen). */
-private class PaintFrame(val layer: ImageBitmap, val under: ImageBitmap?, val at: FloatArray)
-
-/** Swatches and a hue / saturation / brightness picker; the chosen colour shows as one large dot. */
-@Composable
-private fun ColourPicker(color: Int, onChange: (Int) -> Unit) {
-	val (h0, s0, v0) = remember(color) { rgbToHsv(color) }
-	var hue by remember(color) { mutableStateOf(h0) }
-	var sat by remember(color) { mutableStateOf(s0) }
-	var value by remember(color) { mutableStateOf(v0) }
-	Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-		Box(Modifier.size(40.dp).clip(CircleShape).background(Color(color)).border(2.dp, Accent, CircleShape))
-		Text("Colour", color = Muted, fontSize = 12.sp)
-	}
-	for (chunk in Swatches.chunked(8)) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-		for (swatch in chunk) Box(Modifier.size(30.dp).clip(CircleShape).background(Color(swatch))
-			.border(if (swatch == color) 3.dp else 1.dp, if (swatch == color) Accent else Color(0xFF55526A), CircleShape)
-			.clickable { onChange(swatch) })
-	}
-	Text("Hue", color = Muted, fontSize = 12.sp)
-	Slider(hue, { hue = it; onChange(hsvToRgb(hue, sat, value)) }, valueRange = 0f..360f, colors = sliderColors(), modifier = Modifier.height(28.dp))
-	Text("Saturation", color = Muted, fontSize = 12.sp)
-	Slider(sat, { sat = it; onChange(hsvToRgb(hue, sat, value)) }, valueRange = 0f..1f, colors = sliderColors(), modifier = Modifier.height(28.dp))
-	Text("Brightness", color = Muted, fontSize = 12.sp)
-	Slider(value, { value = it; onChange(hsvToRgb(hue, sat, value)) }, valueRange = 0f..1f, colors = sliderColors(), modifier = Modifier.height(28.dp))
-}
-
-private fun rgbToHsv(argb: Int): Triple<Float, Float, Float> {
-	val r = ((argb ushr 16) and 0xFF) / 255f; val g = ((argb ushr 8) and 0xFF) / 255f; val b = (argb and 0xFF) / 255f
-	val max = maxOf(r, g, b); val min = minOf(r, g, b); val d = max - min
-	val h = when {
-		d == 0f -> 0f
-		max == r -> 60f * (((g - b) / d) % 6f)
-		max == g -> 60f * ((b - r) / d + 2f)
-		else -> 60f * ((r - g) / d + 4f)
-	}.let { if (it < 0f) it + 360f else it }
-	return Triple(h, if (max == 0f) 0f else d / max, max)
-}
-
-private fun hsvToRgb(h: Float, s: Float, v: Float): Int {
-	val c = v * s; val x = c * (1f - kotlin.math.abs((h / 60f) % 2f - 1f)); val m = v - c
-	val (r, g, b) = when ((h / 60f).toInt().coerceIn(0, 5)) {
-		0 -> Triple(c, x, 0f); 1 -> Triple(x, c, 0f); 2 -> Triple(0f, c, x)
-		3 -> Triple(0f, x, c); 4 -> Triple(x, 0f, c); else -> Triple(c, 0f, x)
-	}
-	fun ch(f: Float) = ((f + m) * 255f).roundToInt().coerceIn(0, 255)
-	return (0xFF shl 24) or (ch(r) shl 16) or (ch(g) shl 8) or ch(b)
-}
+private class PaintFrame(val layer: ImageBitmap, val under: ImageBitmap?, val at: FloatArray, val mask: ImageBitmap? = null)
 
 private class PaintSettings(val tool: PaintTool, val radius: Float, val hardness: Float, val opacity: Float, val color: Int)
 

@@ -265,3 +265,46 @@ actual fun previewBundleValidationDefault(): Boolean = false
 
 @OptIn(kotlin.experimental.ExperimentalNativeApi::class)
 actual fun identityHash(value: Any?): Int = value?.identityHashCode() ?: 0
+
+/** Core Graphics: an RGBA bitmap context flipped to y down, antialiased fill then a 1.5 px round stroke, unpremultiplied. */
+@OptIn(ExperimentalForeignApi::class)
+actual fun rasterizeLipTriangles(width: Int, height: Int, positions: FloatArray, indices: IntArray, rgb: Int): IntArray {
+	val pixels = ByteArray(width * height * 4)
+	val r = (rgb ushr 16 and 0xff) / 255.0; val g = (rgb ushr 8 and 0xff) / 255.0; val b = (rgb and 0xff) / 255.0
+	pixels.usePinned { pinned ->
+		val space = platform.CoreGraphics.CGColorSpaceCreateDeviceRGB()
+		val context = platform.CoreGraphics.CGBitmapContextCreate(pinned.addressOf(0), width.toULong(), height.toULong(), 8u,
+			(width * 4).toULong(), space, platform.CoreGraphics.CGImageAlphaInfo.kCGImageAlphaPremultipliedLast.value)
+		try {
+			platform.CoreGraphics.CGContextTranslateCTM(context, 0.0, height.toDouble())
+			platform.CoreGraphics.CGContextScaleCTM(context, 1.0, -1.0)
+			platform.CoreGraphics.CGContextSetShouldAntialias(context, true)
+			platform.CoreGraphics.CGContextSetRGBFillColor(context, r, g, b, 1.0)
+			platform.CoreGraphics.CGContextSetRGBStrokeColor(context, r, g, b, 1.0)
+			fun triangle(t: Int) {
+				val i0 = indices[t] * 2; val i1 = indices[t + 1] * 2; val i2 = indices[t + 2] * 2
+				platform.CoreGraphics.CGContextBeginPath(context)
+				platform.CoreGraphics.CGContextMoveToPoint(context, positions[i0].toDouble(), positions[i0 + 1].toDouble())
+				platform.CoreGraphics.CGContextAddLineToPoint(context, positions[i1].toDouble(), positions[i1 + 1].toDouble())
+				platform.CoreGraphics.CGContextAddLineToPoint(context, positions[i2].toDouble(), positions[i2 + 1].toDouble())
+				platform.CoreGraphics.CGContextClosePath(context)
+			}
+			for (t in indices.indices step 3) { triangle(t); platform.CoreGraphics.CGContextFillPath(context) }
+			platform.CoreGraphics.CGContextSetLineWidth(context, 1.5)
+			platform.CoreGraphics.CGContextSetLineCap(context, platform.CoreGraphics.CGLineCap.kCGLineCapRound)
+			platform.CoreGraphics.CGContextSetLineJoin(context, platform.CoreGraphics.CGLineJoin.kCGLineJoinRound)
+			for (t in indices.indices step 3) { triangle(t); platform.CoreGraphics.CGContextStrokePath(context) }
+		} finally {
+			platform.CoreGraphics.CGContextRelease(context)
+			platform.CoreGraphics.CGColorSpaceRelease(space)
+		}
+	}
+	return IntArray(width * height) { i ->
+		val o = i * 4
+		val a = pixels[o + 3].toInt() and 0xff
+		if (a == 0) 0 else {
+			fun un(c: Byte) = (((c.toInt() and 0xff) * 255 + a / 2) / a).coerceAtMost(255)
+			(a shl 24) or (un(pixels[o]) shl 16) or (un(pixels[o + 1]) shl 8) or un(pixels[o + 2])
+		}
+	}
+}

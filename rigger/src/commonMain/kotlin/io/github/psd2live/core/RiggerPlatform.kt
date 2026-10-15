@@ -145,3 +145,11 @@ expect fun previewBundleValidationDefault(): Boolean
 
 /** System.identityHashCode. */
 expect fun identityHash(value: Any?): Int
+
+/**
+ * The mouth lip stroke's pixels ([MouthLipLayers]): the triangles ([indices] into [positions], x/y pairs in the image's
+ * pixels, y down) filled in [rgb], antialiased, then their outlines stroked 1.5 px wide with round caps and joins.
+ * Java2D on the desktop; Core Graphics on the iPad - the same shape, antialiased edge pixels may differ by a few levels.
+ * Returns [width] × [height] ARGB, straight alpha.
+ */
+expect fun rasterizeLipTriangles(width: Int, height: Int, positions: FloatArray, indices: IntArray, rgb: Int): IntArray

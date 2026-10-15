@@ -3,11 +3,6 @@ package io.github.psd2live.core
 import io.github.psd2live.i18n.tr
 import org.umamo.format.art.*
 import org.umamo.runtime.model.DrawableMesh
-import java.awt.BasicStroke
-import java.awt.Color
-import java.awt.RenderingHints
-import java.awt.geom.Path2D
-import java.awt.image.BufferedImage
 import kotlin.math.*
 
 /** Regenerated assets have stable independent IDs, so selection, visibility and mesh edits persist. */
@@ -127,43 +122,14 @@ object MouthLipLayers {
         val strokeWidth = max(8, strokeRight - strokeLeft)
         val strokeHeight = max(8, strokeBottom - strokeTop)
 
-        val image = BufferedImage(strokeWidth, strokeHeight, BufferedImage.TYPE_INT_ARGB)
-        val g2 = image.createGraphics()
-        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-        g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
-        g2.color = Color(rgb)
-
-        val triPath = Path2D.Float()
-        for (t in indices.indices step 3) {
-            val i0 = indices[t] * 2
-            val i1 = indices[t + 1] * 2
-            val i2 = indices[t + 2] * 2
-            triPath.reset()
-            triPath.moveTo(canvasPositions[i0] - strokeLeft, canvasPositions[i0 + 1] - strokeTop)
-            triPath.lineTo(canvasPositions[i1] - strokeLeft, canvasPositions[i1 + 1] - strokeTop)
-            triPath.lineTo(canvasPositions[i2] - strokeLeft, canvasPositions[i2 + 1] - strokeTop)
-            triPath.closePath()
-            g2.fill(triPath)
-        }
-        g2.stroke = BasicStroke(1.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
-        for (t in indices.indices step 3) {
-            val i0 = indices[t] * 2
-            val i1 = indices[t + 1] * 2
-            val i2 = indices[t + 2] * 2
-            triPath.reset()
-            triPath.moveTo(canvasPositions[i0] - strokeLeft, canvasPositions[i0 + 1] - strokeTop)
-            triPath.lineTo(canvasPositions[i1] - strokeLeft, canvasPositions[i1 + 1] - strokeTop)
-            triPath.lineTo(canvasPositions[i2] - strokeLeft, canvasPositions[i2 + 1] - strokeTop)
-            triPath.closePath()
-            g2.draw(triPath)
-        }
-        g2.dispose()
+        val local = FloatArray(canvasPositions.size) { i -> canvasPositions[i] - if (i % 2 == 0) strokeLeft else strokeTop }
+        val drawn = rasterizeLipTriangles(strokeWidth, strokeHeight, local, indices, rgb)
 
         val rgba = ByteArray(strokeWidth * strokeHeight * 4)
         var opaqueCount = 0
         for (y in 0 until strokeHeight) {
             for (x in 0 until strokeWidth) {
-                val argb = image.getRGB(x, y)
+                val argb = drawn[y * strokeWidth + x]
                 val a = (argb ushr 24) and 255
                 if (a > 0) opaqueCount++
                 val idx = (y * strokeWidth + x) * 4

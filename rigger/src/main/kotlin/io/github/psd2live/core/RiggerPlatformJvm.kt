@@ -184,3 +184,25 @@ actual fun legacyPaddedRaster(current: org.umamo.format.art.SourceLayer, bounds:
 
 
 actual typealias ThreadLocal<T> = java.lang.ThreadLocal<T>
+
+actual fun rasterizeLipTriangles(width: Int, height: Int, positions: FloatArray, indices: IntArray, rgb: Int): IntArray {
+	val image = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
+	val g2 = image.createGraphics()
+	g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON)
+	g2.setRenderingHint(java.awt.RenderingHints.KEY_RENDERING, java.awt.RenderingHints.VALUE_RENDER_QUALITY)
+	g2.color = java.awt.Color(rgb)
+	val triPath = java.awt.geom.Path2D.Float()
+	fun triangle(t: Int) {
+		val i0 = indices[t] * 2; val i1 = indices[t + 1] * 2; val i2 = indices[t + 2] * 2
+		triPath.reset()
+		triPath.moveTo(positions[i0], positions[i0 + 1])
+		triPath.lineTo(positions[i1], positions[i1 + 1])
+		triPath.lineTo(positions[i2], positions[i2 + 1])
+		triPath.closePath()
+	}
+	for (t in indices.indices step 3) { triangle(t); g2.fill(triPath) }
+	g2.stroke = java.awt.BasicStroke(1.5f, java.awt.BasicStroke.CAP_ROUND, java.awt.BasicStroke.JOIN_ROUND)
+	for (t in indices.indices step 3) { triangle(t); g2.draw(triPath) }
+	g2.dispose()
+	return image.getRGB(0, 0, width, height, null, 0, width)
+}

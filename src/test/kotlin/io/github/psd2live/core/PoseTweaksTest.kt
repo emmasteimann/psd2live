@@ -39,4 +39,26 @@ class PoseTweaksTest {
 		val rerig = pipeline.buildPreview(source, config)
 		assertEquals(0, diff(frame(tweaked, pose), frame(rerig, pose)), "a full re-rig keeps the tweak")
 	}
+
+	@Test fun aMirroredStrokeLandsOnTheOtherSideAtTheMirroredPose() {
+		val psd = System.getenv("LAYERLOOM_PSD") ?: return
+		val source = PsdReader.read(java.nio.file.Files.readAllBytes(java.nio.file.Path.of(psd)))
+		val pipeline = PSD2LivePipeline()
+		val model = pipeline.buildPreview(source, PipelineConfig(exportCmo3 = false))
+		val right = mapOf("ParamAngleX" to 30f); val left = mapOf("ParamAngleX" to -30f)
+		val restBefore = frame(model, emptyMap()); val leftBefore = frame(model, left)
+		val puppet = model.rig.puppet
+		val x = puppet.canvasWidth * 0.4f; val y = puppet.canvasHeight * 0.25f
+		val session = PoseTweaks.begin(puppet, right, PoseTweaks.meshesUnder(puppet, right, x, y, 50f), x, y, 50f)
+		for (i in 1..10) PoseTweaks.step(session, x - i * 4f, y)
+		val first = PoseTweaks.rebuilt(pipeline, model, requireNotNull(PoseTweaks.journaled(model, session)))
+		assertEquals(0, diff(leftBefore, frame(first, left)), "the stroke alone leaves looking left as it was")
+		val mirror = requireNotNull(PoseTweaks.mirrored(first.rig.puppet, session)) { "something is under the mirrored press" }
+		assertEquals(-30f, mirror.request.pose["ParamAngleX"], "the mirror works at the mirrored pose")
+		val config = requireNotNull(PoseTweaks.journaled(first, mirror))
+		val both = PoseTweaks.rebuilt(pipeline, first, config)
+		assertTrue(diff(leftBefore, frame(both, left)) > 0, "looking left moved too")
+		assertEquals(0, diff(restBefore, frame(both, emptyMap())), "rest is untouched")
+		assertEquals(0, diff(frame(both, left), frame(pipeline.buildPreview(source, config), left)), "a full re-rig keeps both")
+	}
 }

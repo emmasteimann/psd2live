@@ -79,6 +79,34 @@ object PoseTweaks {
 		return CanvasDeformStroke.begin(model, request, CanvasDeformStroke.Sample(CanvasBrushPoint(x, y)))
 	}
 
+	/** Parameters whose sign flips in a left-right mirror: head and body turn and roll, gaze across. */
+	val MIRRORED_PARAMETERS = setOf("ParamAngleX", "ParamAngleZ", "ParamBodyAngleX", "ParamBodyAngleZ", "ParamEyeBallX")
+
+	/** [pose] mirrored left to right: the turn and roll parameters negated (where the rig's range allows). */
+	fun mirroredPose(model: PuppetModel, pose: Map<String, Float>): Map<String, Float> {
+		val ranges = model.parameters.associate { it.id.raw to (it.min..it.max) }
+		return pose.mapValues { (id, value) -> if (id in MIRRORED_PARAMETERS) (-value).coerceIn(ranges[id] ?: (-value..-value)) else value }
+	}
+
+	/**
+	 * [session]'s stroke done again on [model] as its mirror image: points reflected about the canvas's vertical centre
+	 * line, at the mirrored pose, over the meshes under the reflected press. Null when nothing is under it.
+	 */
+	fun mirrored(model: PuppetModel, session: CanvasDeformStroke.Session): CanvasDeformStroke.Session? {
+		val samples = session.capturedSamples()
+		if (samples.size < 2) return null
+		val axis = model.canvasWidth
+		fun flip(x: Float) = axis - x
+		val pose = mirroredPose(model, session.request.pose)
+		val first = samples.first().point
+		val radius = session.request.tip.radius
+		val meshes = meshesUnder(model, pose, flip(first.x), first.y, radius)
+		if (meshes.isEmpty()) return null
+		val mirror = begin(model, pose, meshes, flip(first.x), first.y, radius, session.request.tip.hardness, session.request.strength, session.request.action)
+		for (sample in samples.drop(1)) step(mirror, flip(sample.point.x), sample.point.y)
+		return mirror
+	}
+
 	/** One more point of the stroke; the returned puppet is the live preview. */
 	fun step(session: CanvasDeformStroke.Session, x: Float, y: Float): PuppetModel =
 		session.step(CanvasDeformStroke.Sample(CanvasBrushPoint(x, y)))

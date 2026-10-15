@@ -71,6 +71,8 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 	var smooth by remember { mutableStateOf(false) }
 	var view by remember { mutableStateOf(CanvasView()) }
 	var showMesh by remember { mutableStateOf(false) }
+	var mirror by remember { mutableStateOf(false) }
+	val mirrorOn by rememberUpdatedState(mirror)
 	var wires by remember { mutableStateOf<List<FloatArray>>(emptyList()) }
 	var tick by remember { mutableStateOf(0L) }
 	var image by remember { mutableStateOf<Pair<ImageBitmap, FloatArray>?>(null) }
@@ -142,7 +144,7 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 							val p = toCanvas(at); cursor = at
 							scope.launch(worker) { if (stroking) { tweaking.step(p.x, p.y); bump() } }
 						}
-						override fun end() { cursor = null; scope.launch(worker) { if (stroking) { stroking = false; tweaking.end(); bump() } } }
+						override fun end() { cursor = null; scope.launch(worker) { if (stroking) { stroking = false; tweaking.end(mirrorOn); bump() } } }
 						override fun cancel() { cursor = null; scope.launch(worker) { stroking = false; tweaking.cancel(); bump() } }
 						override fun undo() { scope.launch(worker) { tweaking.undo(); bump() } }
 						override fun redo() { scope.launch(worker) { tweaking.redo(); bump() } }
@@ -177,6 +179,10 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 					Chip("Smooth", smooth) { smooth = true }
 					Chip("Fit view", false) { view = CanvasView() }
 					Chip("Mesh", showMesh) { showMesh = !showMesh }
+				}
+				Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+					Chip(if (mirror) "Mirror: on" else "Mirror: off", mirror) { mirror = !mirror }
+					Text("the other side gets the same push, at the mirrored pose", color = Muted, fontSize = 12.sp)
 				}
 				Text("Brush size  ${(radius * 2).roundToInt()} px", color = Muted, fontSize = 12.sp)
 				Slider(radius, { radius = it }, valueRange = 4f..300f, colors = sliderColors(), modifier = Modifier.height(30.dp))

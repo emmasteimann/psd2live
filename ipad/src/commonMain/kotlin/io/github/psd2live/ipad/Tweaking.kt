@@ -46,15 +46,23 @@ class RigTweaking(val outcome: RigOutcome) {
 
 	fun step(x: Float, y: Float) { session?.let { shown = PoseTweaks.step(it, x, y) } }
 
-	/** Seals the stroke as one undoable edit. */
-	fun end() {
+	/**
+	 * Seals the stroke as one undoable edit. With [mirror], the same stroke is also done as its mirror image (the other
+	 * side, at the mirrored pose) - both in the one undo step.
+	 */
+	fun end(mirror: Boolean = false) {
 		val s = session ?: return
 		session = null
 		val config = PoseTweaks.journaled(model, s)
 		if (config == null) { shown = model.rig.puppet; return }
-		undos.addLast(model); if (undos.size > 60) undos.removeFirst()
+		val before = model
+		var next = PoseTweaks.rebuilt(pipeline, model, config)
+		if (mirror) PoseTweaks.mirrored(next.rig.puppet, s)?.let { other ->
+			PoseTweaks.journaled(next, other)?.let { next = PoseTweaks.rebuilt(pipeline, next, it) }
+		}
+		undos.addLast(before); if (undos.size > 60) undos.removeFirst()
 		redos.clear()
-		model = PoseTweaks.rebuilt(pipeline, model, config)
+		model = next
 		shown = model.rig.puppet
 	}
 

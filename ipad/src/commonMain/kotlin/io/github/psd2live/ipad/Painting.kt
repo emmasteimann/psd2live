@@ -153,7 +153,8 @@ class LayerPainting(val outcome: RigOutcome, val layer: SourceLayer) {
 		val config = outcome.config.copy(generationSource = r.generationSource, rigEdits = r.rigEdits)
 		val rigged = buildRig(outcome.name, r.source, config, started, progress)
 		return if (r.droppedEdits == 0) rigged else rigged.withWarning(
-			"${r.droppedEdits} hand tweak${if (r.droppedEdits == 1) "" else "s"} on ${layer.name} were dropped: the cut gave it a new mesh.")
+			if (r.droppedEdits == 1) "1 hand tweak on ${layer.name} was dropped: the cut gave it a new mesh."
+			else "${r.droppedEdits} hand tweaks on ${layer.name} were dropped: the cut gave it a new mesh.")
 	}
 
 	fun undo() { session.undo() }

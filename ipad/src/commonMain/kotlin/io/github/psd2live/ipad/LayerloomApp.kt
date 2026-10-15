@@ -26,7 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** The app's workspaces, as the Mac app's tabs: the studio now, rigging as the shared core arrives (phase 2-4). */
+/** The app's workspaces, as the Mac app's tabs: the studio, and rigging with the shared rigger. */
 private enum class Workspace(val title: String) { STUDIO("Studio"), RIG("Rig") }
 
 private val Background = Color(0xFF14141C)
@@ -62,9 +62,7 @@ fun LayerloomApp() {
 		Box(Modifier.fillMaxSize()) {
 			when (workspace) {
 				Workspace.STUDIO -> StudioView(Modifier.fillMaxSize())
-				Workspace.RIG -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-					Text("Rigging arrives with the shared core (IPAD-PLAN phases 2-4).", color = Muted, fontSize = 15.sp)
-				}
+				Workspace.RIG -> RigWorkspace(Modifier.fillMaxSize())
 			}
 		}
 	}

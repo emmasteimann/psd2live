@@ -17,6 +17,9 @@ kotlin {
 			implementation("org.jetbrains.compose.foundation:foundation:1.11.1")
 			implementation("org.jetbrains.compose.ui:ui:1.11.1")
 			implementation("org.jetbrains.compose.material:material:1.11.1")
+			// PSD in, rig out: the desktop's rigger (settings.gradle.kts includes it).
+			implementation("io.github.psd2live:rigger")
+			implementation("com.squareup.okio:okio:3.17.0")
 		}
 	}
 }

@@ -1,0 +1,127 @@
+package io.github.psd2live.ipad
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.LinearProgressIndicator
+import androidx.compose.material.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+private val Card = Color(0xFF1C1C27)
+private val Text1 = Color(0xFFF2ECFD)
+private val Muted = Color(0xFF9793A7)
+private val Accent = Color(0xFFC9B7FF)
+private val Danger = Color(0xFFFF9A9A)
+
+private sealed interface RigState {
+	data object Idle : RigState
+	data class Rigging(val name: String, val stage: String, val fraction: Double) : RigState
+	data class Done(val outcome: RigOutcome) : RigState
+	data class Failed(val name: String, val message: String) : RigState
+}
+
+/**
+ * The Rig workspace: the PSDs in the app's folder (Files > On My iPad > Layerloom), rigged on the iPad with the desktop's
+ * pipeline; the moc3 runtime files go to the Rigs folder beside them, ready for VTube Studio or any Cubism runtime.
+ */
+@Composable
+fun RigWorkspace(modifier: Modifier = Modifier) {
+	var psds by remember { mutableStateOf(emptyList<String>()) }
+	var state by remember { mutableStateOf<RigState>(RigState.Idle) }
+	val scope = rememberCoroutineScope()
+	fun refresh() { psds = runCatching { RigFiles.psds() }.getOrDefault(emptyList()) }
+	LaunchedEffect(Unit) { refresh() }
+
+	fun rig(name: String) {
+		if (state is RigState.Rigging) return
+		state = RigState.Rigging(name, "Starting", 0.0)
+		scope.launch {
+			state = try {
+				val outcome = withContext(Dispatchers.Default) {
+					rigPsd(name, RigFiles.read(name)) { stage, fraction ->
+						scope.launch(Dispatchers.Main) { if (state is RigState.Rigging) state = RigState.Rigging(name, stage, fraction) }
+					}
+				}
+				RigState.Done(outcome)
+			} catch (failure: Throwable) {
+				RigState.Failed(name, failure.message ?: failure::class.simpleName ?: "Rigging failed")
+			}
+		}
+	}
+
+	Column(modifier.verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+		Text("Rig a PSD", color = Text1, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+		Text("Put PSDs in Files > On My iPad > Layerloom. The rig is built here on the iPad, with the same rigger as the Mac " +
+			"app; its moc3 runtime files go to the Rigs folder there.", color = Muted, fontSize = 14.sp)
+		Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+			Button("Refresh the list") { refresh() }
+		}
+		if (psds.isEmpty()) Text("No PSDs in the Layerloom folder yet.", color = Muted, fontSize = 15.sp)
+		for (name in psds) {
+			Row(
+				Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).clickable { rig(name) }.padding(16.dp),
+				horizontalArrangement = Arrangement.SpaceBetween,
+			) {
+				Text(name, color = Text1, fontSize = 16.sp)
+				Text("Rig", color = Accent, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+			}
+		}
+		when (val s = state) {
+			RigState.Idle -> {}
+			is RigState.Rigging -> Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp)) {
+				Text("Rigging ${s.name}", color = Text1, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+				Spacer(Modifier.height(8.dp))
+				LinearProgressIndicator(progress = s.fraction.toFloat(), modifier = Modifier.fillMaxWidth(), color = Accent)
+				Spacer(Modifier.height(6.dp))
+				Text(s.stage, color = Muted, fontSize = 13.sp)
+			}
+			is RigState.Done -> Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp),
+				verticalArrangement = Arrangement.spacedBy(6.dp)) {
+				val o = s.outcome
+				Text("Rigged ${o.name}", color = Text1, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+				Text("${o.drawables} art meshes, ${o.deformers} deformers, ${o.parameters} parameters in ${(o.seconds * 10).toInt() / 10.0} s",
+					color = Text1, fontSize = 14.sp)
+				Text("Saved to Rigs/${o.folder.substringAfterLast('/')}: ${o.files.joinToString()}", color = Muted, fontSize = 13.sp)
+				for (w in o.warnings) Text("• $w", color = Muted, fontSize = 13.sp)
+			}
+			is RigState.Failed -> Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp)) {
+				Text("Couldn't rig ${s.name}", color = Danger, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+				Text(s.message, color = Text1, fontSize = 14.sp)
+			}
+		}
+	}
+}
+
+@Composable
+private fun Button(label: String, onClick: () -> Unit) {
+	Box(Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0xFF2B283C)).clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 10.dp)) {
+		Text(label, color = Accent, fontSize = 15.sp)
+	}
+}

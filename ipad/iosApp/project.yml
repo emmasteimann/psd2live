@@ -19,6 +19,9 @@ targets:
       properties:
         # Compose Multiplatform requires it (120 Hz drawing on ProMotion screens) and stops at launch without it.
         CADisableMinimumFrameDurationOnPhone: true
+        # The app's Documents folder shows in the Files app (On My iPad > Layerloom): PSDs go in, rigs come out.
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.goosible.layerloom.ipad

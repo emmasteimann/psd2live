@@ -33,5 +33,13 @@ kotlin {
 			kotlin.srcDir("src/main/kotlin")
 			resources.srcDir("src/main/resources")
 		}
+		val jvmTest by getting {
+			kotlin.srcDir("src/test/kotlin")
+			dependencies { implementation(kotlin("test")) }
+		}
 	}
+}
+
+tasks.withType<Test>().configureEach {
+	useJUnitPlatform()
 }

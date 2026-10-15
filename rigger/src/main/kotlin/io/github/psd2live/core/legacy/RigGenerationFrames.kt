@@ -1,5 +1,7 @@
 package io.github.psd2live.core.legacy
 
+import io.github.psd2live.core.Math
+
 import io.github.psd2live.core.*
 
 import kotlinx.serialization.json.*

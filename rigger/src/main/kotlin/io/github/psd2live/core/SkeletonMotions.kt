@@ -1,5 +1,7 @@
 package io.github.psd2live.core
 
+import kotlin.concurrent.Volatile
+
 import org.umamo.runtime.model.ParameterId
 import kotlin.math.PI
 import kotlin.math.cos

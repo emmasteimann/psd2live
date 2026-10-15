@@ -1,5 +1,7 @@
 package io.github.psd2live.core
 
+import kotlin.concurrent.Volatile
+
 import io.github.psd2live.targets.cubism.PuppetIr
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive

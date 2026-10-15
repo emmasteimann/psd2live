@@ -1,5 +1,7 @@
 ﻿package io.github.psd2live.i18n
 
+import kotlin.concurrent.Volatile
+
 import java.text.MessageFormat
 import java.util.Locale
 import java.util.MissingResourceException

@@ -1,5 +1,8 @@
 package io.github.psd2live.core.legacy
 
+import io.github.psd2live.core.synchronized
+import kotlin.concurrent.Volatile
+
 import kotlinx.serialization.json.JsonObject
 import org.umamo.runtime.model.PuppetModel
 import java.lang.ref.SoftReference

@@ -1,5 +1,7 @@
 package io.github.psd2live.core.sim
 
+import io.github.psd2live.core.Math
+
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.floatOrNull

@@ -1,5 +1,7 @@
 package io.github.psd2live.core
 
+import kotlin.concurrent.Volatile
+
 import kotlinx.serialization.json.*
 import org.umamo.runtime.model.ArtSource
 import org.umamo.runtime.model.DrawableMesh

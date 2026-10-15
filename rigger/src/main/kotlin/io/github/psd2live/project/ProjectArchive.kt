@@ -1,5 +1,7 @@
 package io.github.psd2live.project
 
+import io.github.psd2live.core.synchronized
+
 import kotlinx.serialization.json.*
 import java.io.BufferedOutputStream
 import java.io.ByteArrayOutputStream

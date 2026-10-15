@@ -1,5 +1,7 @@
 package io.github.psd2live.project
 
+import io.github.psd2live.core.Math
+
 import java.nio.ByteBuffer
 import java.util.zip.DataFormatException
 import java.util.zip.Inflater

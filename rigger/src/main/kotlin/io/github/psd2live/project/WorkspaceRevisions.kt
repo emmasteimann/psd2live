@@ -1,5 +1,7 @@
 package io.github.psd2live.project
 
+import io.github.psd2live.core.synchronized
+
 import io.github.psd2live.core.RigEditOverlay
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject

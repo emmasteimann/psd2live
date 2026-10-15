@@ -1,27 +1,19 @@
 package io.github.psd2live.core
 
-import io.github.psd2live.i18n.tr
-import java.awt.image.BufferedImage
-import java.awt.image.DataBufferInt
-import java.io.ByteArrayOutputStream
-import java.nio.ByteBuffer
-import java.util.BitSet
-import java.util.stream.IntStream
-import java.util.zip.Adler32
-import java.util.zip.CRC32
-import java.util.zip.Deflater
-import javax.imageio.ImageIO
+import okio.Buffer
 
 /**
  * PNG encodings of an atlas page.
  *
- * [canonical] is ImageIO's, what exports write. The editor's runtime bundle instead uses a strip encoding:
+ * [canonicalPng] is what exports write (ImageIO's, on the desktop). The editor's runtime bundle instead uses a strip encoding:
  * the page's rows are filtered and deflated in strips of [STRIP_ROWS], each strip on its own (a fresh
  * compressor, ending on a full flush), and each strip becomes one IDAT chunk. The chunks of a zlib stream
  * may be split anywhere, and independent deflate segments that each end byte-aligned on a non-final block
  * concatenate into one valid stream; the stream's Adler-32 is combined from the strips'. So a page that
  * differs from an earlier page only in a few rows re-encodes only those strips, and a whole page encodes
  * its strips in parallel. The pixels decode exactly as the canonical PNG's do - both are lossless RGBA8.
+ *
+ * Shared code (it runs on the iPad too): only deflating and parallelism are the platform's ([RiggerPlatform]).
  */
 object AtlasPagePng {
 	const val STRIP_ROWS = 16
@@ -32,42 +24,21 @@ object AtlasPagePng {
 
 	class Strips(val width: Int, val height: Int, val strips: List<Strip>)
 
-	fun canonical(image: BufferedImage): ByteArray {
-		val output = ByteArrayOutputStream()
-		check(ImageIO.write(image, "png", output)) { tr("error.pngEncoder") }
-		return output.toByteArray().also { png -> synchronized(imagesByPng) { imagesByPng[png] = java.lang.ref.WeakReference(image) } }
-	}
-
-	/**
-	 * The image each canonical encoding was made from, by the encoding's identity (a ByteArray hashes by
-	 * identity) and only while the encoding lives, so an export renderer handed the PNG can read the pixels
-	 * instead of decoding it. Neither is kept alive by the entry: it serves only while the page holds both.
-	 */
-	private val imagesByPng = java.util.WeakHashMap<ByteArray, java.lang.ref.WeakReference<BufferedImage>>()
-
-	/**
-	 * The ARGB pixels (row by row, not to be modified) [png] decodes to, when it is a live canonical encoding of
-	 * a straight-alpha image (whose pixels the PNG holds exactly).
-	 */
-	fun pixelsOf(png: ByteArray): IntArray? =
-		synchronized(imagesByPng) { imagesByPng[png]?.get() }?.takeIf { it.type == BufferedImage.TYPE_INT_ARGB }?.let(::argb)
-
 	/** Strips of [image]; those of [reuse] (a page of the same size) are kept wherever no row in [dirtyRows] falls. */
-	fun strips(image: BufferedImage, reuse: Strips?, dirtyRows: BitSet?): Strips {
-		val width = image.width; val height = image.height
+	fun strips(image: RigImage, reuse: Strips?, dirtyRows: BitSet?): Strips {
+		val width = image.pixelWidth; val height = image.pixelHeight
 		val count = (height + STRIP_ROWS - 1) / STRIP_ROWS
-		val pixels = argb(image)
+		val pixels = image.argbPixels()
 		val result = arrayOfNulls<Strip>(count)
-		val encode = IntStream.range(0, count).filter { index ->
+		val encode = (0 until count).filter { index ->
 			val start = index * STRIP_ROWS; val end = minOf(height, start + STRIP_ROWS)
 			val clean = reuse != null && reuse.width == width && reuse.height == height && dirtyRows != null &&
 				dirtyRows.nextSetBit(start).let { it < 0 || it >= end }
 			if (clean) result[index] = reuse!!.strips[index]
 			!clean
-		}.toArray()
-		if (Thread.currentThread().isInterrupted) throw InterruptedException()
-		val work = IntStream.of(*encode)
-		(if (encode.size > 2) work.parallel() else work).forEach { index ->
+		}.toIntArray()
+		checkInterrupted()
+		parallelFor(encode) { index ->
 			val start = index * STRIP_ROWS
 			result[index] = strip(pixels, width, start, minOf(height, start + STRIP_ROWS))
 		}
@@ -77,29 +48,19 @@ object AtlasPagePng {
 	/** The PNG file of [strips]. */
 	fun assemble(width: Int, height: Int, strips: Strips): ByteArray {
 		require(strips.width == width && strips.height == height)
-		val header = ByteBuffer.allocate(13).putInt(width).putInt(height).put(8).put(6).put(0).put(0).put(0).array()
+		val header = Buffer().writeInt(width).writeInt(height).write(byteArrayOf(8, 6, 0, 0, 0)).readByteArray()
 		var adler = 1
 		for (strip in strips.strips) adler = combineAdler(adler, strip.adler, strip.rawLength)
 		// The zlib header leads; an empty final stored block and the checksum close the stream.
 		val zlibHeader = chunk("IDAT", byteArrayOf(0x78, 0x01))
-		val trailer = chunk("IDAT", ByteBuffer.allocate(9).put(byteArrayOf(0x01, 0x00, 0x00, 0xff.toByte(), 0xff.toByte())).putInt(adler).array())
+		val trailer = chunk("IDAT", Buffer().write(byteArrayOf(0x01, 0x00, 0x00, 0xff.toByte(), 0xff.toByte())).writeInt(adler).readByteArray())
 		val ihdr = chunk("IHDR", header)
 		val iend = chunk("IEND", ByteArray(0))
-		val size = SIGNATURE.size + ihdr.size + zlibHeader.size + strips.strips.sumOf { it.chunk.size } + trailer.size + iend.size
-		val out = ByteBuffer.allocate(size)
-		out.put(SIGNATURE).put(ihdr).put(zlibHeader)
-		for (strip in strips.strips) out.put(strip.chunk)
-		out.put(trailer).put(iend)
-		return out.array()
-	}
-
-	private fun argb(image: BufferedImage): IntArray {
-		val buffer = image.raster.dataBuffer
-		if (image.type == BufferedImage.TYPE_INT_ARGB && buffer is DataBufferInt && buffer.numBanks == 1 &&
-			image.raster.sampleModelTranslateX == 0 && image.raster.sampleModelTranslateY == 0 && buffer.data.size == image.width * image.height) {
-			return buffer.data
-		}
-		return image.getRGB(0, 0, image.width, image.height, null, 0, image.width)
+		val out = Buffer()
+		out.write(SIGNATURE).write(ihdr).write(zlibHeader)
+		for (strip in strips.strips) out.write(strip.chunk)
+		out.write(trailer).write(iend)
+		return out.readByteArray()
 	}
 
 	/** Rows [start] until [end], each with the Sub filter, deflated on their own. */
@@ -122,28 +83,39 @@ object AtlasPagePng {
 				previous = pixel
 			}
 		}
-		val adler = Adler32().apply { update(raw) }.value.toInt()
-		val deflater = Deflater(1, true)
-		try {
-			deflater.setInput(raw)
-			val output = ByteArrayOutputStream(raw.size / 8 + 64)
-			val buffer = ByteArray(64 * 1024)
-			while (true) {
-				val written = deflater.deflate(buffer, 0, buffer.size, Deflater.FULL_FLUSH)
-				output.write(buffer, 0, written)
-				// A full flush is complete once it no longer fills the buffer.
-				if (written < buffer.size) break
-			}
-			return Strip(chunk("IDAT", output.toByteArray()), adler, raw.size.toLong())
-		} finally {
-			deflater.end()
-		}
+		return Strip(chunk("IDAT", deflateRawFullFlush(raw, 1)), adler32(raw), raw.size.toLong())
 	}
 
 	private fun chunk(type: String, data: ByteArray): ByteArray {
 		val typeBytes = type.encodeToByteArray()
-		val crc = CRC32().apply { update(typeBytes); update(data) }.value.toInt()
-		return ByteBuffer.allocate(12 + data.size).putInt(data.size).put(typeBytes).put(data).putInt(crc).array()
+		val crc = crc32(data, crc32(typeBytes)).toInt()
+		return Buffer().writeInt(data.size).write(typeBytes).write(data).writeInt(crc).readByteArray()
+	}
+
+	private val CRC_TABLE = IntArray(256) { n ->
+		var c = n
+		repeat(8) { c = if (c and 1 != 0) (0xedb88320.toInt() xor (c ushr 1)) else c ushr 1 }
+		c
+	}
+
+	/** CRC-32 (PNG's, as java.util.zip.CRC32) of [data], continuing from [start] (a CRC of earlier bytes). */
+	fun crc32(data: ByteArray, start: Long = 0): Long {
+		var c = start.toInt().inv()
+		for (byte in data) c = CRC_TABLE[(c xor byte.toInt()) and 0xff] xor (c ushr 8)
+		return c.inv().toLong() and 0xffffffffL
+	}
+
+	/** Adler-32 (zlib's, as java.util.zip.Adler32) of [data]. */
+	fun adler32(data: ByteArray): Int {
+		var a = 1L; var b = 0L
+		var i = 0
+		while (i < data.size) {
+			// 5552 bytes is the most that cannot overflow 32 unsigned bits before the modulo (zlib's NMAX).
+			val end = minOf(data.size, i + 5552)
+			while (i < end) { a += data[i++].toInt() and 0xff; b += a }
+			a %= 65521; b %= 65521
+		}
+		return ((b shl 16) or a).toInt()
 	}
 
 	/** zlib's adler32_combine: the checksum of two byte runs from each one's and the second's length. */

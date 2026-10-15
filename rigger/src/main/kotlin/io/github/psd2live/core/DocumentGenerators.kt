@@ -1,5 +1,7 @@
 package io.github.psd2live.core
 
+import kotlin.concurrent.Volatile
+
 import io.github.psd2live.core.sim.SimGenerator
 import io.github.psd2live.format.compile.document.GeneratorGraph
 import io.github.psd2live.format.compile.document.GeneratorNode

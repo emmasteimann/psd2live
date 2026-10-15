@@ -1,5 +1,7 @@
 package io.github.psd2live.core
 
+import kotlin.concurrent.Volatile
+
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 

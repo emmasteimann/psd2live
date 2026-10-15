@@ -1,9 +1,9 @@
 package io.github.psd2live.core
 
+import kotlin.concurrent.Volatile
+
 import org.umamo.format.art.SourceArt
 import org.umamo.format.art.SourceLayer
-import java.awt.image.BufferedImage
-import java.nio.file.Path
 
 enum class SemanticTag(val canonicalName: String, val group: LayerGroup) {
 	BACK_HAIR("back hair", LayerGroup.HEAD),
@@ -488,24 +488,24 @@ object TileTurn {
  * not be modified once the page exists. Equality is identity, as the encodings are memoized on it.
  */
 class AtlasPage private constructor(
-	val image: BufferedImage,
+	val image: RigImage,
 	private val encoded: ByteArray?,
 	@Volatile private var base: AtlasPage?,
-	@Volatile private var dirtyRows: java.util.BitSet?,
+	@Volatile private var dirtyRows: BitSet?,
 	/** What [AtlasLayout] composed this page from, or null for a page made otherwise. */
 	val recipe: AtlasLayout.Recipe? = null,
 ) {
 	/** A page whose canonical encoding is already known, as an imported model's pages are. */
-	constructor(image: BufferedImage, png: ByteArray) : this(image, png, null, null)
+	constructor(image: RigImage, png: ByteArray) : this(image, png, null, null)
 
 	/** A page encoded on first use. */
-	constructor(image: BufferedImage) : this(image, null, null, null)
+	constructor(image: RigImage) : this(image, null, null, null)
 
-	/** The canonical PNG (ImageIO), byte for byte what exports have always written. */
-	val png: ByteArray by lazy { encoded ?: AtlasPagePng.canonical(image) }
+	/** The canonical PNG ([canonicalPng]: ImageIO's on the desktop), byte for byte what exports have always written. */
+	val png: ByteArray by lazy { encoded ?: canonicalPng(image) }
 
 	private val stripEncoding = lazy {
-		val reused = base?.takeIf { it.image.width == image.width && it.image.height == image.height }?.strips
+		val reused = base?.takeIf { it.image.pixelWidth == image.pixelWidth && it.image.pixelHeight == image.pixelHeight }?.strips
 		AtlasPagePng.strips(image, reused, dirtyRows).also {
 			// Strips are all a derived page needs from its base: drop it, or every page would keep its history alive.
 			base = null; dirtyRows = null
@@ -515,7 +515,7 @@ class AtlasPage private constructor(
 	val strips: AtlasPagePng.Strips by stripEncoding
 
 	/** The same pixels as a quickly made, strip-wise PNG for the editor's runtime bundle. */
-	val previewPng: ByteArray by lazy { encoded ?: AtlasPagePng.assemble(image.width, image.height, strips) }
+	val previewPng: ByteArray by lazy { encoded ?: AtlasPagePng.assemble(image.pixelWidth, image.pixelHeight, strips) }
 
 	/** This page with [previewPng] as its PNG, for the preview bundle. One instance per page, so bytes keep their identity. */
 	val forPreview: AtlasPage by lazy { if (encoded != null) this else AtlasPage(image, previewPng, null, null) }
@@ -526,7 +526,7 @@ class AtlasPage private constructor(
 		 * reuses [base]'s strips there, if [base] has encoded them (a base that never needed them is not kept).
 		 * [dirtyRows] must cover every row whose pixels differ.
 		 */
-		fun composed(image: BufferedImage, recipe: AtlasLayout.Recipe, base: AtlasPage?, dirtyRows: java.util.BitSet?): AtlasPage {
+		fun composed(image: RigImage, recipe: AtlasLayout.Recipe, base: AtlasPage?, dirtyRows: BitSet?): AtlasPage {
 			val reusable = base?.takeIf { it.stripEncoding.isInitialized() && dirtyRows != null }
 			return AtlasPage(image, null, reusable, dirtyRows.takeIf { reusable != null }, recipe)
 		}
@@ -554,7 +554,7 @@ data class PipelineAnalysis(
 	val layers: List<ClassifiedLayer>,
 	val anchors: RigAnchors,
 	val warnings: List<String>,
-	val preview: BufferedImage,
+	val preview: RigImage,
     val calibration: PipelineAnalysis? = null,
 )
 
@@ -616,14 +616,6 @@ data class RigPreviewModel(
 		get() = runtimeBundle.assets.any { it.path.endsWith(".physics3.json", ignoreCase = true) }
 }
 
-data class ExportedFile(val path: Path, val bytes: Long)
-
-data class PipelineResult(
-	val analysis: PipelineAnalysis,
-	val exportedFiles: List<ExportedFile>,
-	val warnings: List<String>,
-	val previewModel: RigPreviewModel,
-)
 
 fun interface ProgressListener {
 	fun update(stage: String, fraction: Double)

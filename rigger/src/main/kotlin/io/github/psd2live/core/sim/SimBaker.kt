@@ -1,5 +1,7 @@
 package io.github.psd2live.core.sim
 
+import io.github.psd2live.core.synchronized
+
 import io.github.psd2live.core.PhysicsEngine
 import io.github.psd2live.core.RigEditOverlay
 import org.umamo.runtime.model.Parameter

@@ -1,5 +1,8 @@
 package io.github.psd2live.project
 
+import io.github.psd2live.core.synchronized
+import kotlin.concurrent.Volatile
+
 import io.github.psd2live.core.AuthoredRig
 import io.github.psd2live.core.MaterializedRigCodec
 import io.github.psd2live.core.PreviewRigSources

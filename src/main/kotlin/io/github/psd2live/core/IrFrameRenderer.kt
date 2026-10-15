@@ -17,7 +17,7 @@ import io.github.psd2live.format.compile.render.SoftwareRasterizer
  */
 internal object IrFrameRenderer : FrameRenderer {
 	override fun open(ir: RigIR, physics: Boolean): FrameSession {
-		val rasterizer = SoftwareRasterizer(ir, AtlasPagePng::pixelsOf)
+		val rasterizer = SoftwareRasterizer(ir, AtlasPagePixels::pixelsOf)
 		val colors = IrColors(ir)
 		val geometry = IrGeometryEvaluator.open(ir)
 		val engine = if (!physics || ir.physics.groups.isEmpty()) null else PhysicsEngine(

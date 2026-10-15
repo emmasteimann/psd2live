@@ -1,5 +1,7 @@
 package io.github.psd2live.core
 
+import kotlin.concurrent.Volatile
+
 import org.umamo.render.eval.CpuDeformationEvaluator
 import org.umamo.render.eval.DeformerWorld
 import org.umamo.render.eval.RotationWorld

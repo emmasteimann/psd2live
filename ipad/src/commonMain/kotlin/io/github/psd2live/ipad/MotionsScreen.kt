@@ -62,7 +62,7 @@ private val Danger = Color(0xFFFF9A9A)
  * the physics running; switch each on or off and tune its knobs. Apply writes the motion files - no re-rig.
  */
 @Composable
-fun MotionsScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onCancel: () -> Unit) {
+fun MotionsScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onCancel: () -> Unit, onOwn: () -> Unit = {}) {
 	var config by remember(outcome) { mutableStateOf(outcome.config) }
 	var playing by remember { mutableStateOf<String?>("Idle") }
 	var image by remember { mutableStateOf<ImageBitmap?>(null) }
@@ -115,6 +115,7 @@ fun MotionsScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onCancel
 			Text("Back without keeping changes", color = Accent, fontSize = 15.sp, modifier = Modifier.clickable { if (applying == null) onCancel() })
 		}
 		Text("Tap a motion to watch it. The idle plays when nothing else does; the others are one-shots you can trigger.", color = Muted, fontSize = 13.sp)
+		Chip("Make your own motions…", false) { onOwn() }
 		Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
 			Box(Modifier.weight(1f).height(860.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF101017)), contentAlignment = Alignment.Center) {
 				image?.let { Image(it, contentDescription = "The motion playing", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize()) }

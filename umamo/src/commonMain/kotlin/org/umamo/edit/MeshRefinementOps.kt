@@ -414,7 +414,7 @@ object MeshRefinementOps {
 			val previous = working.vertexCount
 			if (step.size != result.edit.newMesh.vertexCount || step.size < previous) return false
 			for (index in previous until step.size) {
-				val weights = sortedMapOf<Int, Float>()
+				val weights = HashMap<Int, Float>()
 				for ((oldIndex, weight) in terms(step[index])) {
 					if (oldIndex !in 0 until composed.size) return false
 					for ((root, rootWeight) in terms(composed[oldIndex])) {
@@ -422,7 +422,9 @@ object MeshRefinementOps {
 						weights[root] = (weights[root] ?: 0f) + weight * rootWeight
 					}
 				}
-				composed += VertexSource.WeightedOf(weights.keys.toIntArray(), weights.values.toFloatArray())
+				// In root order, as the sorted map this replaced gave them (shared code has no TreeMap).
+				val roots = weights.keys.sorted()
+				composed += VertexSource.WeightedOf(roots.toIntArray(), FloatArray(roots.size) { weights.getValue(roots[it]) })
 			}
 			working = result.edit.newMesh
 			return true

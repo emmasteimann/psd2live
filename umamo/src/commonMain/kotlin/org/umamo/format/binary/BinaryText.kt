@@ -83,23 +83,11 @@ internal fun decodeLegacyPsdText(bytes: ByteArray): String {
 	if (!utf8.contains('\uFFFD')) {
 		return utf8
 	}
-	for (charsetName in listOf("Windows-31J", "GB18030", "Big5")) {
-		try {
-			val cs = java.nio.charset.Charset.forName(charsetName)
-			val decoder = cs.newDecoder()
-			decoder.onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
-			decoder.onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
-			val decoded = decoder.decode(java.nio.ByteBuffer.wrap(bytes)).toString()
-			if (!decoded.contains('\uFFFD')) {
-				return decoded
-			}
-		} catch (_: Exception) {
-			// Try next charset
-		}
-	}
-	return try {
-		java.nio.charset.Charset.defaultCharset().decode(java.nio.ByteBuffer.wrap(bytes)).toString()
-	} catch (_: Exception) {
-		utf8
-	}
+	return decodeLegacyCharsets(bytes) ?: utf8
 }
+
+/**
+ * [bytes] in the first legacy encoding that decodes them cleanly (Windows-31J, GB18030, Big5, then the platform's
+ * own), or null. On the JVM through java.nio.charset; elsewhere (the iPad) null for now, which keeps UTF-8.
+ */
+internal expect fun decodeLegacyCharsets(bytes: ByteArray): String?

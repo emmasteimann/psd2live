@@ -132,7 +132,7 @@ public class LittleEndianWriter(initialCapacity: Int = 64 * 1024) {
 		ensure(values.size * 4)
 		var at = position
 		for (value in values) {
-			INT_LE.set(buffer, at, value.toRawBits())
+			putIntLe(buffer, at, value.toRawBits())
 			at += 4
 		}
 		position = at
@@ -147,7 +147,7 @@ public class LittleEndianWriter(initialCapacity: Int = 64 * 1024) {
 		ensure(values.size * 4)
 		var at = position
 		for (value in values) {
-			INT_LE.set(buffer, at, value)
+			putIntLe(buffer, at, value)
 			at += 4
 		}
 		position = at
@@ -200,6 +200,10 @@ public class LittleEndianWriter(initialCapacity: Int = 64 * 1024) {
 	}
 }
 
-/** Little-endian int view of a byte array, for the bulk writes. */
-private val INT_LE: java.lang.invoke.VarHandle =
-	java.lang.invoke.MethodHandles.byteArrayViewVarHandle(IntArray::class.java, java.nio.ByteOrder.LITTLE_ENDIAN)
+/** One little-endian int into [buffer] at [at], for the bulk writes (plain bytes: shared code has no VarHandle). */
+private fun putIntLe(buffer: ByteArray, at: Int, value: Int) {
+	buffer[at] = value.toByte()
+	buffer[at + 1] = (value ushr 8).toByte()
+	buffer[at + 2] = (value ushr 16).toByte()
+	buffer[at + 3] = (value ushr 24).toByte()
+}

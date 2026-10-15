@@ -162,7 +162,7 @@ public object TiffReader : ReadOnlyRasterCodec {
 					7 -> height - 1 - y to width - 1 - x
 					else -> y to width - 1 - x
 				}
-				System.arraycopy(source, (y * width + x) * 4, out, (ny * outWidth + nx) * 4, 4)
+				source.copyInto(out, (ny * outWidth + nx) * 4, (y * width + x) * 4, (y * width + x) * 4 + 4)
 			}
 		}
 		return RasterImage(outWidth, outHeight, out)

@@ -53,9 +53,9 @@ object I18n {
 		} catch (_: MissingResourceException) {
 			return "!$key!"
 		}
-		// Layerloom patch: on macOS, prose naming modifier keys reads with ⌘ ⌥ ⇧ (io.github.psd2live.ui.state.platformKeyWords).
+		// Layerloom patch: on macOS, prose naming modifier keys reads with ⌘ ⌥ ⇧ (platformKeyWords).
 		val text = if (arguments.isEmpty()) pattern else MessageFormat(pattern, snapshot.language.locale).format(arguments)
-		return io.github.psd2live.ui.state.platformKeyWords(text)
+		return platformKeyWords(text)
 	}
 
 	fun hasKey(key: String): Boolean = state.bundle.containsKey(key)

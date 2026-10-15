@@ -1,6 +1,17 @@
 @file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
 
 package io.github.psd2live.ui.state
+import io.github.psd2live.project.Files
+import io.github.psd2live.project.Path
+import io.github.psd2live.project.resolve
+import io.github.psd2live.project.parent
+import io.github.psd2live.project.fileName
+import io.github.psd2live.project.isAbsolute
+import io.github.psd2live.project.toAbsolutePath
+import io.github.psd2live.project.normalize
+import io.github.psd2live.project.startsWith
+import io.github.psd2live.project.pathOf
+import io.github.psd2live.project.sorted
 import io.github.psd2live.core.AtomicBoolean
 import io.github.psd2live.core.AtomicInteger
 import io.github.psd2live.core.AtomicLong
@@ -129,8 +140,6 @@ import io.github.psd2live.ui.keyformAxesFor
 import io.github.psd2live.ui.EditHierarchyMode
 import org.umamo.format.art.SourceArt
 import java.io.File
-import java.nio.file.Files
-import java.nio.file.Path
 import java.util.prefs.Preferences
 import kotlin.math.PI
 import kotlin.math.roundToInt
@@ -2132,7 +2141,7 @@ class PSD2LiveViewModel : AutoCloseable {
         if (_state.value.analysis == null) return
         if (saveAs || _state.value.projectFile == null) {
             updateState { it.copy(showProjectLocationDialog = true, projectSaveError = null) }
-        } else saveProjectTo(Path.of(_state.value.projectFile!!))
+        } else saveProjectTo(pathOf(_state.value.projectFile!!))
     }
     /** Runs the save [requestProjectSave] queued, once no edit is being applied; a Save As opens its dialog. */
     fun runQueuedProjectSave() {
@@ -3043,7 +3052,7 @@ class PSD2LiveViewModel : AutoCloseable {
 			val currentOutput = current.outputPath
 			val nextOutput = if (currentOutput.isBlank() && normalized.isNotBlank()) {
 				try {
-					val p = Path.of(normalized)
+					val p = pathOf(normalized)
 					val parent = p.toAbsolutePath().parent
 					val name = p.fileName.toString().substringBeforeLast('.')
 					parent.resolve("$name-psd2live").toString()
@@ -3057,7 +3066,7 @@ class PSD2LiveViewModel : AutoCloseable {
 
 	fun openRecentFile(path: String) {
 		if (_state.value.isBusy) return
-		val target = runCatching { Path.of(path).toAbsolutePath().normalize() }.getOrNull()
+		val target = runCatching { pathOf(path).toAbsolutePath().normalize() }.getOrNull()
 		if (target == null || !Files.isRegularFile(target)) {
 			AppSettings.forgetRecentFile(path)
 			updateState {
@@ -3098,7 +3107,7 @@ class PSD2LiveViewModel : AutoCloseable {
 	 * app's working directory, which is nowhere the user chose, so it is refused like the MCP export refuses it.
 	 */
 	private fun exportDirectoryOf(output: String): Path? {
-		val path = runCatching { Path.of(output) }.getOrNull()
+		val path = runCatching { pathOf(output) }.getOrNull()
 		if (path == null || !path.isAbsolute) {
 			updateState { it.copy(errorMessage = tr("dialog.outputAbsolute", output)) }
 			return null
@@ -3490,7 +3499,7 @@ class PSD2LiveViewModel : AutoCloseable {
 		var report: kotlinx.serialization.json.JsonObject? = null
 		runWorkspaceCommand(after = {
 			val imported = report?.get("imported")?.jsonArray.orEmpty().map { it.jsonPrimitive.content }
-			addLog(tr("physics.import.done", imported.size, java.nio.file.Path.of(path).fileName), tag = "Physics")
+			addLog(tr("physics.import.done", imported.size, pathOf(path).fileName), tag = "Physics")
 			report?.get("disabled")?.jsonArray?.takeIf { it.isNotEmpty() }?.let { disabled ->
 				addLog(tr("physics.import.disabled", disabled.joinToString { it.jsonPrimitive.content }), level = LogLevel.WARNING, tag = "Physics")
 			}
@@ -4146,7 +4155,7 @@ class PSD2LiveViewModel : AutoCloseable {
 		scope.launch(Dispatchers.IO) {
 			val baked = runCatching {
 				val clip = motionClips.firstOrNull { it.id == clipId } ?: error("The motion is gone")
-				val result = io.github.psd2live.core.LipSync.analyze(io.github.psd2live.core.LipSync.read(java.nio.file.Path.of(audioPath)), clip.fps)
+				val result = io.github.psd2live.core.LipSync.analyze(io.github.psd2live.core.LipSync.read(pathOf(audioPath)), clip.fps)
 				io.github.psd2live.core.LipSync.bake(clip, result, open, form, audioPath)
 			}
 			kotlinx.coroutines.withContext(Dispatchers.Main) {
@@ -6495,7 +6504,7 @@ class PSD2LiveViewModel : AutoCloseable {
         if (_state.value.isBusy || _state.value.projectSaving) return
         val rawInput = _state.value.inputPath.trim()
         if (rawInput.isEmpty()) { updateState { it.copy(errorMessage = tr("dialog.inputRequired")) }; return }
-        val input = Path.of(rawInput)
+        val input = pathOf(rawInput)
         if (!Files.isRegularFile(input) || !input.fileName.toString().endsWith(".psd", true)) {
             updateState { it.copy(errorMessage = tr("dialog.inputInvalid", input)) }; return
         }
@@ -6566,7 +6575,7 @@ class PSD2LiveViewModel : AutoCloseable {
 		}
 		var output = current.outputPath.trim()
 		if (output.isEmpty()) {
-			val input = runCatching { Path.of(current.inputPath).toAbsolutePath().normalize() }.getOrNull()
+			val input = runCatching { pathOf(current.inputPath).toAbsolutePath().normalize() }.getOrNull()
 			if (input?.fileName == null) {
 				updateState { it.copy(errorMessage = tr("dialog.outputRequired")) }; return
 			}

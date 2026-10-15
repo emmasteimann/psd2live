@@ -1,11 +1,13 @@
 package io.github.psd2live.application
+import io.github.psd2live.project.Files
+import io.github.psd2live.project.Path
+import io.github.psd2live.project.isAbsolute
+import io.github.psd2live.project.pathOf
 
 import io.github.psd2live.core.RigPreviewModel
 import io.github.psd2live.project.*
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
-import java.nio.file.Files
-import java.nio.file.Path
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 
@@ -64,7 +66,7 @@ class WorkspacePhysicsCommands(private val runtime: WorkspaceRuntime<RigPreviewM
         require(projectId == before.projectId) { "Operation targets another project" }
         context.ensureActive()
         val text = if (operation.operation == "physics_import") {
-            val path = Path.of(operation.request.getValue("path").jsonPrimitive.content)
+            val path = pathOf(operation.request.getValue("path").jsonPrimitive.content)
             require(path.isAbsolute) { "path must be an absolute physics3.json" }
             context[WorkspaceJobContext]?.progress(0.05f, "Reading physics3.json")
             readFile(path).also { context.ensureActive() }

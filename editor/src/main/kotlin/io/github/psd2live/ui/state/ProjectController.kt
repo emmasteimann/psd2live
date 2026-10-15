@@ -1,4 +1,7 @@
 package io.github.psd2live.ui.state
+import io.github.psd2live.project.Path
+import io.github.psd2live.project.resolve
+import io.github.psd2live.project.fileName
 import io.github.psd2live.core.AtomicBoolean
 
 import io.github.psd2live.ui.state.DesktopWorkspace
@@ -10,7 +13,6 @@ import io.github.psd2live.i18n.tr
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import java.nio.file.Path
 import io.github.psd2live.application.WorkspaceJobCompletion
 import io.github.psd2live.application.WorkspaceOperationOutput
 import io.github.psd2live.application.lifecycleResult

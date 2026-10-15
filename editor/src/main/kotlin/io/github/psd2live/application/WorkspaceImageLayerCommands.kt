@@ -1,12 +1,13 @@
 @file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
 
 package io.github.psd2live.application
+import io.github.psd2live.project.Path
+import io.github.psd2live.project.isAbsolute
 
 import io.github.psd2live.core.*
 import io.github.psd2live.project.*
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
-import java.nio.file.Path
 
 /** Decode privately, then publish the complete insertion as one document transaction. */
 class WorkspaceImageLayerCommands(private val runtime: WorkspaceRuntime<RigPreviewModel>) {

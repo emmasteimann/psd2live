@@ -1,9 +1,11 @@
 package io.github.psd2live.ui.state
+import io.github.psd2live.project.Files
+import io.github.psd2live.project.Path
+import io.github.psd2live.project.StandardCopyOption
+import io.github.psd2live.project.resolve
+import io.github.psd2live.project.pathOf
 
 import kotlinx.serialization.json.*
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.StandardCopyOption
 
 /**
  * Whether the last session ended with unsaved edits it never got to save or discard. The workspace store keeps
@@ -48,7 +50,7 @@ class SessionRecovery(private val root: Path) {
         if (!Files.isRegularFile(file)) return null
         val session = runCatching {
             val json = Json.parseToJsonElement(Files.readString(file)).jsonObject
-            Session(Path.of(json.getValue("storeRoot").jsonPrimitive.content), json.getValue("projectId").jsonPrimitive.content,
+            Session(pathOf(json.getValue("storeRoot").jsonPrimitive.content), json.getValue("projectId").jsonPrimitive.content,
                 json["projectFile"]?.jsonPrimitive?.contentOrNull, json.getValue("inputPath").jsonPrimitive.content,
                 json.getValue("name").jsonPrimitive.content)
         }.getOrNull()

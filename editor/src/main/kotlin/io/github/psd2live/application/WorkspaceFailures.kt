@@ -1,11 +1,11 @@
 package io.github.psd2live.application
+import io.github.psd2live.project.AccessDeniedException
 import io.github.psd2live.core.Collections
 import io.github.psd2live.core.IdentityHashMap
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.*
 import java.io.IOException
-import java.nio.file.AccessDeniedException
 
 class WorkspaceUnsavedChanges : IllegalStateException("Current workspace has unsaved changes; save first or explicitly discard them")
 class WorkspaceBusy : IllegalStateException("Workspace is busy")

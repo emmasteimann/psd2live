@@ -1,4 +1,15 @@
 package io.github.psd2live.application
+import io.github.psd2live.project.Files
+import io.github.psd2live.project.Path
+import io.github.psd2live.project.StandardCopyOption
+import io.github.psd2live.project.resolve
+import io.github.psd2live.project.parent
+import io.github.psd2live.project.fileName
+import io.github.psd2live.project.isAbsolute
+import io.github.psd2live.project.toAbsolutePath
+import io.github.psd2live.project.normalize
+import io.github.psd2live.project.relativize
+import io.github.psd2live.project.sorted
 import io.github.psd2live.core.synchronized
 import io.github.psd2live.core.export
 
@@ -6,9 +17,6 @@ import io.github.psd2live.core.*
 import io.github.psd2live.project.config
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.StandardCopyOption
 
 /** An export owns one committed model and writes it as built; later GUI drafts or project switches cannot change it. */
 class WorkspaceExportSession(
@@ -141,7 +149,7 @@ class WorkspaceExportSession(
     }
 
     private suspend fun cleanup(stage: Path) = withContext(NonCancellable + Dispatchers.IO) {
-        runCatching { Files.walk(stage).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) } }
+        runCatching { Files.walk(stage).use { paths -> paths.sorted(reverseOrder()).forEach(Files::deleteIfExists) } }
         Unit
     }
 }

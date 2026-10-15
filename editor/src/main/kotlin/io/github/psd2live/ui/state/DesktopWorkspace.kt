@@ -1,4 +1,16 @@
 package io.github.psd2live.ui.state
+import io.github.psd2live.project.Files
+import io.github.psd2live.project.Path
+import io.github.psd2live.project.StandardCopyOption
+import io.github.psd2live.project.resolve
+import io.github.psd2live.project.resolveSibling
+import io.github.psd2live.project.parent
+import io.github.psd2live.project.fileName
+import io.github.psd2live.project.isAbsolute
+import io.github.psd2live.project.toAbsolutePath
+import io.github.psd2live.project.normalize
+import io.github.psd2live.project.startsWith
+import io.github.psd2live.project.pathOf
 import io.github.psd2live.core.AtomicBoolean
 import io.github.psd2live.core.Collections
 import io.github.psd2live.core.MessageDigest
@@ -127,9 +139,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import java.nio.file.Files
 import java.nio.charset.StandardCharsets
-import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
 
 
@@ -314,7 +324,7 @@ class DesktopWorkspace(
     override fun layerMeshSettings(layerId: String): kotlinx.serialization.json.JsonObject = captureQueries().layerMeshSettings(layerId)
     override suspend fun importPsd(path: String, discardUnsaved: Boolean): WorkspaceMutationResult = editMutex.withLock {
         val (state, current) = captureSourceImport(discardUnsaved)
-        val input = Path.of(path)
+        val input = pathOf(path)
         val owned = runInterruptible(Dispatchers.IO) { io.github.psd2live.project.OwnedProjectSource.capture(workspaceStore.root, input) }
         val result = sourceImporter.importPsd(owned.path, state.capture?.projectId, state.state, discardUnsaved,
             state.capture?.document?.rawConfig() ?: current.rawConfig(), sourceAuxiliary = owned.auxiliary,
@@ -333,7 +343,7 @@ class DesktopWorkspace(
         currentCoroutineContext()[WorkspaceExecution]?.check(state.capture?.projectId, state.state)
         val current = viewModel.state.value
         if (current.isGenerating || current.projectSaving) throw WorkspaceBusy()
-        val input = Path.of(path)
+        val input = pathOf(path)
         val owned = runInterruptible(Dispatchers.IO) { io.github.psd2live.project.OwnedProjectSource.capture(workspaceStore.root, input) }
         val result = sourceImporter.updateArt(owned.path, state.state, mutationAuthor(MutationAuthor.USER),
             jobFrom = input.toAbsolutePath().normalize(), sourceAuxiliary = owned.auxiliary) { document, preview, id ->
@@ -351,17 +361,17 @@ class DesktopWorkspace(
      */
     private fun keepStudioProject(projectId: String, psd: Path) {
         val beside = psd.resolveSibling(psd.fileName.toString().substringBeforeLast('.') + ".layerloom-project.json")
-        if (!java.nio.file.Files.isRegularFile(beside)) return
+        if (!Files.isRegularFile(beside)) return
         runCatching {
             val target = workspaceStore.projectRoot(projectId).resolve("layerloom/project.json")
-            java.nio.file.Files.createDirectories(target.parent)
-            java.nio.file.Files.copy(beside, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            Files.createDirectories(target.parent)
+            Files.copy(beside, target, StandardCopyOption.REPLACE_EXISTING)
         }.onFailure { warn("Layerloom studio project not kept: ${it.message}") }
     }
 
     /** Layerloom patch (S3a): the open project's Layerloom studio project, when it carries one. */
     fun studioProject(): Path? = runtime.state.value.capture?.projectId
-        ?.let { workspaceStore.projectRoot(it).resolve("layerloom/project.json") }?.takeIf { java.nio.file.Files.isRegularFile(it) }
+        ?.let { workspaceStore.projectRoot(it).resolve("layerloom/project.json") }?.takeIf { Files.isRegularFile(it) }
 
     private suspend fun captureSourceImport(discardUnsaved: Boolean): Pair<WorkspaceRuntimeState<io.github.psd2live.core.RigPreviewModel>, PSD2LiveState> {
         draftQueue.awaitSettled()
@@ -427,7 +437,7 @@ class DesktopWorkspace(
             if (current.isAnalyzing || current.isGenerating && mutationAuthor(MutationAuthor.AGENT) != MutationAuthor.USER) throw WorkspaceBusy()
             WorkspaceExportSession(captured, current.projectSourceName ?: "model.psd")
         }
-        return session.psd(Path.of(path), scale, includeGeneratedLayers)
+        return session.psd(pathOf(path), scale, includeGeneratedLayers)
     }
     override suspend fun exportModel(state: String, outputDirectory: String): kotlinx.serialization.json.JsonObject {
         val session = editMutex.withLock {
@@ -437,7 +447,7 @@ class DesktopWorkspace(
             if (current.isAnalyzing || current.isGenerating && mutationAuthor(MutationAuthor.AGENT) != MutationAuthor.USER) throw WorkspaceBusy()
             WorkspaceExportSession(captured, current.projectSourceName ?: "model.psd")
         }
-        return session.model(Path.of(outputDirectory))
+        return session.model(pathOf(outputDirectory))
     }
     override suspend fun exportTarget(state: String, targetId: String, outputDirectory: String,
                                       settings: Map<String, String>): kotlinx.serialization.json.JsonObject {
@@ -448,7 +458,7 @@ class DesktopWorkspace(
             if (current.isAnalyzing || current.isGenerating && mutationAuthor(MutationAuthor.AGENT) != MutationAuthor.USER) throw WorkspaceBusy()
             WorkspaceExportSession(captured, current.projectSourceName ?: "model.psd")
         }
-        return session.target(targetId, Path.of(outputDirectory), settings)
+        return session.target(targetId, pathOf(outputDirectory), settings)
     }
     override fun projectSettings(): kotlinx.serialization.json.JsonObject = captureQueries().projectSettings()
 
@@ -954,7 +964,7 @@ class DesktopWorkspace(
         return WorkspaceReadSession(read, WorkspaceQueryPresentation(
             workspaceId = ui.activeWorkspace.id,
             inputName = if (sameProject) ui.projectSourceName ?: workspaceInputPath(ui).takeIf(String::isNotBlank)
-                ?.let { runCatching { Path.of(it).fileName.toString() }.getOrNull() } else null,
+                ?.let { runCatching { pathOf(it).fileName.toString() }.getOrNull() } else null,
             busy = ui.isAnalyzing || ui.isGenerating || recoveringProjectId != null,
             status = ui.statusText,
             selectedLayerId = ui.selectedLayerId.takeIf { sameProject },
@@ -1563,7 +1573,7 @@ class DesktopWorkspace(
 
     override suspend fun importPhysics(path: String, expectedState: String): Pair<WorkspaceMutationResult, kotlinx.serialization.json.JsonObject> {
         return physicsCommand(WorkspaceDocumentOperation("physics_import", kotlinx.serialization.json.buildJsonObject { put("path", path) }),
-            expectedState, "Imported physics ${Path.of(path).fileName}")
+            expectedState, "Imported physics ${pathOf(path).fileName}")
     }
 
     override suspend fun fitPhysics(id: String, target: Float, expectedState: String,
@@ -1766,7 +1776,7 @@ class DesktopWorkspace(
         val checkpoint = withContext(Dispatchers.IO) { store.loadRecoveryCheckpoint(session.projectId) }
         if (checkpoint != null) tree.checkout(checkpoint.historyHead)
         val expected = captureProjectOpen(discardUnsaved = true)
-        val installed = installProject(session.projectId, session.projectFile?.let(Path::of), Path.of(session.inputPath),
+        val installed = installProject(session.projectId, session.projectFile?.let(Path::of), pathOf(session.inputPath),
             checkpoint?.let { WorkspaceStateCodec.decode(it.presentation) } ?: viewModel.state.value,
             tree, store, expected, discardUnsaved = true, auxiliary = checkpoint?.auxiliary ?: JsonObject(emptyMap()),
             dirty = true, restoredTasks = checkpoint?.tasks)
@@ -1842,7 +1852,7 @@ class DesktopWorkspace(
 
 
 	private fun normalizedPath(inputPath: String): String = runCatching {
-		Path.of(inputPath).toAbsolutePath().normalize().toString()
+		pathOf(inputPath).toAbsolutePath().normalize().toString()
 	}.getOrDefault(inputPath)
 
 	private fun workspaceInputPath(state: PSD2LiveState): String = state.loadedInputPath ?: state.inputPath
@@ -1851,8 +1861,8 @@ class DesktopWorkspace(
 		state.loadedInputFileSignature ?: fileSignature(workspaceInputPath(state))
 
 	private fun fileSignature(inputPath: String): String? = runCatching {
-		val path = Path.of(inputPath)
-		"${Files.size(path)}:${Files.getLastModifiedTime(path).toMillis()}"
+		val path = pathOf(inputPath)
+		"${Files.size(path)}:${Files.lastModifiedMillis(path)}"
 	}.getOrNull()
 
 	private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")

@@ -1,13 +1,15 @@
 package io.github.psd2live.ui.state
+import io.github.psd2live.project.Files
+import io.github.psd2live.project.Path
+import io.github.psd2live.project.parent
+import io.github.psd2live.project.pathOf
 
 import androidx.compose.ui.window.WindowExceptionHandler
-import java.nio.file.Files
-import java.nio.file.Path
 import java.time.Instant
 
 /** Keeps the full exception even when an installed desktop app has no visible stderr console. */
 class UiFailureReports(
-    val path: Path = Path.of(System.getProperty("user.home"), ".psd2live", "logs", "ui-error.log"),
+    val path: Path = pathOf(System.getProperty("user.home"), ".psd2live", "logs", "ui-error.log"),
 ) {
     @Synchronized fun record(failure: Throwable, origin: String) {
         Files.createDirectories(path.parent)

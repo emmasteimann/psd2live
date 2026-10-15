@@ -1,14 +1,11 @@
 package io.github.psd2live.project
 
 import kotlinx.serialization.json.*
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.StandardCopyOption
 
 /** Registry of explicitly adopted archive directories; never scans or deletes arbitrary temp directories. */
 class WorkspaceProjectResources(private val root: Path) {
     private val file = root.resolve("project-resources.json")
-    private val temporaryRoot = Path.of(System.getProperty("java.io.tmpdir")).toAbsolutePath().normalize()
+    private val temporaryRoot = pathOf(System.getProperty("java.io.tmpdir")).toAbsolutePath().normalize()
     private val process = ProcessHandle.current()
     private val owner = "${process.pid()}|${process.info().startInstant().orElse(null)}"
 
@@ -32,7 +29,7 @@ class WorkspaceProjectResources(private val root: Path) {
     @Synchronized
     fun reclaimOrphans(recoveryRoot: Path?) {
         val kept = read().filter { record ->
-            val path = Path.of(record.getValue("path").jsonPrimitive.content).normalize()
+            val path = pathOf(record.getValue("path").jsonPrimitive.content).normalize()
             val resourceOwner = record.getValue("owner").jsonPrimitive.content
             val pid = resourceOwner.substringBefore('|').toLongOrNull()?.takeIf { it > 0 }
             val alive = pid?.let { ProcessHandle.of(it).orElse(null) }?.let {

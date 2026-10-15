@@ -1,4 +1,8 @@
 package io.github.psd2live.application
+import io.github.psd2live.project.Path
+import io.github.psd2live.project.isAbsolute
+import io.github.psd2live.project.pathOf
+import io.github.psd2live.project.sorted
 import io.github.psd2live.core.BitSet
 import io.github.psd2live.core.Math
 
@@ -13,7 +17,6 @@ import org.umamo.format.art.SourceArt
 import org.umamo.format.art.SourceLayer
 import org.umamo.format.raster.RasterCodec
 import java.nio.ByteBuffer
-import java.nio.file.Path
 import kotlin.math.ceil
 import kotlin.math.floor
 import io.github.psd2live.core.legacy.RigGenerationFrames
@@ -356,7 +359,7 @@ object WorkspaceTextureEdits {
                 val path = request["path"]?.jsonPrimitive?.content
                 val png = request["png_base64"]?.jsonPrimitive?.content
                 require((path == null) != (png == null)) { "Give exactly one of path or png_base64" }
-                val image = if (path != null) WorkspaceTextureImage.File(Path.of(path).also {
+                val image = if (path != null) WorkspaceTextureImage.File(pathOf(path).also {
                     require(it.isAbsolute) { "Provide an absolute local path" }
                 }) else WorkspaceTextureImage.Png(decodePngBase64(requireNotNull(png)))
                 WorkspaceTextureEdit.ReplaceImage(text("layer_id"), image,

@@ -1,4 +1,7 @@
 package io.github.psd2live.application
+import io.github.psd2live.project.Files
+import io.github.psd2live.project.isAbsolute
+import io.github.psd2live.project.pathOf
 
 import io.github.psd2live.project.WorkspaceSourceArt
 import io.github.psd2live.project.WorkspaceSourceLayer
@@ -8,8 +11,6 @@ import io.github.psd2live.core.*
 import kotlinx.serialization.json.*
 import org.umamo.format.art.*
 import java.awt.geom.Path2D
-import java.nio.file.Files
-import java.nio.file.Path
 
 fun sourceArtwork(arguments: JsonObject): Pair<WorkspaceSourceArt, Map<String, LayerClassificationOverride>> {
     val width = arguments.getValue("width").jsonPrimitive.int; val height = arguments.getValue("height").jsonPrimitive.int
@@ -20,7 +21,7 @@ fun sourceArtwork(arguments: JsonObject): Pair<WorkspaceSourceArt, Map<String, L
     var pixels = 0L
     val layers = files.mapIndexed { index, entry ->
         val a = entry.jsonObject
-        val file = Path.of(a.text("path"))
+        val file = pathOf(a.text("path"))
         require(file.isAbsolute && Files.isRegularFile(file) && Files.size(file) in 8..67_108_864) { "Invalid local image path or file budget" }
         val image = LayerImport.decodeRasterFile(file.toFile())
         pixels += image.width.toLong() * image.height

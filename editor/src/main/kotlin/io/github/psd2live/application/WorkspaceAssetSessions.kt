@@ -1,11 +1,13 @@
 package io.github.psd2live.application
+import io.github.psd2live.project.Files
+import io.github.psd2live.project.isAbsolute
+import io.github.psd2live.project.pathOf
+import io.github.psd2live.project.sorted
 
 import io.github.psd2live.core.RigPreviewModel
 import io.github.psd2live.project.*
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
-import java.nio.file.Files
-import java.nio.file.Path
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 
@@ -113,7 +115,7 @@ class WorkspaceAssetSessions(private val runtime: WorkspaceRuntime<RigPreviewMod
         val png = withContext(Dispatchers.IO) {
             a["png_path"]?.jsonPrimitive?.content?.let { name ->
                 require(a["png_base64"] == null) { "Provide png_path or png_base64, not both" }
-                val file = Path.of(name)
+                val file = pathOf(name)
                 require(file.isAbsolute && Files.isRegularFile(file)) { "png_path must be an existing absolute file path" }
                 require(Files.size(file) in 8..(64L * 1024 * 1024)) { "PNG file exceeds the import budget" }
                 Files.readAllBytes(file)

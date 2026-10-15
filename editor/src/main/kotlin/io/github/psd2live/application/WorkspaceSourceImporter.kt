@@ -1,6 +1,10 @@
 @file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
 
 package io.github.psd2live.application
+import io.github.psd2live.project.Files
+import io.github.psd2live.project.Path
+import io.github.psd2live.project.fileName
+import io.github.psd2live.project.isAbsolute
 import io.github.psd2live.core.toSortedMap
 import io.github.psd2live.core.warn
 import io.github.psd2live.core.besidePsd
@@ -11,8 +15,6 @@ import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
 import org.umamo.format.art.SourceArt
 import org.umamo.format.psd.PsdReader
-import java.nio.file.Files
-import java.nio.file.Path
 
 /** New source projects use one isolated read/rebuild/install boundary in both adapters. */
 class WorkspaceSourceImporter(

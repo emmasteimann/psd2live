@@ -1,11 +1,14 @@
 package io.github.psd2live.ui.state
+import io.github.psd2live.project.toAbsolutePath
+import io.github.psd2live.project.normalize
+import io.github.psd2live.project.startsWith
+import io.github.psd2live.project.pathOf
 import io.github.psd2live.core.MessageDigest
 
 import io.github.psd2live.ui.theme.CustomTheme
 import io.github.psd2live.ui.theme.ThemeCatalog
 import io.github.psd2live.ui.theme.ThemeCodec
 import java.awt.GraphicsEnvironment
-import java.nio.file.Path
 import java.util.prefs.Preferences
 
 /**
@@ -442,7 +445,7 @@ object AppSettings {
 	private fun normalizeRecentPath(path: String): String? {
 		val trimmed = path.trim()
 		if (trimmed.isEmpty() || classifyRecentPath(trimmed) == null) return null
-		return runCatching { Path.of(trimmed).toAbsolutePath().normalize().toString() }.getOrDefault(trimmed)
+		return runCatching { pathOf(trimmed).toAbsolutePath().normalize().toString() }.getOrDefault(trimmed)
 	}
 
 	fun resetToDefaults() {

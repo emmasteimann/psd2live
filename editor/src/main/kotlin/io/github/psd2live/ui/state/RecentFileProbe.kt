@@ -1,4 +1,6 @@
 package io.github.psd2live.ui.state
+import io.github.psd2live.project.Files
+import io.github.psd2live.project.pathOf
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -10,8 +12,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import java.nio.file.Files
-import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -25,7 +25,7 @@ object RecentFileProbe {
 	fun lastSeen(path: String): Boolean? = seen[path]
 
 	fun check(path: String): Boolean =
-		runCatching { Files.isRegularFile(Path.of(path)) }.getOrDefault(false).also { seen[path] = it }
+		runCatching { Files.isRegularFile(pathOf(path)) }.getOrDefault(false).also { seen[path] = it }
 }
 
 /**

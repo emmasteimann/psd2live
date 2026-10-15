@@ -1,13 +1,15 @@
 @file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
 
 package io.github.psd2live.application
+import io.github.psd2live.project.Files
+import io.github.psd2live.project.Path
+import io.github.psd2live.project.fileName
+import io.github.psd2live.project.isAbsolute
 
 import io.github.psd2live.core.*
 import io.github.psd2live.project.*
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
-import java.nio.file.Files
-import java.nio.file.Path
 
 /** Authored-model import prepares an isolated document and commits it without a GUI or transport. */
 class WorkspaceCmo3Importer(

@@ -21,6 +21,7 @@ import platform.WebKit.WKWebsiteDataStore
 import platform.WebKit.WKNavigationDelegateProtocol
 import platform.WebKit.WKNavigation
 import platform.Foundation.NSError
+import platform.Foundation.timeIntervalSince1970
 import platform.darwin.NSObject
 
 /** The scheme the bundled studio is served under, so it has an origin of its own (storage, module scripts). */
@@ -84,7 +85,25 @@ private class StudioFiles : NSObject(), WKURLSchemeHandlerProtocol {
  */
 @OptIn(ExperimentalForeignApi::class)
 private class StudioKeeper : NSObject(), WKNavigationDelegateProtocol {
-	override fun webViewWebContentProcessDidTerminate(webView: WKWebView) { load(webView) }
+	/** When the page last died, to tell one memory squeeze from a page that dies every time it loads. */
+	private val deaths = ArrayDeque<Double>()
+
+	override fun webViewWebContentProcessDidTerminate(webView: WKWebView) {
+		val now = platform.Foundation.NSDate().timeIntervalSince1970
+		deaths.addLast(now)
+		while (deaths.isNotEmpty() && now - deaths.first() > 120.0) deaths.removeFirst()
+		// Reloading a page that keeps running out of memory would just reset the screen forever.
+		if (deaths.size >= 3) { deaths.clear(); stalled(webView) } else load(webView)
+	}
+
+	private fun stalled(webView: WKWebView) {
+		webView.loadHTMLString("""
+			<meta name="viewport" content="width=device-width"><body style="background:#1b1b24;color:#ddd;font:20px -apple-system;
+			display:flex;flex-direction:column;align-items:center;justify-content:center;height:90vh;text-align:center">
+			<p>The studio page keeps running out of memory on this iPad.<br>Your saved project is safe.</p>
+			<a href="$SCHEME://studio/" style="color:#b9a3ff;font-size:22px">Try again</a></body>
+		""".trimIndent(), baseURL = null)
+	}
 
 	@ObjCSignatureOverride
 	override fun webView(webView: WKWebView, didFailProvisionalNavigation: WKNavigation?, withError: NSError) { retry(webView, withError) }

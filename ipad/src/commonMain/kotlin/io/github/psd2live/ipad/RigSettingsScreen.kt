@@ -50,12 +50,13 @@ private val Pinned = listOf("irisShift")
  */
 @Composable
 fun RigSettingsScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onCancel: () -> Unit) {
-	var tuning by remember(outcome) { mutableStateOf(outcome.config.rigTuning) }
+	var config by remember(outcome) { mutableStateOf(outcome.config) }
+	val tuning = config.rigTuning
 	var advanced by remember { mutableStateOf(false) }
 	var applying by remember { mutableStateOf<Pair<String, Double>?>(null) }
 	var failure by remember { mutableStateOf<String?>(null) }
 	val scope = rememberCoroutineScope()
-	val changed = tuning != outcome.config.rigTuning
+	val changed = config != outcome.config
 
 	Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
 		Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -66,7 +67,8 @@ fun RigSettingsScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onCa
 			color = Muted, fontSize = 13.sp)
 		Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
 			Chip(if (advanced) "Hide advanced values" else "Show advanced values", advanced) { advanced = !advanced }
-			Chip("Defaults", false) { tuning = RigTuning() }
+			Chip("Defaults", false) { config = config.copy(rigTuning = RigTuning(), headTurnStrength = 1f, bodyStrength = 1f,
+				hairTurnDepth = 0f, hairTurnDepthY = 0f, physicsFrontHair = true, physicsBackHair = true) }
 			val progress = applying
 			if (progress != null) {
 				Column(Modifier.width(320.dp)) {
@@ -78,7 +80,7 @@ fun RigSettingsScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onCa
 				scope.launch {
 					try {
 						val updated = withContext(Dispatchers.Default) {
-							buildRig(outcome.name, outcome.source, outcome.config.copy(rigTuning = tuning), RigFiles.nowSeconds()) { stage, fraction ->
+							buildRig(outcome.name, outcome.source, config, RigFiles.nowSeconds()) { stage, fraction ->
 								scope.launch(Dispatchers.Main) { if (applying != null) applying = stage to fraction }
 							}
 						}
@@ -89,14 +91,31 @@ fun RigSettingsScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onCa
 		}
 		failure?.let { Text("Couldn't re-rig: $it", color = Danger, fontSize = 13.sp) }
 
+		Section("Depth, hair and range")
+		ValueRow("Hair wraps round the head", "On a head turn the hair turns round a cylinder on the head: the far side squeezes, " +
+			"the near side widens, so it stops looking like a flat cut-out. 0 = flat; 1 = a 45° turn rotates the hair 22.5°.",
+			config.hairTurnDepth, 0f..2f, 0.05f) { config = config.copy(hairTurnDepth = it) }
+		ValueRow("Hair wraps up and down", "The same on looking up and down: rows bunch at one end and spread at the other.",
+			config.hairTurnDepthY, 0f..2f, 0.05f) { config = config.copy(hairTurnDepthY = it) }
+		ValueRow("Head turn range", "Scales how far the head turns at the ends of Angle X and Y. 1 = as generated.",
+			config.headTurnStrength, 0.3f..2f, 0.05f) { config = config.copy(headTurnStrength = it) }
+		ValueRow("Body range", "Scales how far the body moves at the ends of Body X, Y and Z. 1 = as generated.",
+			config.bodyStrength, 0.3f..2f, 0.05f) { config = config.copy(bodyStrength = it) }
+		Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+			Chip(if (config.physicsFrontHair) "Front hair sways: on" else "Front hair sways: off", config.physicsFrontHair) {
+				config = config.copy(physicsFrontHair = !config.physicsFrontHair) }
+			Chip(if (config.physicsBackHair) "Back hair sways: on" else "Back hair sways: off", config.physicsBackHair) {
+				config = config.copy(physicsBackHair = !config.physicsBackHair) }
+		}
+
 		Section(tr("settings.rigTuning.group.eyes") + " - eye contact")
-		for (id in Pinned) RigTuning.fieldById[id]?.let { field -> FieldRow(field, tuning) { tuning = it } }
+		for (id in Pinned) RigTuning.fieldById[id]?.let { field -> FieldRow(field, tuning) { config = config.copy(rigTuning = it) } }
 
 		for (group in RigTuning.Group.entries) {
 			val fields = RigTuning.fields.filter { it.group == group && it.id !in Pinned && (advanced || !it.advanced) }
 			if (fields.isEmpty()) continue
 			Section(tr("settings.rigTuning.group.${group.name.lowercase()}"))
-			for (field in fields) FieldRow(field, tuning) { tuning = it }
+			for (field in fields) FieldRow(field, tuning) { config = config.copy(rigTuning = it) }
 		}
 	}
 }
@@ -116,6 +135,18 @@ private fun FieldRow(field: RigTuning.Field, tuning: RigTuning, onChange: (RigTu
 			Text(tr("settings.rigTuning.${field.id}.hint", field.default), color = Muted, fontSize = 12.sp)
 		}
 		Slider(value, { v -> onChange(tuning.with(field.id, (v / field.step).roundToInt() * field.step)) }, valueRange = field.range,
+			colors = SliderDefaults.colors(thumbColor = Accent, activeTrackColor = Accent), modifier = Modifier.width(380.dp).height(32.dp))
+	}
+}
+
+@Composable
+private fun ValueRow(label: String, hint: String, value: Float, range: ClosedFloatingPointRange<Float>, step: Float, onChange: (Float) -> Unit) {
+	Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+		Column(Modifier.weight(1f)) {
+			Text("$label  ${(value * 100).roundToInt() / 100.0}", color = Text1, fontSize = 14.sp)
+			Text(hint, color = Muted, fontSize = 12.sp)
+		}
+		Slider(value, { v -> onChange(((v / step).roundToInt() * step).coerceIn(range)) }, valueRange = range,
 			colors = SliderDefaults.colors(thumbColor = Accent, activeTrackColor = Accent), modifier = Modifier.width(380.dp).height(32.dp))
 	}
 }

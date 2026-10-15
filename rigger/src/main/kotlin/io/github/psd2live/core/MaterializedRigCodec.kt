@@ -95,12 +95,12 @@ object MaterializedRigCodec {
 		index.getValue("deformers").jsonArray.map { RigObjects.get(it.jsonPrimitive.content) },
 		index.getValue("meshes").jsonArray.map { RigObjects.get(it.jsonPrimitive.content) }))
 
-	private fun floats(vararg values: Float) = JsonArray(values.map { JsonPrimitive(java.lang.Float.floatToRawIntBits(it)) })
+	private fun floats(vararg values: Float) = JsonArray(values.map { JsonPrimitive((it).toRawBits()) })
 
 	/** Floats stored as their raw bits, so a value comes back bit for bit. */
 	private fun numbers(value: JsonElement, size: Int): FloatArray {
 		val array = value.jsonArray
 		require(array.size == size) { "Invalid stored number list" }
-		return FloatArray(size) { java.lang.Float.intBitsToFloat(array[it].jsonPrimitive.int) }
+		return FloatArray(size) { Float.fromBits(array[it].jsonPrimitive.int) }
 	}
 }

@@ -1,4 +1,5 @@
 package io.github.psd2live.core.sim
+import io.github.psd2live.core.parallelMapList
 import io.github.psd2live.core.AtomicInteger
 
 import io.github.psd2live.core.PhysicsEngine
@@ -183,7 +184,7 @@ object SimDofTraining {
         val heldOuts = arrayOfNulls<Pair<List<FloatArray>, List<FloatArray>>>(groups.size)
         val work: List<() -> Piece?> = jobs.map { (input, drive) -> { piece(input, drive) } } + motions.map { (g, motion) -> { motionPiece(g, motion) } } +
             groups.indices.filter { groups[it].isNotEmpty() }.map { g -> { heldOuts[g] = heldOut(groups[g]); null } }
-        val pieces = (if (options.parallel) work.parallelStream() else work.stream()).map { it() }.toList().filterNotNull()
+        val pieces = work.parallelMapList(options.parallel) { it() }.filterNotNull()
 
         return groups.mapIndexed { g, inputs ->
             if (inputs.isEmpty()) return@mapIndexed null

@@ -1,4 +1,6 @@
 package io.github.psd2live.core.sim
+import io.github.psd2live.core.parallelMapList
+import io.github.psd2live.core.JavaRandom
 
 import io.github.psd2live.core.synchronized
 
@@ -102,7 +104,7 @@ object SimBaker {
         /** A copy of the calibrated body for one piece of work. */
         fun body() = SimScene.build(model, edit).also { it.adopt(calibrated) }
         fun <T, R> each(items: List<T>, work: (T) -> R): List<R> =
-            if (options.parallel && items.size > 1) items.parallelStream().map(work).toList() else items.map(work)
+            if (options.parallel && items.size > 1) items.parallelMapList(true, work) else items.map(work)
 
         // 1. Static response, every key of every static input settled on its own body.
         options.progress(0.02f)
@@ -275,7 +277,7 @@ object SimBaker {
         val pieces = SimMotionLibrary.training(inputs.size, options.fps, options.duration).map(::values)
         val heldOutPiece = values(SimMotionLibrary.heldOut(inputs.size, options.fps, options.duration))
         val runs = pieces + listOf(heldOutPiece)
-        val all = (if (options.parallel) runs.parallelStream() else runs.stream()).map { piece ->
+        val all = runs.parallelMapList(options.parallel) { piece ->
             val scene = body()
             scene.reset(model, emptyMap())
             val frames = piece.firstOrNull()?.size ?: 0
@@ -288,7 +290,7 @@ object SimBaker {
                 for (axis in statics) pose[ParameterId(axis.parameter)]?.let { space.subtract(r, axis, it) }
                 r
             }
-        }.toList()
+        }
         return Training(inputs, PhysicsEngine.ranges(model.parameters), all.dropLast(1),
             inputs.indices.map { i -> pieces.flatMap { it[i].asList() }.toFloatArray() }, heldOutPiece, all.last())
     }
@@ -617,7 +619,7 @@ object SimBaker {
     fun principal(rows: List<FloatArray>, count: Int): List<Pair<FloatArray, Double>> {
         val size = rows.first().size
         val block = minOf(count + 4, size, rows.size)
-        val random = java.util.Random(31L)
+        val random = JavaRandom(31L)
         var q = List(block) { FloatArray(size) { random.nextFloat() - 0.5f } }
         orthonormalize(q)
         repeat(4) {

@@ -130,7 +130,7 @@ class PSD2LivePipeline {
 					append("|l:").append(s.id.raw).append(':').append(s.bounds).append(':').append(s.raster.width).append('x').append(s.raster.height)
 				}
 			}
-			MessageDigest.getInstance("SHA-256").digest(text.encodeToByteArray()).joinToString("") { "%02x".format(it) }
+			hex(MessageDigest.getInstance("SHA-256").digest(text.encodeToByteArray()))
 		}
 	}
 

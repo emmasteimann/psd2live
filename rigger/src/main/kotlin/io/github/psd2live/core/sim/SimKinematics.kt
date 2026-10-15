@@ -1,4 +1,5 @@
 package io.github.psd2live.core.sim
+import io.github.psd2live.core.parallelMapList
 
 import org.umamo.runtime.model.Parameter
 import org.umamo.runtime.model.ParameterId
@@ -128,7 +129,7 @@ object SimKinematics {
             }.toTypedArray()
             return Input(parameter, low, rest, high, values, roots, motion, reshape, across >= along)
         }
-        val analyzed = if (parallel && inputs.size > 1) inputs.parallelStream().map(::analyzed).toList() else inputs.map(::analyzed)
+        val analyzed = if (parallel && inputs.size > 1) inputs.parallelMapList(true, ::analyzed) else inputs.map(::analyzed)
         return Analysis(analyzed, length, cx0, cy0, root, useAnchors)
     }
 }

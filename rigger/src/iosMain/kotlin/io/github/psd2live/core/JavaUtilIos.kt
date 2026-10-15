@@ -265,3 +265,16 @@ actual class ThreadLocal<T> actual constructor() {
 	actual fun set(value: T) { this.value = value }
 	actual fun remove() { value = null }
 }
+
+/** java.util.Random's linear congruential generator, as its specification gives it. */
+actual class JavaRandom actual constructor(seed: Long) {
+	private var seed = (seed xor 0x5DEECE66DL) and ((1L shl 48) - 1)
+
+	private fun next(bits: Int): Int {
+		seed = (seed * 0x5DEECE66DL + 0xBL) and ((1L shl 48) - 1)
+		return (seed ushr (48 - bits)).toInt()
+	}
+
+	actual fun nextDouble(): Double = ((next(26).toLong() shl 27) + next(27)) * (1.0 / (1L shl 53))
+	actual fun nextFloat(): Float = next(24) / (1 shl 24).toFloat()
+}

@@ -185,7 +185,7 @@ object AtlasArrange {
 			while (c < end) {
 				val word = bits[row * words + (c ushr 6)] ushr (c and 63)
 				if (word != 0L) {
-					val hit = c + java.lang.Long.numberOfTrailingZeros(word)
+					val hit = c + word.countTrailingZeroBits()
 					return if (hit < end) hit else -1
 				}
 				c = (c or 63) + 1
@@ -223,7 +223,7 @@ object AtlasArrange {
 				var word = line[w]
 				if (w == (to - 1) ushr 6) { val keep = ((to - 1) and 63) + 1; if (keep < 64) word = word and ((1L shl keep) - 1) }
 				if (w == first) word = word and (-1L shl (from and 63))
-				if (word != 0L) return (w shl 6) + 63 - java.lang.Long.numberOfLeadingZeros(word)
+				if (word != 0L) return (w shl 6) + 63 - word.countLeadingZeroBits()
 				w--
 			}
 			return -1

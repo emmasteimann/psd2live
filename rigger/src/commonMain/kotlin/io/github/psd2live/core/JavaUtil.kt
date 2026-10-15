@@ -182,3 +182,32 @@ expect class ThreadLocal<T>() {
 
 /** java.util.Map.putIfAbsent: [value] under [key] unless it holds one; returns what it held. The JVM map's own wins there. */
 fun <K, V> MutableMap<K, V>.putIfAbsent(key: K, value: V): V? = get(key) ?: run { put(key, value); null }
+
+/** A set iterating in natural order, as java.util.TreeSet (Kotlin's sortedSetOf is the JVM's only). */
+class SortedMutableSet<T : Comparable<T>> : AbstractMutableSet<T>() {
+	private val items = ArrayList<T>()
+	override val size: Int get() = items.size
+	override fun contains(element: T): Boolean = items.binarySearch(element) >= 0
+	override fun add(element: T): Boolean {
+		val at = items.binarySearch(element)
+		if (at >= 0) return false
+		items.add(-at - 1, element)
+		return true
+	}
+	override fun iterator(): MutableIterator<T> = items.iterator()
+}
+
+/** sortedSetOf for shared code ([SortedMutableSet]). */
+fun <T : Comparable<T>> sortedSetOf(vararg elements: T): SortedMutableSet<T> = SortedMutableSet<T>().apply { addAll(elements) }
+
+/** toSortedSet for shared code ([SortedMutableSet]). */
+fun <T : Comparable<T>> Iterable<T>.toSortedSet(): SortedMutableSet<T> = SortedMutableSet<T>().apply { addAll(this@toSortedSet) }
+
+/** [transform] of each element, in order: in parallel when [parallel] (a parallel stream on the desktop). */
+fun <T, R> List<T>.parallelMapList(parallel: Boolean, transform: (T) -> R): List<R> = parallelMap(size, parallel) { transform(this[it]) }
+
+/** java.util.Random (a typealias on the desktop; the iPad's is the same 48-bit generator, so seeded motions match). */
+expect class JavaRandom(seed: Long) {
+	fun nextDouble(): Double
+	fun nextFloat(): Float
+}

@@ -35,7 +35,7 @@ object CharacterAnalyzer {
 		// Layers classify independently (dense ones resample to canvas resolution first); the list keeps source order.
 		val initiallyClassified = source.layers
 			.filter { it.raster.width > 0 && it.raster.height > 0 && it.id.raw !in config.deletedLayerIds }
-			.parallelStream().map { layer -> classify(layer, config) }.toList()
+			.parallelMapList(true) { layer -> classify(layer, config) }
 			.map { if (it.source.id.raw in depthLayerIds && it.opaquePixels == 0) it.copy(opaquePixels = 1) else it }
 		// Fresh layers stay intact until the UI offers a named split. Old projects may still
 		// reference generated :r/:l IDs, so retain those identities when they carry edits.

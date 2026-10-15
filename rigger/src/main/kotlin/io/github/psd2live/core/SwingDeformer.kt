@@ -156,7 +156,7 @@ object SwingDeformer {
     }
 
     private data class TipKey(val magnitude: Float, val segments: Int, val power: Float)
-    private val tipAngles = java.util.concurrent.ConcurrentHashMap<TipKey, Float>()
+    private val tipAngles = Collections.synchronizedMap(HashMap<TipKey, Float>())
 
     /**
      * [solveTipAngle] for these settings, remembered: every cell of every pose shares it, and a canvas drag

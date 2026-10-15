@@ -231,3 +231,5 @@ actual fun runMeshTasks(tasks: List<() -> Unit>) {
 		throw interrupted
 	}
 }
+
+actual typealias JavaRandom = java.util.Random

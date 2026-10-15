@@ -120,6 +120,13 @@ class JavaLangParityTest {
 		}
 	}
 
+	/** Sim bakes round with %.6g and read the number back: roundSignificant must give the same floats. */
+	@Test
+	fun significantRoundingMatchesFormatG() {
+		val floats = floats().filter { it.isFinite() && it != 0f } + listOf(0.1f, 1.0000005f, 123456.5f, 9.9999995f, 1e-7f, 3.4028235e38f)
+		for (f in floats) assertEquals("%.6g".format(java.util.Locale.ROOT, f).toFloat(), roundSignificant(f.toDouble(), 6).toFloat(), "%.6g of $f")
+	}
+
 	@Test
 	fun bitSetBytesRoundTrip() {
 		val set = BitSet(300)

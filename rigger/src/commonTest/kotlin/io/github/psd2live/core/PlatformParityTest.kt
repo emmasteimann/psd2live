@@ -46,6 +46,13 @@ class PlatformParityTest {
 	}
 
 	@Test
+	fun seededRandomMatchesJava() {
+		val random = JavaRandom(13L)
+		val drawn = (0 until 6).map { if (it % 2 == 0) random.nextFloat().toDouble() else random.nextDouble() }
+		assertEquals(EXPECTED_RANDOM, drawn.joinToString(",") { it.toRawBits().toString(16) })
+	}
+
+	@Test
 	fun nfkcMatchesJava() {
 		assertEquals("Hair Front 2 fi", normalizeNfkc("Ｈａｉｒ Front ② ﬁ"))
 	}
@@ -60,6 +67,7 @@ class PlatformParityTest {
 		const val EXPECTED_QUEUE_ORDER = -468709811187511753L
 		const val EXPECTED_UUID = "2a69b28e-4c80-3b52-80ea-d1cbd11752b4"
 		const val EXPECTED_SHA256 = "ca5122f36ccf650ffcc16e262a2222e8e8c12b8a45e9b6cc866a7256e8eb3049"
+		const val EXPECTED_RANDOM = "3fe75a8c40000000,3fd50c0a171d231e,3f95118c00000000,3faa41e2e19810b0,3fe70ae000000000,3fc4a2080d210a9c"
 		const val EXPECTED_EMPTY_SHA1 = "da39a3ee5e6b4b0d3255bfef95601890afd80709"
 		const val EXPECTED_BITS = "33,0,0,0,0,0,0,-128,-63,-1,-1,3,0,0,0,-128,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,8"
 	}

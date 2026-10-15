@@ -1,4 +1,5 @@
 package io.github.psd2live.core.sim
+import io.github.psd2live.core.JavaRandom
 
 import kotlin.math.PI
 import kotlin.math.sin
@@ -25,12 +26,12 @@ object SimMotionLibrary {
             // A quick turn to each end, held while the body swings out and settles.
             for (to in floatArrayOf(1f, 0f, -1f, 0f)) { clock.ramp(values, i, to, 0.15f); clock.hold(values, 0.9f) }
         }
-        pieces += clock.piece(count) { values -> clock.drag(values, java.util.Random(13L), 8f) }
-        pieces += clock.piece(count) { values -> clock.shake(values, java.util.Random(17L), 6f) }
+        pieces += clock.piece(count) { values -> clock.drag(values, JavaRandom(13L), 8f) }
+        pieces += clock.piece(count) { values -> clock.shake(values, JavaRandom(17L), 6f) }
         pieces += clock.piece(count) { values -> clock.swing(values, 8f) }
-        pieces += clock.piece(count) { values -> clock.idle(values, java.util.Random(19L), 5f) }
+        pieces += clock.piece(count) { values -> clock.idle(values, JavaRandom(19L), 5f) }
         pieces += clock.piece(count) { values ->
-            clock.drag(values, java.util.Random(23L), 3f); clock.shake(values, java.util.Random(29L), 3f); clock.drag(values, java.util.Random(31L), 3f)
+            clock.drag(values, JavaRandom(23L), 3f); clock.shake(values, JavaRandom(29L), 3f); clock.drag(values, JavaRandom(31L), 3f)
         }
         return pieces
     }
@@ -40,9 +41,9 @@ object SimMotionLibrary {
         if (count == 0) return emptyList()
         val clock = Clock(fps, duration)
         return clock.piece(count) { values ->
-            clock.drag(values, java.util.Random(101L), 4f)
-            clock.shake(values, java.util.Random(103L), 3f)
-            clock.idle(values, java.util.Random(107L), 3f)
+            clock.drag(values, JavaRandom(101L), 4f)
+            clock.shake(values, JavaRandom(103L), 3f)
+            clock.idle(values, JavaRandom(107L), 3f)
         }
     }
 
@@ -74,7 +75,7 @@ object SimMotionLibrary {
         }
 
         /** Every input jumps to a new pose every 0.3-1.2 s over 0.1-0.3 s, like a head dragged with the mouse. */
-        fun drag(values: FloatArray, random: java.util.Random, seconds: Float) {
+        fun drag(values: FloatArray, random: JavaRandom, seconds: Float) {
             val count = values.size
             val from = FloatArray(count); val to = FloatArray(count)
             val start = IntArray(count); val length = IntArray(count); val next = IntArray(count) { frames(random.nextFloat() * 0.3f) }
@@ -96,7 +97,7 @@ object SimMotionLibrary {
         }
 
         /** Every input swung side to side at 0.7-2 Hz and 0.5-1 of its range, fading in and out. */
-        fun shake(values: FloatArray, random: java.util.Random, seconds: Float) {
+        fun shake(values: FloatArray, random: JavaRandom, seconds: Float) {
             val count = values.size
             val hz = DoubleArray(count) { 0.7 + random.nextDouble() * 1.3 }
             val size = FloatArray(count) { 0.5f + random.nextFloat() * 0.5f }
@@ -125,7 +126,7 @@ object SimMotionLibrary {
         }
 
         /** Slow small swaying: two sines per input at 0.2-0.5 Hz within a third of the range. */
-        fun idle(values: FloatArray, random: java.util.Random, seconds: Float) {
+        fun idle(values: FloatArray, random: JavaRandom, seconds: Float) {
             val count = values.size
             val waves = List(count) { List(2) { Triple(0.2 + random.nextDouble() * 0.3, random.nextDouble() * 2 * PI, 0.1f + random.nextFloat() * 0.07f) } }
             val base = values.copyOf()

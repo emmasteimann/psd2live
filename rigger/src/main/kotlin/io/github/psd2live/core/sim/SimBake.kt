@@ -1,4 +1,5 @@
 package io.github.psd2live.core.sim
+import io.github.psd2live.core.roundSignificant
 import io.github.psd2live.core.hex
 import io.github.psd2live.core.MessageDigest
 
@@ -47,7 +48,7 @@ class SimBakedAxis(val parameter: String, val keys: FloatArray, val offsets: Map
         )
 
         /** Six significant digits: a lattice-local delta is a fraction of the lattice, so plain decimals would lose it. */
-        private fun round(value: Float): Float = "%.6g".format(java.util.Locale.ROOT, value).toFloat()
+        private fun round(value: Float): Float = roundSignificant(value.toDouble(), 6).toFloat()
     }
 }
 

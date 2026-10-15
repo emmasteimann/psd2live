@@ -1,4 +1,5 @@
 package io.github.psd2live.core.sim
+import io.github.psd2live.core.parallelMapList
 
 import io.github.psd2live.core.PhysicsEngine
 import io.github.psd2live.core.PhysicsInput
@@ -239,7 +240,7 @@ object SimPendulumFit {
             NelderMead.minimize(start, step, cost, iterations = iterations, tolerance = 1e-4)
             return requireNotNull(best)
         }
-        fun <T> all(jobs: List<() -> T>): List<T> = if (parallel) jobs.parallelStream().map { it() }.toList() else jobs.map { it() }
+        fun <T> all(jobs: List<() -> T>): List<T> = if (parallel) jobs.parallelMapList(true) { it() } else jobs.map { it() }
 
         // The first mode on its own. Where to search from: the previous bake's pendulum, closely, when it fits
         // this one; otherwise a few spread-out pendulums, each later segment a copy of the first, with the

@@ -170,3 +170,28 @@ class FlightFailed : Exception()
  * Interrupting the caller stops the tasks not started yet and rethrows.
  */
 expect fun runMeshTasks(tasks: List<() -> Unit>)
+
+/**
+ * [value] rounded to [digits] significant digits as Java's String.format("%.Ng", value) does before it is read back:
+ * the double's shortest decimal digits (Double.toString's), rounded half-up.
+ */
+fun roundSignificant(value: Double, digits: Int): Double {
+	if (value == 0.0 || value.isNaN() || value.isInfinite()) return value
+	val s = kotlin.math.abs(value).toString()
+	val e = s.indexOfFirst { it == 'E' || it == 'e' }
+	val mantissa = if (e < 0) s else s.substring(0, e)
+	val exponent = if (e < 0) 0 else s.substring(e + 1).toInt()
+	val point = mantissa.indexOf('.').let { if (it < 0) mantissa.length else it }
+	var all = mantissa.replace(".", "")
+	var decimalAt = point + exponent
+	val lead = all.indexOfFirst { it != '0' }
+	all = all.substring(lead); decimalAt -= lead
+	var kept = all.padEnd(digits, '0').take(digits).toCharArray()
+	if (all.length > digits && all[digits] >= '5') {
+		var k = kept.size - 1
+		while (k >= 0 && kept[k] == '9') { kept[k] = '0'; k-- }
+		if (k < 0) { kept = charArrayOf('1') + kept.copyOf(kept.size - 1); decimalAt++ } else kept[k] = kept[k] + 1
+	}
+	val text = "0." + kept.concatToString() + "E" + decimalAt
+	return (if (value < 0) "-$text" else text).toDouble()
+}

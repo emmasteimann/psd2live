@@ -42,4 +42,40 @@ class PaintSeveralLayersTest {
 		assertEquals(outcome.drawables, applied.drawables)
 		assertNotEquals(outcome.model, applied.model)
 	}
+
+	@Test fun paintPastTheEdgeGetsANewMeshAndShows() {
+		val p = okio.Path.Companion.run { path.toPath() }
+		if (!okio.FileSystem.SYSTEM.exists(p)) return
+		val source = PsdReader.read(okio.FileSystem.SYSTEM.read(p) { readByteArray() })
+		val outcome = buildRig("paint-edge-test", source, PipelineConfig(exportCmo3 = false), RigFiles.nowSeconds()) { _, _ -> }
+		val rest = outcome.preview.parameters.associate { it.id to it.default }
+		val layers = paintableLayers(outcome).filter { it.bounds.width > 40 && it.bounds.height > 40 }
+		val (inside, outside) = layers[0] to layers[1]
+		// Inside: a stroke through the layer's middle stays inside its mesh.
+		val a = LayerPainting(outcome, inside)
+		val (ax, ay) = (inside.bounds.left + inside.bounds.width / 2f) to (inside.bounds.top + inside.bounds.height / 2f)
+		a.beginStroke(); a.segment(ax - 6f, ay, ax + 6f, ay, 8f, 1f, red, 1f, false); a.endStroke("Brush")
+		assertTrue(!a.pastEdge(), "a stroke in the middle of ${inside.name} stays inside its mesh")
+		// Outside: a blob in the canvas corner, far from the layer and from the character.
+		val b = LayerPainting(outcome, outside)
+		val (bx, by) = 30f to 30f
+		assertEquals(0, outcome.preview.render(rest, bx, by, 1f, 1f, 1, 1).argb[0] ushr 24, "the corner starts empty")
+		b.beginStroke(); b.segment(bx - 10f, by, bx + 10f, by, 14f, 1f, red, 1f, false); b.endStroke("Brush")
+		assertTrue(b.pastEdge() && b.rebuildsMesh, "paint in the corner is past ${outside.name}'s edge")
+
+		val applied = applyPaintings(outcome, listOf(a, b)) { _, _ -> }
+		val shown = applied.preview.render(rest, bx, by, 1f, 1f, 1, 1).argb[0]
+		assertTrue((shown ushr 24) > 200 && (shown shr 16 and 255) > 200 && (shown shr 8 and 255) < 60, "the paint past the edge shows on the rig: ${shown.toUInt().toString(16)}")
+		val mid = applied.preview.render(rest, ax, ay, 1f, 1f, 1, 1).argb[0]
+		assertTrue((mid shr 16 and 255) > 150, "the inside repaint still lands: ${mid.toUInt().toString(16)}")
+		assertEquals(outcome.drawables, applied.drawables, "a rebuilt mesh replaces the old one; no art mesh is added or lost")
+		assertTrue(applied.config.rigEdits.authoringJournal.size > outcome.config.rigEdits.authoringJournal.size, "the rebuild is recorded in the document")
+
+		// Keep the old mesh: the paint past the edge is cut off, as the desktop's "Keep existing".
+		val c = LayerPainting(outcome, outside)
+		c.beginStroke(); c.segment(bx - 10f, by, bx + 10f, by, 14f, 1f, red, 1f, false); c.endStroke("Brush")
+		c.keepMesh = true
+		val kept = applyPaintings(outcome, listOf(c)) { _, _ -> }
+		assertEquals(0, kept.preview.render(rest, bx, by, 1f, 1f, 1, 1).argb[0] ushr 24, "kept mesh: the corner stays empty")
+	}
 }

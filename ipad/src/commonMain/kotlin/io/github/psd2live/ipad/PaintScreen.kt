@@ -60,6 +60,7 @@ private val Text1 = Color(0xFFF2ECFD)
 private val Muted = Color(0xFF9793A7)
 private val Accent = Color(0xFFC9B7FF)
 private val Danger = Color(0xFFFF9A9A)
+private val Warn = Color(0xFFFFC46B)
 
 private enum class PaintTool(val label: String) { BRUSH("Brush"), ERASER("Eraser"), FILL("Fill"), PICK("Pick"), SHAPE("Shape"), MASK("Mask") }
 
@@ -100,7 +101,10 @@ fun PaintScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onClose: (
 				Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(if (painted) Color(0xFF332C4E) else Color(0xFF24222F))
 					.clickable { painting = paintings.getOrPut(layer.id.raw) { LayerPainting(outcome, layer) } }.padding(horizontal = 14.dp, vertical = 10.dp),
 					horizontalArrangement = Arrangement.SpaceBetween) {
-					Text(if (painted) "${layer.name}  ·  painted" else layer.name, color = if (painted) Accent else Text1, fontSize = 15.sp)
+					val p = paintings[layer.id.raw]
+					val newMesh = painted && p?.pastEdgeKnown == true && !p.keepMesh
+					Text(when { newMesh -> "${layer.name}  ·  painted, new mesh"; painted -> "${layer.name}  ·  painted"; else -> layer.name },
+						color = if (painted) Accent else Text1, fontSize = 15.sp)
 					Text(layer.groupPath, color = Muted, fontSize = 13.sp)
 				}
 			}
@@ -138,6 +142,10 @@ private fun LayerPaintView(painting: LayerPainting, all: List<LayerPainting>, on
 	val worker = remember { Dispatchers.Default.limitedParallelism(1) }
 	// A failed edit says so instead of closing the app.
 	var workError by remember { mutableStateOf<String?>(null) }
+	// Whether the paint reaches past the layer's edge (it then gets a new mesh on Apply): worked out on the paint
+	// worker, after strokes, once they rest.
+	var pastEdge by remember(painting) { mutableStateOf(painting.pastEdgeKnown == true) }
+	var keepMesh by remember(painting) { mutableStateOf(painting.keepMesh) }
 	val safe = remember { kotlinx.coroutines.CoroutineExceptionHandler { _, e -> workError = e.message ?: e::class.simpleName } }
 	val current by rememberUpdatedState(PaintSettings(tool, radius, hardness, opacity, color))
 	val pressureOn by rememberUpdatedState(pressureSize)
@@ -177,6 +185,12 @@ private fun LayerPaintView(painting: LayerPainting, all: List<LayerPainting>, on
 			delay(160)
 			frame = draw(2_200_000f)
 		}
+	}
+
+	LaunchedEffect(painting, tick) {
+		if (!painting.isDirty) { pastEdge = false; return@LaunchedEffect }
+		delay(400)
+		pastEdge = withContext(worker) { painting.pastEdge() }
 	}
 
 	Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -371,6 +385,14 @@ private fun LayerPaintView(painting: LayerPainting, all: List<LayerPainting>, on
 				LinearProgressIndicator(progress = progress.second.toFloat(), modifier = Modifier.fillMaxWidth(), color = Accent)
 			} else {
 				val dirty = all.filter { it.isDirty }
+				if (painting.isDirty && pastEdge) {
+					Text(if (keepMesh) "Paint past ${painting.layer.name}'s edge will be cut off: it keeps its old mesh."
+						else "The paint goes past ${painting.layer.name}'s edge, so Apply gives it a new mesh. Its hand tweaks, paths and weights carry over.",
+						color = Warn, fontSize = 12.sp)
+					Chip(if (keepMesh) "Give it a new mesh" else "Keep the old mesh (cut the paint off)", false) {
+						keepMesh = !keepMesh; painting.keepMesh = keepMesh
+					}
+				}
 				Chip(if (dirty.size > 1) "Apply ${dirty.size} painted layers to the rig" else "Apply to the rig", true, enabled = dirty.isNotEmpty()) {
 					applying = "Starting" to 0.0; failure = null
 					scope.launch {

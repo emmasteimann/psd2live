@@ -14,6 +14,7 @@ import io.github.psd2live.core.readArgb
 import io.github.psd2live.core.width
 import io.github.psd2live.core.writeArgb
 import io.github.psd2live.project.LayerCanvasRect
+import io.github.psd2live.project.config
 import org.umamo.format.art.SourceLayer
 import org.umamo.format.art.isFullyTransparent
 
@@ -161,6 +162,57 @@ class LayerPainting(val outcome: RigOutcome, val layer: SourceLayer) {
 	fun redo() { session.redo() }
 
 	/**
+	 * The paint keeps this layer's mesh anyway ("Keep the old mesh"): paint past the edge is then cut off, as the
+	 * desktop's "Keep existing" does.
+	 */
+	var keepMesh = false
+
+	private var edgeCheckedAt = -1L
+	private var pastEdgeNow = false
+
+	/** [pastEdge] as last worked out, without working it out again (null before the first time). */
+	val pastEdgeKnown: Boolean? get() = if (edgeCheckedAt < 0) null else pastEdgeNow
+
+	/**
+	 * Whether paint reaches past the layer's own pixels as it was rigged - where its mesh doesn't go, so a repaint that
+	 * keeps the mesh would drop it. Its mesh was traced from those pixels: new opaque pixels further than a couple of
+	 * canvas pixels from any of them count, erring towards a rebuild, which is always safe. Cached per change.
+	 */
+	fun pastEdge(): Boolean {
+		if (edgeCheckedAt == version) return pastEdgeNow
+		val w = image.width; val h = image.height
+		val now = image.readArgb(0, 0, w, h); val was = session.originalImageCopy.readArgb(0, 0, w, h)
+		val r = maxOf(1, kotlin.math.ceil(space.imageLength(EDGE_SLACK)).toInt())
+		// The original pixels grown by r: rows first, then columns.
+		val rows = BooleanArray(w * h)
+		for (y in 0 until h) {
+			var last = -1_000_000
+			for (x in 0 until w) { if ((was[y * w + x] ushr 24) > ALPHA) last = x; if (x - last <= r) rows[y * w + x] = true }
+			last = 1_000_000
+			for (x in w - 1 downTo 0) { if ((was[y * w + x] ushr 24) > ALPHA) last = x; if (last - x <= r) rows[y * w + x] = true }
+		}
+		val grown = BooleanArray(w * h)
+		for (x in 0 until w) {
+			var last = -1_000_000
+			for (y in 0 until h) { if (rows[y * w + x]) last = y; if (y - last <= r) grown[y * w + x] = true }
+			last = 1_000_000
+			for (y in h - 1 downTo 0) { if (rows[y * w + x]) last = y; if (last - y <= r) grown[y * w + x] = true }
+		}
+		var outside = 0
+		for (i in now.indices) if ((now[i] ushr 24) > ALPHA && !grown[i]) outside++
+		pastEdgeNow = outside >= maxOf(MIN_OUTSIDE, (w.toLong() * h / 2000).toInt())
+		edgeCheckedAt = version
+		return pastEdgeNow
+	}
+
+	/** Paint past the edge that will get a new mesh on Apply. */
+	val rebuildsMesh: Boolean get() = isDirty && !keepMesh && pastEdge()
+
+	/** This layer's paint as the desktop's paint commit takes it: its pixels cropped, at the layer's density. */
+	internal fun paintRaster(rebuildMesh: Boolean) =
+		io.github.psd2live.application.WorkspacePaintRaster.capture(layer.id.raw, image, space, null, rebuildMesh)
+
+	/**
 	 * The rig rebuilt with the painted layer: the desktop's "repaint that keeps every mesh" - the pixels go into the
 	 * source, the rig is generated from the art as it was first rigged, so meshes and deformers stay and only the
 	 * textures follow the paint. Blocking.
@@ -179,6 +231,10 @@ class LayerPainting(val outcome: RigOutcome, val layer: SourceLayer) {
 
 	private companion object {
 		const val MASK_COLOR = 0xFF4060
+		/** How far (canvas px) past the layer's own pixels paint may go and still be inside its traced mesh. */
+		const val EDGE_SLACK = 2f
+		const val ALPHA = 8
+		const val MIN_OUTSIDE = 24
 		fun copy(image: RigImage) = newRigImage(image.width, image.height).also {
 			it.writeArgb(0, 0, image.width, image.height, image.readArgb(0, 0, image.width, image.height))
 		}
@@ -195,18 +251,38 @@ fun applyPaintings(outcome: RigOutcome, paintings: List<LayerPainting>, progress
 	val dirty = paintings.filter { it.isDirty }
 	require(dirty.isNotEmpty()) { "Nothing is painted yet" }
 	require(dirty.all { it.outcome === outcome }) { "These layers were painted on a different rig" }
+	progress("Checking the painted edges", 0.005)
+	val rebuilds = dirty.filter { it.rebuildsMesh }
+	val repaints = dirty - rebuilds.toSet()
 	// The art the repaint indexes into (the model's own), so each painted layer lands where it sits.
 	val art = outcome.model.analysis.source
 	val layers = art.layers.map { if (it is io.github.psd2live.project.WorkspaceSourceLayer) it else io.github.psd2live.project.WorkspaceSourceLayer.copyOf(it, it.order) as io.github.psd2live.project.WorkspaceSourceLayer }.toMutableList()
-	dirty.forEachIndexed { i, painting ->
-		progress("Cropping ${painting.layer.name}", 0.01 + 0.04 * i / dirty.size)
+	repaints.forEachIndexed { i, painting ->
+		progress("Cropping ${painting.layer.name}", 0.01 + 0.04 * i / repaints.size)
 		val (index, layer) = painting.paintedLayer()
 		layers[index] = layer
 	}
-	val source = io.github.psd2live.project.WorkspaceSourceArt(widthPx = art.widthPx, heightPx = art.heightPx,
+	val source = if (repaints.isEmpty()) art else io.github.psd2live.project.WorkspaceSourceArt(widthPx = art.widthPx, heightPx = art.heightPx,
 		layers = layers, groups = art.groups)
 	val config = outcome.config.copy(generationSource = outcome.config.generationSource ?: outcome.source)
-	return buildRig(outcome.name, source, config, started, progress)
+	if (rebuilds.isEmpty()) return buildRig(outcome.name, source, config, started, progress)
+	// Paint past a layer's edge: the desktop's paint commit with "Rebuild mesh", one layer at a time, each on the rig
+	// as the one before left it. That layer is meshed again in the old frames and its keyforms, paths, weights and glue
+	// carried onto the new vertices; the document records it, so it rebuilds the same way next time.
+	val pipeline = io.github.psd2live.core.PSD2LivePipeline()
+	val steps = rebuilds.size + if (repaints.isEmpty()) 0 else 1
+	var step = 0
+	fun build(src: org.umamo.format.art.SourceArt, cfg: io.github.psd2live.core.PipelineConfig, label: String) =
+		pipeline.buildPreview(src, cfg, io.github.psd2live.core.ProgressListener { _, f -> progress(label, 0.05 + 0.8 * (step + f) / steps) }).also { step++ }
+	var model = if (repaints.isEmpty()) outcome.model else build(source, config, "Repainting")
+	var document = documentOf(source, config)
+	var current = config
+	for (painting in rebuilds) {
+		document = io.github.psd2live.application.WorkspaceRasterEdits.prepare(document, model, painting.paintRaster(rebuildMesh = true))
+		current = document.config(io.github.psd2live.core.PipelineConfig(exportCmo3 = false))
+		model = build(document.source, current, "New mesh for ${painting.layer.name}")
+	}
+	return writeRig(outcome.name, document.source, current, model, started, progress)
 }
 
 /** The block ([x], [y], [width], [height]) of [image], in its pixels, stretched to [outWidth] x [outHeight], nearest pixel. */

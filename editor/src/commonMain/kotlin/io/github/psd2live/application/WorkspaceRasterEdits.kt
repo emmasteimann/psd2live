@@ -58,14 +58,6 @@ data class WorkspacePaintRaster(val layerId: String, val raster: LayerRaster,
 object WorkspaceRasterEdits {
     /** Shared so repeated paint commits reuse its content-addressed mesh cache. */
     private val pipeline = PSD2LivePipeline()
-    fun paint(document: WorkspaceDocument, model: RigPreviewModel, arguments: JsonObject,
-              work: WorkspaceRasterWork = WorkspaceRasterWork.Direct): WorkspaceDocument {
-        val (painting, touched) = document.paintLayerImage(arguments, work)
-        val region = painting.space.layerArea().let { area -> touched?.let { if (area.isEmpty) it else area.union(it) } ?: area }
-        return prepare(document, model, WorkspacePaintRaster.capture(arguments.getValue("layer_id").jsonPrimitive.content,
-            painting.image, painting.space, region, arguments["rebuild_mesh"]?.jsonPrimitive?.boolean ?: false,
-            checkpoint = work::checkpoint), work)
-    }
 
     const val REBUILD_MESH = "layer_mesh_rebuild"
 

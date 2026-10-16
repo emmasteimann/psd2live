@@ -91,6 +91,8 @@ if [ "$BUILD" = 1 ]; then
         for _ in $(seq 1 120); do busy || break; sleep 5; done
         if busy; then echo "The other build is still going after 10 minutes. Try again when it's done."; exit 1; fi
     fi
+    # The smart mask's model is downloaded once (too big for git).
+    [ -f iosApp/models/SAM2_1TinyMaskDecoderFLOAT16.mlpackage/Manifest.json ] || { say "Downloading the smart mask model (once, ~76 MB)…"; scripts/fetch-sam.sh; }
     # The Xcode project is generated from iosApp/project.yml (XcodeGen): regenerate it when the spec is newer, so new
     # files (the upscaler model...) are in the build.
     if [ ! -d iosApp/Layerloom.xcodeproj ] || [ iosApp/project.yml -nt iosApp/Layerloom.xcodeproj/project.pbxproj ]; then

@@ -16,6 +16,10 @@ targets:
         buildPhase: resources
       # The anime upscaler for Clean up, as Core ML (scripts/convert-upscaler-coreml.py); Xcode compiles it to .mlmodelc.
       - path: models/AnimeUpscaler.mlpackage
+      # The smart mask: Apple's Core ML SAM 2.1 Tiny (scripts/fetch-sam.sh downloads it; not in git).
+      - path: models/SAM2_1TinyImageEncoderFLOAT16.mlpackage
+      - path: models/SAM2_1TinyPromptEncoderFLOAT16.mlpackage
+      - path: models/SAM2_1TinyMaskDecoderFLOAT16.mlpackage
     info:
       path: Layerloom/Info.plist
       properties:

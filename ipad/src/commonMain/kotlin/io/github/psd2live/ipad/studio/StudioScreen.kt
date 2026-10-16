@@ -84,7 +84,7 @@ private val Accent = Color(0xFFC9B7FF)
 private val Danger = Color(0xFFFF9A9A)
 
 /** The mask tools, as the web studio's toolbar: brush, edge brush, polygon, pick a piece, pan. */
-private enum class Tool(val label: String) { BRUSH("Brush"), EDGE("Edge brush"), POLYGON("Polygon"), PICK("Pick piece"), PAN("Pan") }
+private enum class Tool(val label: String) { BRUSH("Brush"), EDGE("Edge brush"), POLYGON("Polygon"), SMART("Smart mask"), PICK("Pick piece"), PAN("Pan") }
 
 /**
  * The studio, native: the web studio's project (same files, same slots), drawn and painted with the iPad canvas -
@@ -150,6 +150,12 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 	var cloneDest by remember { mutableStateOf<Pt?>(null) }
 	var picking by remember { mutableStateOf<String?>(null) }
 	var aiPending by remember { mutableStateOf<StudioRepairAI.Candidate?>(null) }
+	// Smart mask: tap mode, points (x, y, 1 keep / 0 exclude), region corners, candidates and the one shown.
+	var smartMode by remember { mutableStateOf(1) } // 1 keep, 0 exclude, 2 region
+	val smartPoints = remember { mutableStateListOf<Triple<Double, Double, Int>>() }
+	val smartCorners = remember { mutableStateListOf<Pt>() }
+	var smartCands by remember { mutableStateOf<List<StudioSmartMask.Candidate>>(emptyList()) }
+	var smartSel by remember { mutableStateOf(0) }
 
 	val projectNow by rememberUpdatedState(project)
 	val maskNow by rememberUpdatedState(mask)
@@ -440,6 +446,47 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 				Slider(softness, { softness = it }, valueRange = 0f..100f, colors = sliderColors(), modifier = Modifier.weight(1f).height(30.dp))
 			}
 		}
+		if (tool == Tool.SMART) FlowRow(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp),
+			verticalArrangement = Arrangement.spacedBy(6.dp)) {
+			Chip("Keep point", smartMode == 1) { smartMode = 1 }; Chip("Exclude point", smartMode == 0) { smartMode = 0 }; Chip("Region corners", smartMode == 2) { smartMode = 2 }
+			Chip("Undo point", enabled = smartPoints.isNotEmpty()) { smartPoints.removeAt(smartPoints.lastIndex); smartCands = emptyList(); canvasPreview = null }
+			Chip("Clear", enabled = smartPoints.isNotEmpty() || smartCorners.isNotEmpty()) { smartPoints.clear(); smartCorners.clear(); smartCands = emptyList(); canvasPreview = null }
+			Chip("Suggest masks", true, enabled = busy == null && smartPoints.any { it.third == 1 } && smartCorners.size != 1) {
+				val pts = smartPoints.toList()
+				val region = if (smartCorners.size == 2) { val a = smartCorners[0]; val b = smartCorners[1]
+					val x = minOf(a.x, b.x).toInt(); val y = minOf(a.y, b.y).toInt(); intArrayOf(x, y, kotlin.math.abs(a.x - b.x).toInt() + 1, kotlin.math.abs(a.y - b.y).toInt() + 1) } else null
+				scope.launch(safe) {
+					val now = projectNow ?: return@launch
+					busy = "Running the smart mask on this iPad (the first time reads the picture: a few seconds)"
+					try {
+						val c = withContext(Dispatchers.Default) { StudioSmartMask.suggest(now, pts, region) }
+						smartCands = c; smartSel = 0
+						canvasPreview = withContext(Dispatchers.Default) { smartPreview(now, c[0].mask) } to "Candidate 1 of 3 (not applied yet)"
+						status = "Compare the candidates, then Replace mask or Add to mask. Scores are the model's confidence, not edge quality."
+					} catch (e: IllegalStateException) { status = e.message ?: "The smart mask didn't work." } finally { busy = null }
+				}
+			}
+			smartCands.forEachIndexed { i, cand -> Chip("${i + 1} · ${(cand.score * 100).roundToInt()}%", smartSel == i) {
+				smartSel = i; val now = projectNow ?: return@Chip
+				scope.launch(safe) { canvasPreview = withContext(Dispatchers.Default) { smartPreview(now, cand.mask) } to "Candidate ${i + 1} of 3 (not applied yet)" }
+			} }
+			if (smartCands.isNotEmpty()) {
+				fun apply(add: Boolean) {
+					val id = selectedId ?: run { status = "Choose the part this mask is for, on the left."; return }
+					val cand = smartCands[smartSel]
+					scope.launch(safe) {
+						flushMask(); val now = projectNow ?: return@launch
+						val url = withContext(encoder) { pngDataUrl(encodePng(now.width, now.height, if (add) StudioSmartMask.union(now, now.part(id)?.mask, cand.mask) else cand.mask)) }
+						projectNow?.let { change(StudioEdits.setMask(it, id, url)) }
+						mask = withContext(worker) { MaskEdit(id, now.width, now.height, url).also { workerMask[0] = it } }; bump()
+						canvasPreview = null; smartCands = emptyList(); smartPoints.clear(); smartCorners.clear(); tool = Tool.BRUSH
+						status = "Smart mask applied to ${now.part(id)?.name}. Refine it with the brush before extracting."
+					}
+				}
+				Chip("Replace mask", true, enabled = selectedId != null) { apply(false) }
+				Chip("Add to mask", enabled = selectedId != null) { apply(true) }
+			}
+		}
 		if (tool == Tool.POLYGON) Row(Modifier.padding(horizontal = 14.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
 			Text("Tap the corners of the area (${polygon.size} so far).", color = Muted, fontSize = 13.sp)
 			Chip(if (erasing) "Clear inside" else "Fill inside", true, enabled = polygon.size >= 3 && mask != null) {
@@ -509,6 +556,12 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 									scope.launch(Dispatchers.Main) { if (id != null) selectedId = id else status = "No piece there." }
 								}
 								Tool.POLYGON -> if (ready() != null) polygon.add(c)
+								Tool.SMART -> {
+									val pt = Pt(c.x.toDouble().coerceIn(0.0, proj.width - 1.0), c.y.toDouble().coerceIn(0.0, proj.height - 1.0))
+									smartCands = emptyList(); canvasPreview = null
+									if (smartMode == 2) { if (smartCorners.size == 2) smartCorners.clear(); smartCorners.add(pt) }
+									else if (smartPoints.size < 16) smartPoints.add(Triple(pt.x, pt.y, smartMode))
+								}
 								Tool.EDGE -> {
 									val id = ready() ?: return
 									strokePart = id
@@ -575,6 +628,14 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 						val dsz = IntSize(((f.x1 - f.x0) * l[0]).roundToInt().coerceAtLeast(1), ((f.y1 - f.y0) * l[0]).roundToInt().coerceAtLeast(1))
 						drawImage(f.art, dstOffset = dst, dstSize = dsz)
 						f.mask?.let { drawImage(it, dstOffset = dst, dstSize = dsz, alpha = 0.55f) }
+					}
+					// Smart mask points (green keep, coral exclude) and its region.
+					if (tool == Tool.SMART) {
+						for ((x, y, k) in smartPoints) { val c = Offset(l[1] + x.toFloat() * l[0], l[2] + y.toFloat() * l[0]); drawCircle(Color(0xFF171720), 11f, c); drawCircle(if (k == 1) Color(0xFF55DD99) else Color(0xFFFF8D84), 8f, c) }
+						if (smartCorners.size == 2) { val a = smartCorners[0]; val b = smartCorners[1]
+							val o = Offset(l[1] + minOf(a.x, b.x).toFloat() * l[0], l[2] + minOf(a.y, b.y).toFloat() * l[0])
+							drawRect(Color(0xFFC4AAFF), o, Size(kotlin.math.abs(a.x - b.x).toFloat() * l[0], kotlin.math.abs(a.y - b.y).toFloat() * l[0]), style = Stroke(3f, pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(14f, 8f)))) }
+						else if (smartCorners.size == 1) { val a = smartCorners[0]; drawCircle(Color(0xFFC4AAFF), 8f, Offset(l[1] + a.x.toFloat() * l[0], l[2] + a.y.toFloat() * l[0])) }
 					}
 					// The clone points: source green, where it lands red.
 					for ((pt, colour) in listOf(cloneSource to Color(0xFF3DD68C), cloneDest to Color(0xFFFF5C7A))) pt?.let {
@@ -875,4 +936,11 @@ private fun Chip(label: String, selected: Boolean = false, enabled: Boolean = tr
 		.clickable(enabled = enabled, onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
 		Text(label, color = if (enabled) Accent else Muted, fontSize = 14.sp)
 	}
+}
+
+/** The drawing with a candidate mask tinted over it, for comparing. */
+private fun smartPreview(p: StudioProject, mask: IntArray): IntArray {
+	val out = StudioRender.composite(p)
+	for (i in out.indices) if ((mask[i] ushr 24) != 0) out[i] = StudioRender.blend(out[i], 0x8CBCA1FF.toInt())
+	return out
 }

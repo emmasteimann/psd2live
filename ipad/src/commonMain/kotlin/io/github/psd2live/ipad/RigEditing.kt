@@ -488,3 +488,38 @@ object RigSimulation {
 	fun clearBake(e: RigEditing, id: String) = run(e, "simulation_clear_bake", buildJsonObject { put("id", id) })
 	fun delete(e: RigEditing, id: String) = run(e, "simulation_delete", buildJsonObject { put("id", id) })
 }
+
+/**
+ * Textures on the iPad: the desktop's atlas view and texture settings (`atlas_set_budget`, `layer_set_pixel_density`):
+ * the atlas pages VTube Studio loads, how big they are and how many, and per part how much texture detail it gets.
+ * Stored as the desktop stores them (the atlas setting, textureOverrides), so the Mac opens them; the rig is rebuilt.
+ */
+object RigTextures {
+	class Part(val layerId: String, val name: String, val page: Int, val x: Int, val y: Int, val w: Int, val h: Int, val density: Float?)
+
+	fun budget(e: RigEditing): io.github.psd2live.core.AtlasBudget = e.model.config.effectiveAtlasBudget()
+	fun pages(e: RigEditing) = e.model.atlas.pages
+	fun fit(e: RigEditing) = e.model.atlas.fit
+	fun notices(e: RigEditing) = e.model.atlas.notices
+
+	fun parts(e: RigEditing): List<Part> {
+		val names = e.source?.layers?.associate { it.id.raw to it.name }.orEmpty()
+		val overrides = e.model.config.textureOverrides
+		return e.model.atlas.placementByLayerId.mapNotNull { (id, p) -> names[id]?.let { Part(id, it, p.page, p.x, p.y, p.width, p.height, overrides[id]?.density) } }
+			.sortedWith(compareBy({ it.page }, { it.name }))
+	}
+
+	/** Page size (512..8192), how many pages at most, padding between tiles. */
+	fun setBudget(e: RigEditing, pageSize: Int, maxPages: Int, padding: Int) {
+		val b = io.github.psd2live.core.AtlasBudget(pageSize, maxPages, padding)
+		e.rebuild(e.model.config.copy(atlasBudget = b, atlasSize = pageSize, texturePadding = padding))
+	}
+
+	/** How much detail part [layerId] gets: 1 = as drawn, 2 = twice, 0.5 = half; null = automatic. */
+	fun setDensity(e: RigEditing, layerId: String, density: Float?) {
+		val current = e.model.config.textureOverrides[layerId] ?: io.github.psd2live.project.TextureOverride()
+		val next = current.copy(density = density)
+		val map = if (next.isDefault) e.model.config.textureOverrides - layerId else e.model.config.textureOverrides + (layerId to next)
+		e.rebuild(e.model.config.copy(textureOverrides = map))
+	}
+}

@@ -110,6 +110,12 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 	val boxEveryPartNow by rememberUpdatedState(boxEveryPart)
 	val mirrorOn by rememberUpdatedState(mirror)
 	var wires by remember { mutableStateOf<List<FloatArray>>(emptyList()) }
+	// Which parts the tools work on (empty = all), and whether a tap on her adds/removes the part under the finger.
+	var targets by remember(tweaking) { mutableStateOf(setOf<String>()) }
+	var pickingParts by remember { mutableStateOf(false) }
+	val pickingPartsNow by rememberUpdatedState(pickingParts)
+	var showPartList by remember { mutableStateOf(false) }
+	fun setTargets(next: Set<String>) { targets = next; tweaking.targets = next }
 	var tick by remember { mutableStateOf(0L) }
 	var image by remember { mutableStateOf<Pair<ImageBitmap, FloatArray>?>(null) }
 	var cursor by remember { mutableStateOf<Offset?>(null) }
@@ -131,7 +137,7 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 		// moves, the full-resolution frame (~2.2 MP) once things rest. The frame remembers which part of the canvas it
 		// shows, so a pinch or pan moves and scales it at once; only when the fingers rest is the view re-rendered.
 		var lastView: CanvasView? = null
-		snapshotFlow { listOf(tick, pose, view, box, showMesh, warpMode, pointsMode, pathMode) }.collectLatest {
+		snapshotFlow { listOf(tick, pose, view, box, showMesh, warpMode, pointsMode, pathMode, targets) }.collectLatest {
 			val (w, h) = box
 			if (w < 2f || h < 2f) return@collectLatest
 			val viewOnly = lastView != null && lastView != view
@@ -151,7 +157,7 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 			}
 			if (viewOnly) { delay(140); image = draw(2_200_000f); return@collectLatest }
 			verts = if (pointsMode) withContext(Dispatchers.Default) { tweaking.vertices(shownPose) } else emptyList()
-			wires = if (showMesh || pointsMode) withContext(Dispatchers.Default) { tweaking.wires(shownPose) } else emptyList()
+			wires = if (showMesh || pointsMode || targets.isNotEmpty()) withContext(Dispatchers.Default) { tweaking.wires(shownPose) } else emptyList()
 			pathsShown = if (pathMode) withContext(Dispatchers.Default) { tweaking.paths(shownPose) } else emptyList()
 			lattice?.takeIf { warpMode }?.let { held -> lattice = withContext(Dispatchers.Default) { tweaking.lattice(shownPose, held.id) } }
 			image = draw(350_000f)
@@ -196,6 +202,14 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 						}
 						override fun start(at: Offset, pressure: Float) {
 							if (saving != null) return
+							if (pickingPartsNow) {
+								val p = toCanvas(at); val p0 = currentPose
+								scope.launch(worker + safe) {
+									val id = tweaking.meshAt(p0, p.x, p.y) ?: return@launch
+									scope.launch(Dispatchers.Main) { setTargets(if (id in targets) targets - id else targets + id) }
+								}
+								return
+							}
 							if (pathOn) {
 								if (drawingNow) { draft = draft + toCanvas(at); return }
 								// The nearest path point within reach is picked up; elsewhere nothing happens.
@@ -352,6 +366,25 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 					Chip("Points", pointsMode) { pointsMode = true; warpMode = false; lookMode = false; pathMode = false; lattice = null }
 					Chip("Look", lookMode) { lookMode = true; pointsMode = false; warpMode = false; pathMode = false; lattice = null }
 					Chip("Paths", pathMode) { pathMode = true; lookMode = false; pointsMode = false; warpMode = false; lattice = null }
+				}
+				// Which parts the tools touch.
+				Text(if (targets.isEmpty()) "Working on: every part" else "Working on: ${targets.size} part${if (targets.size == 1) "" else "s"} - others are left alone",
+					color = if (targets.isEmpty()) Muted else Text1, fontSize = 12.sp)
+				@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+				androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+					Chip(if (pickingParts) "Tapping her picks parts: on" else "Pick parts on her", pickingParts) { pickingParts = !pickingParts }
+					Chip(if (showPartList) "Hide the list" else "Choose from a list", showPartList) { showPartList = !showPartList }
+					Chip("All parts", false, enabled = targets.isNotEmpty()) { setTargets(emptySet()) }
+				}
+				if (pickingParts) Text("Tap a part on her to add it; tap it again to take it out. Turn this off to push again.", color = Muted, fontSize = 12.sp)
+				if (showPartList) Column(Modifier.height(220.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+					for ((id, name) in tweaking.meshes()) {
+						val on = id in targets
+						Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(if (on) Color(0xFF4A3F78) else Color(0xFF24222F))
+							.clickable { setTargets(if (on) targets - id else targets + id) }.padding(horizontal = 10.dp, vertical = 7.dp)) {
+							Text(if (on) "✓  $name" else name, color = if (on) Accent else Text1, fontSize = 13.sp)
+						}
+					}
 				}
 				if (lookMode) {
 					val id = lookMesh; val l = lookShown

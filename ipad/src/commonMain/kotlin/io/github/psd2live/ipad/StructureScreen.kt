@@ -134,6 +134,11 @@ fun StructureScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel:
 			Text("Add deformers to ${outcome.name}", color = Text1, fontSize = 16.sp, fontWeight = FontWeight.Bold)
 			Text("Back without keeping changes", color = Accent, fontSize = 15.sp, modifier = Modifier.clickable { if (saving == null) onCancel() })
 		}
+		HowTo("How deformers work", listOf(
+			"Tap the parts that should move together (they outline in colour).",
+			"Warp: pick a grid size and tap Add a warp around them. Rotation: tap Add a rotation, then tap where it pivots.",
+			"Tap Done. This only makes the cage - nothing moves yet.",
+			"Open Tweak by hand, choose Warp, pose her with a slider (e.g. Angle X right) and drag the cage. That shape belongs to that pose."))
 		Text(if (pivotMode) "Tap where the rotation should pivot (a shoulder, the top of a charm...)." else
 			"Tap the parts that should move together. A warp bends them as one; a rotation swings or turns them. Two fingers move and zoom.",
 			color = if (pivotMode) Pivot else Muted, fontSize = 13.sp)
@@ -223,5 +228,15 @@ private fun Chip(label: String, selected: Boolean, enabled: Boolean = true, onCl
 	Box(Modifier.clip(RoundedCornerShape(8.dp)).background(if (selected) Color(0xFF5B4B8A) else Color(0xFF2B283C))
 		.clickable(enabled = enabled, onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp)) {
 		Text(label, color = if (enabled) Text1 else Muted, fontSize = 13.sp)
+	}
+}
+
+/** A numbered how-to shown at the top of a screen: what to do, in order, and where the result goes next. */
+@Composable
+internal fun HowTo(title: String, steps: List<String>) {
+	androidx.compose.foundation.layout.Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Color(0xFF24222F)).padding(12.dp),
+		verticalArrangement = Arrangement.spacedBy(4.dp)) {
+		Text(title, color = Color(0xFFF2ECFD), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+		for ((i, s) in steps.withIndex()) Text("${i + 1}.  $s", color = Color(0xFFC8C3D8), fontSize = 13.sp)
 	}
 }

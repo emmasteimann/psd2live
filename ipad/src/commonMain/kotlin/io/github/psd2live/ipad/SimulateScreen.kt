@@ -102,6 +102,11 @@ fun SimulateScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: 
 			Text("Simulate ${outcome.name}", color = Text1, fontSize = 16.sp, fontWeight = FontWeight.Bold)
 			Text("Back without keeping changes", color = Accent, fontSize = 15.sp, modifier = Modifier.clickable { if (busy == null) onCancel() })
 		}
+		HowTo("How to simulate", listOf(
+			"Optional first: in Weights > Simulation, paint Pin where the cloth or hair should stay put (a waistband, the hair's roots).",
+			"Under Add, tap what to simulate: the clothing, the front hair or the back hair. It bakes (this can take a few minutes).",
+			"Drag Lean to watch it sway, or drag her in Physics after Done.",
+			"Done keeps it. Clear the bake or Remove undoes it later."))
 		Text("Hair and cloth as soft bodies, baked into the rig so they sway like the real thing. The sway plays when she moves: drag her in Physics after Done, or in VTube Studio.", color = Muted, fontSize = 13.sp)
 		Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
 			Column(Modifier.weight(1f)) {

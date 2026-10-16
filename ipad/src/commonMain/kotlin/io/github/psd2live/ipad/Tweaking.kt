@@ -57,8 +57,18 @@ class RigTweaking(val outcome: RigOutcome) {
 	/** Warp [id]'s lattice as shown now (the stroke in progress included) at [pose]. */
 	fun lattice(pose: Map<String, Float>, id: String): PoseTweaks.Lattice? = PoseTweaks.lattices(shown, pose).firstOrNull { it.id == id }
 
-	/** Every mesh's vertices as shown now at [pose], canvas pixels, for picking points. */
-	fun vertices(pose: Map<String, Float>): List<Pair<String, FloatArray>> = PoseTweaks.vertices(shown, pose)
+	/**
+	 * The meshes brushes, points and the wireframe work on; empty = every mesh. With targets set, a push near other parts
+	 * leaves them alone - work on one layer without grabbing its neighbours.
+	 */
+	var targets: Set<String> = emptySet()
+	private fun targeted(id: String) = targets.isEmpty() || id in targets
+
+	/** Every art mesh, by id and name, in the rig's order (for choosing targets). */
+	fun meshes(): List<Pair<String, String>> = shown.drawables.filter { it.mesh != null }.map { it.id.raw to it.name }
+
+	/** The targeted meshes' vertices as shown now at [pose], canvas pixels, for picking points. */
+	fun vertices(pose: Map<String, Float>): List<Pair<String, FloatArray>> = PoseTweaks.vertices(shown, pose).filter { targeted(it.first) }
 
 	/** Starts moving [selection] (vertex indices by mesh) rigidly with the pencil from canvas ([x], [y]). */
 	fun beginPoints(pose: Map<String, Float>, selection: Map<String, Set<Int>>, x: Float, y: Float): Boolean {
@@ -97,7 +107,7 @@ class RigTweaking(val outcome: RigOutcome) {
 				if (smooth) CanvasDeformStroke.Action.SMOOTH else CanvasDeformStroke.Action.BRUSH)
 			return true
 		}
-		val meshes = PoseTweaks.meshesUnder(puppet, pose, x, y, radius)
+		val meshes = PoseTweaks.meshesUnder(puppet, pose, x, y, radius).filter(::targeted)
 		if (meshes.isEmpty()) return false
 		session = PoseTweaks.begin(puppet, pose, meshes, x, y, radius, hardness, strength,
 			if (smooth) CanvasDeformStroke.Action.SMOOTH else CanvasDeformStroke.Action.BRUSH)
@@ -223,7 +233,7 @@ class RigTweaking(val outcome: RigOutcome) {
 		}
 
 	/** Every mesh's triangle edges at [pose], canvas pixels (x0, y0, x1, y1, ...), for the wireframe overlay. */
-	fun wires(pose: Map<String, Float>): List<FloatArray> = PoseTweaks.wireframes(shown, pose).map { it.second }
+	fun wires(pose: Map<String, Float>): List<FloatArray> = PoseTweaks.wireframes(shown, pose, targets.takeIf { it.isNotEmpty() }).map { it.second }
 
 	/** The tweaked rig's runtime files written over the rig's folder, as the outcome the Rig tab shows. Blocking. */
 	fun finish(progress: (String, Double) -> Unit): RigOutcome {

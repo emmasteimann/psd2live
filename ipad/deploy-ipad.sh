@@ -91,6 +91,12 @@ if [ "$BUILD" = 1 ]; then
         for _ in $(seq 1 120); do busy || break; sleep 5; done
         if busy; then echo "The other build is still going after 10 minutes. Try again when it's done."; exit 1; fi
     fi
+    # The Xcode project is generated from iosApp/project.yml (XcodeGen): regenerate it when the spec is newer, so new
+    # files (the upscaler model...) are in the build.
+    if [ ! -d iosApp/Layerloom.xcodeproj ] || [ iosApp/project.yml -nt iosApp/Layerloom.xcodeproj/project.pbxproj ]; then
+        if command -v xcodegen >/dev/null; then say "Regenerating the Xcode project…"; (cd iosApp && xcodegen generate -q)
+        else echo "iosApp/project.yml changed but XcodeGen isn't installed (brew install xcodegen)."; exit 1; fi
+    fi
     rm -rf "$APP"  # never install a stale app
     if ! (cd iosApp && nice xcodebuild -project Layerloom.xcodeproj -scheme Layerloom -configuration "$CONFIG" \
         -destination "id=$UDID" -derivedDataPath "$DERIVED" -allowProvisioningUpdates \

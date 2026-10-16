@@ -43,7 +43,7 @@ data class WorkspaceJobSnapshot(
 /** A durable commit may finish just before a cancellable dispatcher handoff. */
 class WorkspaceJobCompletion(private val validate: (WorkspaceOperationOutput) -> Unit = {}) : AbstractCoroutineContextElement(Key) {
     companion object Key : CoroutineContext.Key<WorkspaceJobCompletion>
-    private val value = AtomicReference<WorkspaceOperationOutput?>()
+    private val value = AtomicReference<WorkspaceOperationOutput?>(null)
     fun committed(result: WorkspaceOperationOutput) {
         // Preserve the actual commit first. An encoding defect cannot turn a durable commit into a rollback.
         check(value.compareAndSet(null, result)) { "Job already committed" }

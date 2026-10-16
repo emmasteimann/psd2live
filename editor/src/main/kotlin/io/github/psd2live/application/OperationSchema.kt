@@ -82,7 +82,7 @@ private fun validateSchema(value: JsonElement, schema: JsonObject, path: String,
         }
         is JsonPrimitive -> {
             if (value.isString) {
-                val length = value.content.codePointCount(0, value.content.length)
+                val length = value.content.codePointLength()
                 if (length < (schema["minLength"]?.jsonPrimitive?.int ?: 0) ||
                     length > (schema["maxLength"]?.jsonPrimitive?.int ?: Int.MAX_VALUE)) fail("string length outside allowed range")
                 schema["pattern"]?.jsonPrimitive?.content?.let { if (!Regex(it).containsMatchIn(value.content)) fail("invalid format") }
@@ -101,7 +101,7 @@ private fun validateSchema(value: JsonElement, schema: JsonObject, path: String,
 private fun schemaValueKey(value: JsonElement): Any = when (value) {
     is JsonObject -> value.mapValues { (_, field) -> schemaValueKey(field) }
     is JsonArray -> value.map(::schemaValueKey)
-    is JsonPrimitive -> if (value.isString) value else value.content.toBigDecimalOrNull()?.stripTrailingZeros() ?: value
+    is JsonPrimitive -> if (value.isString) value else schemaNumberKey(value.content) ?: value
 }
 
 /** Resolve local definitions only; executing a schema never loads URLs or external resources. */

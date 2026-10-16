@@ -10,8 +10,7 @@ import io.github.psd2live.project.WorkspaceTaskSnapshot
 class WorkspaceTaskRecords {
 	private var tasks: List<WorkspaceTaskSnapshot> = emptyList()
 
-	@Synchronized
-	fun restore(snapshots: List<WorkspaceTaskSnapshot>) {
+	fun restore(snapshots: List<WorkspaceTaskSnapshot>) = io.github.psd2live.core.synchronized(this) {
 		require(tasks.isEmpty()) { "Task manager is already initialized" }
 		require(snapshots.map { it.id }.toSet().size == snapshots.size) { "Persisted task IDs must be unique" }
 		for (snapshot in snapshots) {
@@ -25,6 +24,5 @@ class WorkspaceTaskRecords {
 		tasks = snapshots.map { it.copy(events = it.events.sortedBy { event -> event.sequence }) }
 	}
 
-	@Synchronized
-	fun list(): List<WorkspaceTaskSnapshot> = tasks
+	fun list(): List<WorkspaceTaskSnapshot> = io.github.psd2live.core.synchronized(this) { tasks }
 }

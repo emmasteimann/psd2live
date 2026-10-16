@@ -36,38 +36,3 @@ fun sourceArtwork(arguments: JsonObject): Pair<WorkspaceSourceArt, Map<String, L
     }
     return WorkspaceSourceArt(width, height, layers, emptyList()) to overrides
 }
-
-/** A binary source partition preserves original RGBA exactly; it does not invent hidden artwork. */
-fun partitionSourcePolygon(layer: SourceLayer, arguments: JsonObject, pieceIds: List<String>, work: WorkspaceRasterWork): List<WorkspaceSourceLayer> {
-    require(!layer.clipped && layer.blend == LayerBlend.Normal && layer.channelMask == ChannelMask.ALL) { "Split requires a normal, unmasked source layer" }
-    val polygon = arguments.getValue("polygon").jsonArray.map { point -> point.jsonArray.map { it.jsonPrimitive.double } }
-    require(polygon.size in 3..32 && polygon.all { it.size == 2 && it.all(Double::isFinite) })
-    val names = arguments.getValue("names").jsonArray.map { it.jsonPrimitive.content }
-    require(names.size == 2 && names.all { it.isNotBlank() })
-    // Path2D.Double's contains, edge rules included (PolygonPath matches it exactly).
-    val shape = io.github.psd2live.core.PolygonPath(polygon.map { it[0] to it[1] })
-    val sourceRaster = layer.raster
-    val selected = sourceRaster.rgba.copyOf(); val remainder = sourceRaster.rgba.copyOf()
-    var selectedPixels = 0; var remainingPixels = 0
-    for (y in 0 until sourceRaster.height) {
-        work.progress(0.1f + 0.5f * y / sourceRaster.height, "Partitioning source pixels")
-        for (x in 0 until sourceRaster.width) {
-            val localX = layer.bounds.left + (x + 0.5) * layer.bounds.width / sourceRaster.width
-            val localY = layer.bounds.top + (y + 0.5) * layer.bounds.height / sourceRaster.height
-            // The polygon is in canvas pixels. A layer moved as a whole still stores its original frame.
-            val inside = shape.contains(layer.transform.x(localX.toFloat(), localY.toFloat()).toDouble(),
-                layer.transform.y(localX.toFloat(), localY.toFloat()).toDouble())
-            val alpha = (y * sourceRaster.width + x) * 4 + 3
-            if (inside) { remainder[alpha] = 0; if (selected[alpha].toInt() != 0) selectedPixels++ }
-            else { selected[alpha] = 0; if (remainder[alpha].toInt() != 0) remainingPixels++ }
-        }
-    }
-    require(selectedPixels > 0 && remainingPixels > 0) { "Polygon must separate two nonempty painted regions" }
-    require(pieceIds.size == 2) { "Polygon partition requires two piece IDs" }
-    val pieces = listOf(selected, remainder).mapIndexed { index, rgba ->
-        (WorkspaceSourceLayer.copyOf(layer, layer.order) as WorkspaceSourceLayer).copy(
-            id = LayerId(pieceIds[index]), name = names[index].trim(),
-            raster = LayerRaster(sourceRaster.width, sourceRaster.height, rgba), sourceAssetId = null, sourceSpatialReferenceId = null, derived = true)
-    }
-    return pieces
-}

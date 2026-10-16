@@ -289,7 +289,7 @@ class WorkspaceRuntime<M>(
         // A failed host notification cannot roll back the authoritative commit.
         try { onCommitted(publishedRead) }
         catch (failure: Exception) {
-            System.getLogger(WorkspaceRuntime::class.java.name).log(System.Logger.Level.WARNING, "Unable to schedule committed workspace persistence", failure)
+            logWarning("io.github.psd2live.application.WorkspaceRuntime", "Unable to schedule committed workspace persistence", failure)
         }
     }
 

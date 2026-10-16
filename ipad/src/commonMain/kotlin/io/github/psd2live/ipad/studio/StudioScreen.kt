@@ -93,7 +93,7 @@ private enum class Tool(val label: String) { BRUSH("Brush"), EDGE("Edge brush"),
  */
 @OptIn(ExperimentalLayoutApi::class, kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @Composable
-fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
+fun NativeStudio(modifier: Modifier, onSendToRig: (psdName: String) -> Unit = {}, onOpenWebStudio: () -> Unit) {
 	var project by remember { mutableStateOf<StudioProject?>(null) }
 	var loading by remember { mutableStateOf<String?>("Opening the studio…") }
 	var selectedId by remember { mutableStateOf<String?>(null) }
@@ -342,6 +342,26 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 						val made = withContext(Dispatchers.Default) { StudioPsd.import(RigFiles.read(file), file) }
 						replaceWith(made, "Imported ${made.parts.size} layers from $file."); busy = null
 					}
+				}
+			}
+			if (p != null) Chip("Send to Rig", true) {
+				scope.launch(safe) {
+					flushMask(); val now = projectNow ?: return@launch
+					busy = "Writing the PSD for the Rig tab"
+					// Its own name, so it never replaces an original PSD of the same character (boo.psd...).
+					val name = (now.name.replace(Regex("[^a-zA-Z0-9_ -]"), "_").trim().ifEmpty { "Layerloom" }) + " - Studio.psd"
+					// The rigger's PSD (parts named by their rig role, with stable ids) and its rig job beside it (glue, swing,
+					// turn depths, toggles, arms): the Mac's Studio-to-PSD2Live hand-off, on the iPad.
+					val handoff = withContext(Dispatchers.Default) {
+						StudioRigHandoff.build(now).also {
+							io.github.psd2live.ipad.RigFiles.putPsd(name, it.psd)
+							io.github.psd2live.ipad.RigFiles.putPsd(name.removeSuffix(".psd") + ".layerloom.json", it.job.toString().encodeToByteArray())
+						}
+					}
+					busy = null
+					if (handoff.layers.isEmpty()) { status = "Nothing to rig yet: extract some parts first."; return@launch }
+					if (handoff.skipped.isNotEmpty()) status = "Left out of the rig: ${handoff.skipped.joinToString()}"
+					onSendToRig(name)
 				}
 			}
 			if (p != null) Chip("Export PSD") {

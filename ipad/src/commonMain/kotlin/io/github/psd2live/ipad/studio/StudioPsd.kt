@@ -79,7 +79,7 @@ object StudioPsd {
 		return write(w, h, layers.map { PsdLayer(it.name, it.layer, !it.visible) }, merged)
 	}
 
-	class PsdLayer(val name: String, val layer: Layer, val hidden: Boolean)
+	class PsdLayer(val name: String, val layer: Layer, val hidden: Boolean, val id: Int? = null)
 
 	/** A flat PSD of [layers] (bottom first) on a [w] x [h] canvas with [merged] as its composite image. */
 	fun write(w: Int, h: Int, layers: List<PsdLayer>, merged: IntArray): ByteArray {
@@ -107,6 +107,8 @@ object StudioPsd {
 			val luni = Buffer(); luni.writeInt(l.name.length); for (c in l.name) luni.writeShort(c.code)
 			if (luni.size % 4 != 0L) repeat((4 - (luni.size % 4).toInt())) { luni.writeByte(0) }
 			extra.writeUtf8("8BIMluni"); extra.writeInt(luni.size.toInt()); extra.writeAll(luni)
+			// A stable layer id (Photoshop's "lyid"): PSD2Live names layers by it, so its edits follow a part through renames.
+			l.id?.let { extra.writeUtf8("8BIMlyid"); extra.writeInt(4); extra.writeInt(it) }
 			records.writeInt(extra.size.toInt()); records.writeAll(extra)
 			for ((_, data) in encoded) channels.write(data)
 		}

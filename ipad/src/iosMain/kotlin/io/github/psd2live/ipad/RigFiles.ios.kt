@@ -25,6 +25,13 @@ actual object RigFiles {
 
 	actual fun read(name: String): ByteArray = FileSystem.SYSTEM.read("$documents/$name".toPath()) { readByteArray() }
 
+	actual fun putPsd(name: String, data: ByteArray) {
+		require('/' !in name && !name.startsWith(".")) { "Unsafe file name: $name" }
+		val target = "$documents/$name".toPath(); val temp = "$documents/.$name.tmp".toPath()
+		FileSystem.SYSTEM.write(temp) { write(data) }
+		FileSystem.SYSTEM.atomicMove(temp, target)
+	}
+
 	actual fun folderFor(psdName: String): String {
 		val safe = psdName.substringBeforeLast('.').replace(Regex("[^A-Za-z0-9._ -]+"), "_").trim().ifEmpty { "rig" }
 		val folder = "$documents/Rigs/$safe".toPath()

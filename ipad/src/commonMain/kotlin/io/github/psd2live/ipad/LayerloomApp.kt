@@ -38,6 +38,7 @@ private val Muted = Color(0xFF9793A7)
 @Composable
 fun LayerloomApp() {
 	var workspace by remember { mutableStateOf(Workspace.STUDIO) }
+	var rigStart by remember { mutableStateOf<String?>(null) }
 	Column(Modifier.fillMaxSize().background(Background).safeDrawingPadding()) {
 		Row(
 			Modifier.fillMaxWidth().height(52.dp).background(Bar).padding(horizontal = 16.dp),
@@ -61,10 +62,10 @@ fun LayerloomApp() {
 		}
 		Box(Modifier.fillMaxSize()) {
 			when (workspace) {
-				Workspace.STUDIO -> io.github.psd2live.ipad.studio.NativeStudio(Modifier.fillMaxSize()) { workspace = Workspace.WEB }
+				Workspace.STUDIO -> io.github.psd2live.ipad.studio.NativeStudio(Modifier.fillMaxSize(), onSendToRig = { rigStart = it; workspace = Workspace.RIG }) { workspace = Workspace.WEB }
 				// The web studio, kept until the native one covers everything it does.
 				Workspace.WEB -> StudioView(Modifier.fillMaxSize())
-				Workspace.RIG -> RigWorkspace(Modifier.fillMaxSize())
+				Workspace.RIG -> RigWorkspace(Modifier.fillMaxSize(), start = rigStart, onStarted = { rigStart = null })
 			}
 		}
 	}

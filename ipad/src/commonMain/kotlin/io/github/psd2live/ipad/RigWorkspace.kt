@@ -66,7 +66,7 @@ private sealed interface RigState {
  * pipeline; the moc3 runtime files go to the Rigs folder beside them, ready for VTube Studio or any Cubism runtime.
  */
 @Composable
-fun RigWorkspace(modifier: Modifier = Modifier) {
+fun RigWorkspace(modifier: Modifier = Modifier, start: String? = null, onStarted: () -> Unit = {}) {
 	var psds by remember { mutableStateOf(emptyList<String>()) }
 	var projects by remember { mutableStateOf(emptyList<String>()) }
 	var autosave by remember { mutableStateOf<String?>(null) }
@@ -123,6 +123,9 @@ fun RigWorkspace(modifier: Modifier = Modifier) {
 			}
 		}
 	}
+
+	// The Studio's "Send to Rig": rig that PSD straight away.
+	LaunchedEffect(start) { if (start != null) { refresh(); rig(start); onStarted() } }
 
 	Column(modifier.verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
 		// An editing screen (paint, tweak, settings) has the whole tab: the file list steps aside.

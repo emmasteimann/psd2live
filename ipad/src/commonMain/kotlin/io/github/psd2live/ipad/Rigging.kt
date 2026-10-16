@@ -10,6 +10,7 @@ import io.github.psd2live.format.compile.FrameSpec
 import io.github.psd2live.format.compile.RasterImage
 import io.github.psd2live.core.PipelineConfig
 import io.github.psd2live.core.ProgressListener
+import io.github.psd2live.core.LayerloomJob
 import org.umamo.format.psd.PsdReader
 
 /** What rigging one PSD made: the rig's size, where its runtime files went, and the checks' warnings. */
@@ -65,7 +66,20 @@ fun rigPsd(name: String, bytes: ByteArray, progress: (String, Double) -> Unit): 
 	require(PsdReader.matches(bytes)) { "$name is not a Photoshop file" }
 	val started = RigFiles.nowSeconds()
 	progress("Reading the layers", 0.02)
-	return buildRig(name, PsdReader.read(bytes), PipelineConfig(exportCmo3 = false), started, progress)
+	val source = PsdReader.read(bytes)
+	// A rig job beside the PSD (NAME.layerloom.json: the Studio's Send to Rig, or one copied from the Mac) builds the rig
+	// the Studio asked for, read by PSD2Live's own LayerloomJob as the Mac's Import PSD does.
+	val job = runCatching { RigFiles.read(name.substringBeforeLast('.') + LayerloomJob.SUFFIX) }.getOrNull()
+		?.let { runCatching { LayerloomJob.parse(kotlinx.serialization.json.Json.parseToJsonElement(it.decodeToString()) as kotlinx.serialization.json.JsonObject) }.getOrNull() }
+		?.takeUnless { it.isEmpty }
+	val config = job?.configure(PipelineConfig(exportCmo3 = false)) ?: PipelineConfig(exportCmo3 = false)
+	if (job == null) return buildRig(name, source, config, started, progress)
+	val pipeline = PSD2LivePipeline()
+	val listener = ProgressListener { stage, fraction -> progress(stage, 0.04 + fraction * 0.7) }
+	val first = pipeline.buildPreview(source, config, listener)
+	// Its one-time setup: the arm skeleton and per-layer swings become rig edits, as on the Mac.
+	val model = kotlinx.coroutines.runBlocking { LayerloomJob.setUp(first, config) { pipeline.buildPreview(source, it, listener) } }
+	return writeRig(name, source, model.config, model, started, progress)
 }
 
 /** Builds [source]'s rig with [config], writes its runtime files into Rigs/NAME and returns what was made. */
@@ -169,6 +183,8 @@ expect object RigFiles {
 	/** Saved projects (`.psd2live`) in Documents and Documents/Rigs, as full paths. */
 	fun projects(): List<String>
 	fun read(name: String): ByteArray
+	/** Puts a file beside the PSDs (Documents/NAME, replacing one of that name): the Studio's "Send to Rig" PSD and its rig job. */
+	fun putPsd(name: String, data: ByteArray)
 	/** A fresh folder for [psdName]'s rig: Documents/Rigs/NAME (an older rig of the same name is replaced). */
 	fun folderFor(psdName: String): String
 	fun write(folder: String, relative: String, data: ByteArray)

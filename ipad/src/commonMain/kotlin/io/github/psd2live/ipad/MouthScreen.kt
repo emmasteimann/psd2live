@@ -64,6 +64,7 @@ private val Text1 = Color(0xFFF2ECFD)
 private val Muted = Color(0xFF9793A7)
 private val Accent = Color(0xFFC9B7FF)
 private val Danger = Color(0xFFFF9A9A)
+private val Warn = Color(0xFFFFC46B)
 private val Handle = Color(0xFFFFC46B)
 
 /**
@@ -87,6 +88,13 @@ fun MouthScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 	var message by remember { mutableStateOf<String?>(null) }
 	val scope = rememberCoroutineScope()
 	val cfg = editing.model.config
+	// Her own closed-mouth art, when it clearly draws a line, is the mouth at rest: the line this screen shapes then fades
+	// in only as she talks (its opacity follows Mouth Open). Such a rig previews talking, or nothing here would show.
+	val paintedClosed = remember(outcome) {
+		editing.puppet.drawables.any { d -> d.name.lowercase().startsWith("mouth") && !d.name.lowercase().contains("close") &&
+			d.channelGrids.gridsByChannel[org.umamo.runtime.model.FormChannel.OPACITY]?.axes?.any { it.parameterId.raw == "ParamMouthOpenY" } == true }
+	}
+	var talking by remember(outcome) { mutableStateOf(paintedClosed) }
 	val changed = shape != cfg.mouthShape || curve != cfg.mouthCurve || thickness != cfg.mouthThickness || color != cfg.mouthColor
 
 	// The face up close: the mouth's box, padded.
@@ -97,11 +105,11 @@ fun MouthScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 			for (i in 0 until pts.size / 2) { x0 = minOf(x0, pts[i * 2]); x1 = maxOf(x1, pts[i * 2]); y0 = minOf(y0, pts[i * 2 + 1]); y1 = maxOf(y1, pts[i * 2 + 1]) }
 		if (x1 < x0) null else { val pad = maxOf(x1 - x0, y1 - y0) * 1.5f; floatArrayOf(x0 - pad, y0 - pad, x1 + pad, y1 + pad) }
 	}
-	LaunchedEffect(tick) {
+	LaunchedEffect(tick, talking) {
 		image = withContext(Dispatchers.Default) {
 			val b = mouthBox ?: floatArrayOf(0f, 0f, editing.puppet.canvasWidth, editing.puppet.canvasHeight)
 			val w = b[2] - b[0]; val h = b[3] - b[1]; val k = 700f / maxOf(w, h)
-			editing.frame(emptyMap(), b[0], b[1], w, h, (w * k).roundToInt().coerceAtLeast(1), (h * k).roundToInt().coerceAtLeast(1)).toImageBitmap()
+			editing.frame(if (talking) mapOf("ParamMouthOpenY" to 0.35f) else emptyMap(), b[0], b[1], w, h, (w * k).roundToInt().coerceAtLeast(1), (h * k).roundToInt().coerceAtLeast(1)).toImageBitmap()
 		}
 	}
 	fun apply() {
@@ -119,6 +127,12 @@ fun MouthScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 			Text("Back without keeping changes", color = Accent, fontSize = 15.sp, modifier = Modifier.clickable { if (busy == null) onCancel() })
 		}
 		Text("The closed mouth's lip line. Pick a shape or drag the curve's points, then Apply to see it on her.", color = Muted, fontSize = 13.sp)
+		if (paintedClosed) Text("Her art has its own closed mouth, so that painted line is what shows at rest (it smiles and frowns with her). " +
+			"The line shaped here shows while she talks - the preview starts on Talking for that reason.", color = Warn, fontSize = 13.sp)
+		Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+			Chip("Preview: closed", !talking) { talking = false }
+			Chip("Preview: talking", talking) { talking = true }
+		}
 		Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
 			Box(Modifier.weight(1f).height(760.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF101017)), contentAlignment = Alignment.Center) {
 				image?.let { Image(it, contentDescription = "Her mouth", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize()) } ?: Text("Drawing…", color = Muted)

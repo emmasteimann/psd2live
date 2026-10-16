@@ -285,6 +285,33 @@ fun applyPaintings(outcome: RigOutcome, paintings: List<LayerPainting>, progress
 	return writeRig(outcome.name, document.source, current, model, started, progress)
 }
 
+/** [layer]'s own pixels as a picture at most [maxEdge] px on its longer side (nearest pixel), for thumbnails and highlights. */
+fun layerPicture(layer: SourceLayer, maxEdge: Int): androidx.compose.ui.graphics.ImageBitmap? {
+	val r = layer.raster
+	if (r.width <= 0 || r.height <= 0) return null
+	val k = minOf(1f, maxEdge.toFloat() / maxOf(r.width, r.height))
+	val w = maxOf(1, (r.width * k).toInt()); val h = maxOf(1, (r.height * k).toInt())
+	val argb = IntArray(w * h)
+	for (y in 0 until h) {
+		val sy = minOf(r.height - 1, (y / k).toInt())
+		for (x in 0 until w) {
+			val i = (sy * r.width + minOf(r.width - 1, (x / k).toInt())) * 4
+			argb[y * w + x] = ((r.rgba[i + 3].toInt() and 255) shl 24) or ((r.rgba[i].toInt() and 255) shl 16) or
+				((r.rgba[i + 1].toInt() and 255) shl 8) or (r.rgba[i + 2].toInt() and 255)
+		}
+	}
+	return io.github.psd2live.format.compile.RasterImage(w, h, argb).toImageBitmap()
+}
+
+/** The top layer of [layers] (top of the stack first) with a visible pixel at canvas ([x], [y]), or null. */
+fun layerAt(layers: List<SourceLayer>, x: Float, y: Float): SourceLayer? = layers.firstOrNull { layer ->
+	val b = layer.bounds; val r = layer.raster
+	if (b.width <= 0 || b.height <= 0 || x < b.left || y < b.top || x >= b.left + b.width || y >= b.top + b.height) return@firstOrNull false
+	val px = ((x - b.left) / b.width * r.width).toInt().coerceIn(0, r.width - 1)
+	val py = ((y - b.top) / b.height * r.height).toInt().coerceIn(0, r.height - 1)
+	(r.rgba[(py * r.width + px) * 4 + 3].toInt() and 255) > 40
+}
+
 /** The block ([x], [y], [width], [height]) of [image], in its pixels, stretched to [outWidth] x [outHeight], nearest pixel. */
 expect fun RigImage.regionBitmap(x: Float, y: Float, width: Float, height: Float, outWidth: Int, outHeight: Int): androidx.compose.ui.graphics.ImageBitmap
 

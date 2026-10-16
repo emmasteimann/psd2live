@@ -1,6 +1,8 @@
 package io.github.psd2live.ipad
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.drawscope.Stroke
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.delay
@@ -96,18 +98,7 @@ fun PaintScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onClose: (
 					modifier = Modifier.clickable { if (!unapplied || confirmBack) onClose() else confirmBack = true })
 			}
 			ApplyPaint(outcome, paintings.values.toList(), onApplied)
-			for (layer in layers) {
-				val painted = paintings[layer.id.raw]?.isDirty == true
-				Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(if (painted) Color(0xFF332C4E) else Color(0xFF24222F))
-					.clickable { painting = paintings.getOrPut(layer.id.raw) { LayerPainting(outcome, layer) } }.padding(horizontal = 14.dp, vertical = 10.dp),
-					horizontalArrangement = Arrangement.SpaceBetween) {
-					val p = paintings[layer.id.raw]
-					val newMesh = painted && p?.pastEdgeKnown == true && !p.keepMesh
-					Text(when { newMesh -> "${layer.name}  ·  painted, new mesh"; painted -> "${layer.name}  ·  painted"; else -> layer.name },
-						color = if (painted) Accent else Text1, fontSize = 15.sp)
-					Text(layer.groupPath, color = Muted, fontSize = 13.sp)
-				}
-			}
+			LayerChooser(outcome, layers, paintings) { layer -> painting = paintings.getOrPut(layer.id.raw) { LayerPainting(outcome, layer) } }
 		} else {
 			LayerPaintView(current, paintings.values.toList(), onApplied, onBack = { painting = null })
 		}
@@ -412,6 +403,78 @@ private fun LayerPaintView(painting: LayerPainting, all: List<LayerPainting>, on
 					color = Muted, fontSize = 12.sp)
 			}
 			failure?.let { Text("Couldn't apply: $it", color = Danger, fontSize = 13.sp) }
+		}
+	}
+}
+
+/**
+ * Choosing the layer to paint: the character on the left with the chosen layer at full strength and the rest faded,
+ * the layers on the right with a thumbnail each. Tap a row or tap her (the layer under the finger), then Paint.
+ */
+@Composable
+private fun LayerChooser(outcome: RigOutcome, layers: List<org.umamo.format.art.SourceLayer>, paintings: Map<String, LayerPainting>,
+	onPaint: (org.umamo.format.art.SourceLayer) -> Unit) {
+	var chosen by remember(outcome) { mutableStateOf(layers.firstOrNull()) }
+	var character by remember(outcome) { mutableStateOf<ImageBitmap?>(null) }
+	var highlight by remember { mutableStateOf<ImageBitmap?>(null) }
+	val thumbs = remember(outcome) { androidx.compose.runtime.mutableStateMapOf<String, ImageBitmap>() }
+	val cw = outcome.source.widthPx.toFloat(); val ch = outcome.source.heightPx.toFloat()
+	LaunchedEffect(outcome) {
+		character = withContext(Dispatchers.Default) { outcome.preview.render(outcome.preview.parameters.associate { it.id to it.default }, 1200).toImageBitmap() }
+		for (layer in layers) withContext(Dispatchers.Default) { layerPicture(layer, 96) }?.let { thumbs[layer.id.raw] = it }
+	}
+	LaunchedEffect(chosen) { highlight = chosen?.let { l -> withContext(Dispatchers.Default) { layerPicture(l, 1200) } } }
+	Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+		BoxWithConstraints(Modifier.weight(1f).height(820.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF101017))) {
+			val density = LocalDensity.current
+			val w = with(density) { maxWidth.toPx() }; val h = with(density) { maxHeight.toPx() }
+			val scale = minOf(w / cw, h / ch); val left = (w - cw * scale) / 2f; val top0 = (h - ch * scale) / 2f
+			Canvas(Modifier.fillMaxSize().pointerInput(layers, w, h) {
+				detectTapGestures { o -> layerAt(layers, (o.x - left) / scale, (o.y - top0) / scale)?.let { chosen = it } }
+			}) {
+				character?.let { drawImage(it, dstOffset = IntOffset(left.roundToInt(), top0.roundToInt()),
+					dstSize = IntSize((cw * scale).roundToInt(), (ch * scale).roundToInt()), alpha = if (chosen != null) 0.3f else 1f) }
+				val l = chosen; val img = highlight
+				if (l != null && img != null) {
+					val b = l.bounds
+					val x = left + b.left * scale; val y = top0 + b.top * scale; val bw = b.width * scale; val bh = b.height * scale
+					drawImage(img, dstOffset = IntOffset(x.roundToInt(), y.roundToInt()), dstSize = IntSize(bw.roundToInt().coerceAtLeast(1), bh.roundToInt().coerceAtLeast(1)))
+					drawRect(Accent, Offset(x - 3f, y - 3f), Size(bw + 6f, bh + 6f), style = Stroke(2f))
+				}
+			}
+			if (character == null) Text("Drawing…", color = Muted, fontSize = 14.sp, modifier = Modifier.align(Alignment.Center))
+		}
+		Column(Modifier.width(380.dp).height(820.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+			val c = chosen
+			Text(if (c == null) "Tap a layer, here or on her" else "Chosen: ${c.name}", color = Text1, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+			Text("The chosen layer shows at full strength on the left; everything else is faded. Tap her to pick the layer under your finger.",
+				color = Muted, fontSize = 12.sp)
+			Box(Modifier.clip(RoundedCornerShape(8.dp)).background(if (c != null) Color(0xFF4A3F78) else Color(0xFF2B283C))
+				.clickable(enabled = c != null) { c?.let(onPaint) }.padding(horizontal = 14.dp, vertical = 10.dp)) {
+				Text(if (c == null) "Paint" else "Paint ${c.name}", color = if (c != null) Accent else Muted, fontSize = 15.sp)
+			}
+			Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+				for (layer in layers) {
+					val painted = paintings[layer.id.raw]?.isDirty == true
+					val p = paintings[layer.id.raw]
+					val newMesh = painted && p?.pastEdgeKnown == true && !p.keepMesh
+					val on = layer.id == c?.id
+					Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
+						.background(when { on -> Color(0xFF4A3F78); painted -> Color(0xFF332C4E); else -> Color(0xFF24222F) })
+						.clickable { if (on) onPaint(layer) else chosen = layer }.padding(horizontal = 10.dp, vertical = 6.dp),
+						verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+						Box(Modifier.size(44.dp).clip(RoundedCornerShape(6.dp)).background(Color(0xFF3A3650)), contentAlignment = Alignment.Center) {
+							thumbs[layer.id.raw]?.let { androidx.compose.foundation.Image(it, layer.name, Modifier.fillMaxSize().padding(2.dp),
+								contentScale = androidx.compose.ui.layout.ContentScale.Fit) }
+						}
+						Column {
+							Text(when { newMesh -> "${layer.name}  ·  painted, new mesh"; painted -> "${layer.name}  ·  painted"; else -> layer.name },
+								color = if (painted || on) Accent else Text1, fontSize = 15.sp)
+							if (layer.groupPath.isNotBlank()) Text(layer.groupPath, color = Muted, fontSize = 12.sp)
+						}
+					}
+				}
+			}
 		}
 	}
 }

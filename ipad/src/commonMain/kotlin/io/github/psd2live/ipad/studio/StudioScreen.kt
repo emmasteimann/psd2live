@@ -136,6 +136,13 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 	var islandsPreview by remember { mutableStateOf<ImageBitmap?>(null) }
 	var islandNames by remember { mutableStateOf<List<String>>(emptyList()) }
 	var lastSplit by remember { mutableStateOf<Triple<String, StudioPart, List<String>>?>(null) }
+	// Peel with the AI: mode, repaint, what's underneath / what to reveal, signed in, and a result waiting for review.
+	var peelMode by remember { mutableStateOf("split") }
+	var peelRepaint by remember { mutableStateOf(false) }
+	var peelBehind by remember { mutableStateOf("") }
+	var peelWhat by remember { mutableStateOf("") }
+	var aiSignedIn by remember { mutableStateOf(false) }
+	var peelPending by remember { mutableStateOf<Triple<String, (StudioProject) -> StudioProject, String?>?>(null) }
 	// The inspector's tab; a picture the Check panels show on the canvas instead of the art; clone points.
 	var tab by remember { mutableStateOf(InspectorTab.PART) }
 	var canvasPreview by remember { mutableStateOf<Pair<IntArray, String>?>(null) }
@@ -706,21 +713,72 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 					BasicTextField(peelName, { peelName = it }, singleLine = true, textStyle = TextStyle(color = Text1, fontSize = 15.sp), cursorBrush = SolidColor(Accent),
 						decorationBox = { inner -> Box { if (peelName.isEmpty()) Text("New part's name (e.g. Talisman)", color = Muted, fontSize = 15.sp); inner() } },
 						modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(Field).padding(10.dp))
-					Chip("Split from ${selected.name}", true, enabled = busy == null && selected.cutout != null && (selected.mask != null || mask?.canUndo == true)) {
+					// Repaint underneath / Reveal use the AI image edit through the private studio; the result is reviewed first.
+					LaunchedEffect(Unit) { PrivateStudio.signedIn { aiSignedIn = it } }
+					Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+						Chip("Split", peelMode == "split") { peelMode = "split" }; Chip("Reveal", peelMode == "reveal") { peelMode = "reveal" }
+					}
+					if (peelMode == "split") {
+						Chip(if (peelRepaint) "Repaint underneath (AI): on" else "Repaint underneath (AI): off", peelRepaint) { peelRepaint = !peelRepaint }
+						if (peelRepaint) BasicTextField(peelBehind, { peelBehind = it }, singleLine = true, textStyle = TextStyle(color = Text1, fontSize = 14.sp), cursorBrush = SolidColor(Accent),
+							decorationBox = { inner -> Box { if (peelBehind.isEmpty()) Text("What's underneath (e.g. the hat's teal band)", color = Muted, fontSize = 14.sp); inner() } },
+							modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(Field).padding(10.dp))
+					} else {
+						Text("Paints hidden art into ${selected.name}, behind what's there (hair behind the head, lining behind a hand). Mark where it goes; hide the parts in front first so the AI sees what's behind.", color = Muted, fontSize = 12.sp)
+						BasicTextField(peelWhat, { peelWhat = it }, singleLine = true, textStyle = TextStyle(color = Text1, fontSize = 14.sp), cursorBrush = SolidColor(Accent),
+							decorationBox = { inner -> Box { if (peelWhat.isEmpty()) Text("Hidden art to paint (e.g. the back of her bob)", color = Muted, fontSize = 14.sp); inner() } },
+							modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(Field).padding(10.dp))
+					}
+					val needsAi = peelMode == "reveal" || peelRepaint
+					if (needsAi && !aiSignedIn) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+						Chip("Sign in to your private studio", true) { PrivateStudio.signIn { ok -> aiSignedIn = ok; status = if (ok) "Signed in for 12 hours." else "Not signed in." } }
+					}
+					val pending = peelPending
+					if (pending != null && pending.first == selected.id) {
+						Text("Review it on the canvas. Each try is one paid image edit.", color = Muted, fontSize = 12.sp)
+						Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+							Chip("Apply", true) {
+								val (_, next, select) = pending
+								peelPending = null; canvasPreview = null
+								projectNow?.let { change(next(it)) }; select?.let { selectedId = it }
+								status = "Applied. Undo last peel puts it back."
+							}
+							Chip("Discard") { peelPending = null; canvasPreview = null; status = "Discarded." }
+						}
+					} else Chip(if (peelMode == "reveal") "Reveal in ${selected.name}" else "Split from ${selected.name}", true,
+						enabled = busy == null && (selected.mask != null || mask?.canUndo == true) && (peelMode == "reveal" || selected.cutout != null) && (!needsAi || aiSignedIn) && (peelMode == "split" || peelWhat.isNotBlank())) {
 						val id = selected.id; val name = peelName.trim().ifEmpty { "${selected.name} piece" }
+						val behind = peelBehind.trim().ifEmpty { "the ${selected.name}" }; val what = peelWhat.trim(); val repaint = peelRepaint; val mode = peelMode
 						scope.launch(safe) {
 							flushMask(); val now = projectNow ?: return@launch
-							busy = "Lifting the piece"
-							val cut = withContext(encoder) { StudioPeel.cut(now, id) }
-							val latest = projectNow ?: return@launch
-							val (next, newId) = StudioPeel.applySplit(latest, id, cut, name)
-							change(next); busy = null; peelName = ""
-							selectedId = newId
-							status = "Peeled \"$name\" off. Undo last peel puts it back."
+							try {
+								if (mode == "split" && !repaint) {
+									busy = "Lifting the piece"
+									val cut = withContext(encoder) { StudioPeel.cut(now, id) }
+									val latest = projectNow ?: return@launch
+									val (next, newId) = StudioPeel.applySplit(latest, id, cut, name)
+									change(next); peelName = ""; selectedId = newId
+									status = "Peeled \"$name\" off. Undo last peel puts it back."
+								} else if (mode == "split") {
+									busy = "Lifting the piece and repainting underneath (one image edit, 30-60 s)"
+									val r = StudioAI.peelSplit(now, id, name, behind)
+									val (preview, newId) = withContext(Dispatchers.Default) { StudioPeel.applySplit(now, id, r.cut, name) }
+									val hidden = withContext(Dispatchers.Default) { StudioRender.composite(preview.withParts(preview.parts.map { if (it.id == newId) it.with(mapOf("visible" to kotlinx.serialization.json.JsonPrimitive(false))) else it })) }
+									canvasPreview = hidden to "The piece lifted away: what's underneath now (not applied yet)"
+									peelPending = Triple(id, { latest: StudioProject -> StudioPeel.applySplit(latest, id, r.cut, name).first }, null)
+									status = if (r.redrawnShare > 0.15) "Note: the AI drew the $name back in over ${(r.redrawnShare * 100).roundToInt()}% of it; those pixels were dropped." else "Review it, then Apply or Discard."
+								} else {
+									busy = "Painting the hidden art (one image edit, 30-60 s)"
+									val art = StudioAI.peelReveal(now, id, what)
+									val shown = withContext(Dispatchers.Default) { StudioRender.composite(StudioAI.applyReveal(now, id, art, what)) }
+									canvasPreview = shown to "With the hidden art (not applied yet)"
+									peelPending = Triple(id, { latest: StudioProject -> StudioAI.applyReveal(latest, id, art, what) }, null)
+									status = "Review it, then Apply or Discard."
+								}
+							} catch (e: IllegalStateException) { status = e.message ?: "That didn't work."; PrivateStudio.signedIn { aiSignedIn = it } }
+							finally { busy = null }
 						}
 					}
-					Text("Repainting what was underneath, and Reveal (painting hidden art), use the AI image edit: they come with signing in to your private studio. Until then they're in Web studio on the Mac.",
-						color = Muted, fontSize = 11.sp)
 					Chip("Undo last peel", enabled = busy == null && selected.json["peelUndo"] is kotlinx.serialization.json.JsonObject) {
 						val id = selected.id
 						try { change(StudioPeel.undo(p, id)); status = "Last peel undone." } catch (e: Throwable) { status = e.message ?: "Nothing to undo." }

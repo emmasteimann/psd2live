@@ -265,6 +265,44 @@ object RigBuilder {
 		/** A closed mouth draws the mouth at rest, so an open mouth beside it fades out there; see [buildChannels]. */
 		val hasClosedMouth: Boolean = analysis.layers.any { it.semantic.tag == SemanticTag.MOUTH && it.opaquePixels > 0 }
 
+		/**
+		 * Painted closed-mouth art ("mouth close") that draws the mouth at rest: the mouth art beside it, and its lip
+		 * ribbons, fade in only as the mouth opens, or the rest pose shows two lines; see [buildChannels]. Only art that
+		 * really draws a line counts - dark pixels across a good part of the mouth's width. Faint marks (a highlight, a
+		 * few specks) leave the generated line as the mouth at rest, or the face would have none.
+		 */
+		val hasMouthCloseArt: Boolean = analysis.layers.any { layer ->
+			layer.semantic.tag == SemanticTag.MOUTH_CLOSE && layer.source !is MouthLipLayer && drawsMouth(layer, closedMouthAperture(layer))
+		}
+
+		private fun drawsMouth(layer: ClassifiedLayer, mouth: Bounds?): Boolean {
+			val raster = layer.source.raster
+			var dark = 0
+			for (i in 0 until raster.width * raster.height) {
+				if ((raster.rgba[i * 4 + 3].toInt() and 255) <= 128) continue
+				val sum = (raster.rgba[i * 4].toInt() and 255) + (raster.rgba[i * 4 + 1].toInt() and 255) + (raster.rgba[i * 4 + 2].toInt() and 255)
+				if (sum < 450) dark++
+			}
+			val wide = mouth == null || mouth.width <= 0f || layer.bounds.width >= mouth.width * 0.4f
+			return dark >= maxOf(8, (layer.bounds.width * 0.25f).toInt()) && wide
+		}
+
+		/**
+		 * The opening painted closed-mouth art bends with on Mouth Form: the mouth art nearest it (the larger on a tie),
+		 * whose own bounds are the aperture its generated line moves with, so both move alike; its own bounds alone.
+		 */
+		fun closedMouthAperture(layer: ClassifiedLayer): Bounds? {
+			if (layer.semantic.tag != SemanticTag.MOUTH_CLOSE) return null
+			val mouths = analysis.layers.filter {
+				it.semantic.tag in setOf(SemanticTag.MOUTH, SemanticTag.MOUTH_OPEN) && it.opaquePixels > 0 && it.source !is MouthLipLayer
+			}
+			fun distance(other: ClassifiedLayer): Float {
+				val dx = other.centroidX - layer.centroidX; val dy = other.centroidY - layer.centroidY
+				return dx * dx + dy * dy
+			}
+			return (mouths.minWithOrNull(compareBy<ClassifiedLayer> { distance(it) }.thenByDescending { it.bounds.width * it.bounds.height })?.bounds) ?: layer.bounds
+		}
+
 		/** Replace only artwork while keeping every existing deformer and normalization frame. */
 		fun withArtwork(input: PipelineAnalysis): RigContext = RigContext(
 			analysis = input.copy(
@@ -1335,7 +1373,7 @@ object RigBuilder {
 			val override = config.layerOverrides[layer.source.id.raw]
 			val classification = override?.type ?: layer.semantic.type
 			val channelGrids = if (config.meshOnly && classification == LayerType.PRESET) ChannelGrids.Empty
-				else channelStage(layer, override, switchParamKeys, config.rigTuning, context.hasClosedMouth, stages).let { grids ->
+				else channelStage(layer, override, switchParamKeys, config.rigTuning, context.hasClosedMouth, stages, context.hasMouthCloseArt).let { grids ->
 					if (v2 && resolution.isStubLayer(layer.source.id.raw) &&
 						grids.gridsByChannel.values.any { grid -> grid.axes.any { it.parameterId !in knownParameters } }) ChannelGrids.Empty else grids
 				}
@@ -1658,12 +1696,12 @@ object RigBuilder {
 
 	/** [buildChannels] under a key of what it reads. */
 	private fun channelStage(layer: ClassifiedLayer, override: LayerClassificationOverride?, switchParamKeys: Map<String, FloatArray>,
-	                         tuning: RigTuning, closedMouth: Boolean, stages: RigStageCache?): ChannelGrids {
-		if (stages == null) return buildChannels(layer, override, switchParamKeys, tuning, closedMouth)
+	                         tuning: RigTuning, closedMouth: Boolean, stages: RigStageCache?, mouthCloseArt: Boolean = false): ChannelGrids {
+		if (stages == null) return buildChannels(layer, override, switchParamKeys, tuning, closedMouth, mouthCloseArt)
 		val parameter = (override?.parameter ?: layer.semantic.parameter).trim()
 		val key = listOf(override?.type ?: layer.semantic.type, parameter, override?.switchId ?: layer.semantic.switchId,
-			switchParamKeys[parameter]?.toList(), layer.semantic.tag, layer.semantic.side, tuning.teethFade, closedMouth)
-		return stages.get(RigStageCache.CHANNELS, 256, key) { buildChannels(layer, override, switchParamKeys, tuning, closedMouth) }
+			switchParamKeys[parameter]?.toList(), layer.semantic.tag, layer.semantic.side, tuning.teethFade, closedMouth, mouthCloseArt)
+		return stages.get(RigStageCache.CHANNELS, 256, key) { buildChannels(layer, override, switchParamKeys, tuning, closedMouth, mouthCloseArt) }
 	}
 
 	/**
@@ -2035,7 +2073,7 @@ object RigBuilder {
 			parentId != null -> data.mesh
 			else -> DrawableMesh(rig, uvs, part.triangles.copyOf())
 		}
-		val aperture = mouthApertureFor(rigLayer)?.let { mouthAperture ?: it }
+		val aperture = mouthApertureFor(rigLayer)?.let { mouthAperture ?: it } ?: context.closedMouthAperture(rigLayer)
 		// A part of a lip ribbon keeps a zero grid: its record carries the ribbon's motion as residual.
 		val generated = if (config.meshOnly || deferred || ribbon) zeroMeshGrid(canvas.size)
 			else buildDrawableGeometry(rigLayer, data, parentFrame, context.faceRig, matchingEyeWhiteBounds(rigLayer, context.eyeWhiteLayers),
@@ -2044,7 +2082,7 @@ object RigBuilder {
 		val override = config.layerOverrides[layer.source.id.raw]
 		val classification = override?.type ?: layer.semantic.type
 		val channels = if (deferred || config.meshOnly && classification == LayerType.PRESET) ChannelGrids.Empty
-			else channelStage(layer, override, switchParamKeys, config.rigTuning, context.hasClosedMouth, stages)
+			else channelStage(layer, override, switchParamKeys, config.rigTuning, context.hasClosedMouth, stages, context.hasMouthCloseArt)
 		val drawable = Drawable(
 			id = part.drawableId,
 			name = part.name,
@@ -2124,7 +2162,7 @@ object RigBuilder {
 				parentFrame,
 				context.faceRig,
 				matchingEyeWhiteBounds(rigLayer, context.eyeWhiteLayers),
-				mouthAperture,
+				mouthAperture ?: context.closedMouthAperture(rigLayer),
 				config,
 				mouthPaths,
 			)
@@ -3172,7 +3210,9 @@ object RigBuilder {
 			SemanticTag.IRIDES -> irisJellyGrid(layer, data, parentFrame, config.rigTuning)
 			SemanticTag.EYEBROW -> eyebrowGrid(layer, data, parentFrame, config.rigTuning)
 			SemanticTag.MOUTH, SemanticTag.MOUTH_OPEN -> mouthWholeGrid(data, parentFrame, mouthAperture ?: layer.bounds, config, mouthPaths)
-			SemanticTag.MOUTH_CLOSE, SemanticTag.TOOTH_T, SemanticTag.TOOTH_B, SemanticTag.TONGUE ->
+			SemanticTag.MOUTH_CLOSE -> if (mouthAperture == null) zeroMeshGrid(data.mesh.positions.size)
+				else closedMouthFormGrid(data, parentFrame, mouthAperture, config)
+			SemanticTag.TOOTH_T, SemanticTag.TOOTH_B, SemanticTag.TONGUE ->
 				zeroMeshGrid(data.mesh.positions.size)
 			else -> zeroMeshGrid(data.mesh.positions.size)
 		}
@@ -3387,6 +3427,24 @@ object RigBuilder {
 			MeshDeltaForm(delta)
 		}
 
+	/**
+	 * Painted closed-mouth art on Mouth Form: it bends exactly as the generated mouth line does at closed - the motion
+	 * [mouthWholePoint] gives at [aperture] for that form, less its rest shape, so the painted line smiles and frowns
+	 * with it and is never squashed. It only fades on opening (its opacity channel).
+	 */
+	private fun closedMouthFormGrid(data: MeshData, parentFrame: Bounds, aperture: Bounds, config: PipelineConfig): KeyformGrid<MeshDeltaForm> =
+		grid(listOf(axis(StandardParameters.MOUTH_FORM, -1f, 0f, 1f))) { values ->
+			val delta = FloatArray(data.mesh.positions.size)
+			for (index in data.rigPositions.indices step 2) {
+				val x = data.rigPositions[index]; val y = data.rigPositions[index + 1]
+				val formed = mouthWholePoint(x, y, aperture, values[0], 0f, config.mouthShape, true, config.mouthCurve, config.rigTuning)
+				val rest = mouthWholePoint(x, y, aperture, 0f, 0f, config.mouthShape, true, config.mouthCurve, config.rigTuning)
+				delta[index] = (formed.first - rest.first) / parentFrame.width.coerceAtLeast(1e-4f)
+				delta[index + 1] = (formed.second - rest.second) / parentFrame.height.coerceAtLeast(1e-4f)
+			}
+			MeshDeltaForm(delta)
+		}
+
     private fun createMouthDeformPaths(drawableId: DrawableId, data: MeshData, frame: Bounds): List<DeformPath> {
         val colCount = MouthContour.DEFAULT_SEGMENTS + 1
         if (data.mesh.positions.size < colCount * 6) return emptyList()
@@ -3594,6 +3652,8 @@ object RigBuilder {
 		tuning: RigTuning,
 		/** Whether a closed mouth layer draws the mouth at rest; see [RigContext.hasClosedMouth]. */
 		closedMouth: Boolean,
+		/** Whether painted closed-mouth art draws it at rest; see [RigContext.hasMouthCloseArt]. */
+		mouthCloseArt: Boolean = false,
 	): ChannelGrids {
 		val type = override?.type ?: layer.semantic.type
 		// Teeth, tongue and an open mouth fade in over the first teethFade percent of the opening.
@@ -3630,6 +3690,10 @@ object RigBuilder {
 					// its channels) showed as a second, differently coloured line under the closed mouth. Alone it
 					// is the only mouth there is and stays.
 					SemanticTag.MOUTH_OPEN -> if (!closedMouth) null
+						else scalarGrid(StandardParameters.MOUTH_OPEN, floatArrayOf(0f, fadeIn, 1f)) { open -> (open / fadeIn).coerceIn(0f, 1f) }
+					// The same beside painted closed-mouth art: the mouth art (and its ribbons) would otherwise draw a
+					// second line under the painted one at rest. Without such art it is the mouth at rest and stays.
+					SemanticTag.MOUTH -> if (!mouthCloseArt) null
 						else scalarGrid(StandardParameters.MOUTH_OPEN, floatArrayOf(0f, fadeIn, 1f)) { open -> (open / fadeIn).coerceIn(0f, 1f) }
 					else -> null
 				}

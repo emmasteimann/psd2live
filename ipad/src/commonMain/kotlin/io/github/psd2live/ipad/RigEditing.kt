@@ -89,13 +89,16 @@ class RigEditing(private val start: RigPreviewModel, startSource: org.umamo.form
 	 * as one undoable step: the shared edit runs on the project document, and the rig is built again from the result,
 	 * exactly as opening that project would build it.
 	 */
-	fun applyDocument(operation: String, request: JsonObject, work: io.github.psd2live.application.WorkspaceRasterWork = io.github.psd2live.application.WorkspaceRasterWork.Direct) {
+	fun applyDocument(operation: String, request: JsonObject, work: io.github.psd2live.application.WorkspaceRasterWork = io.github.psd2live.application.WorkspaceRasterWork.Direct,
+		simulationWork: io.github.psd2live.application.WorkspaceSimulationWork = io.github.psd2live.application.WorkspaceSimulationWork.Direct,
+		report: (JsonObject) -> Unit = {}) {
 		val art = requireNotNull(source) { "This rig has no source art to edit" }
 		val document = documentOf(art, model.config)
 		val op = io.github.psd2live.application.WorkspaceDocumentOperation(operation, request)
 		val next = when (operation) {
 			in io.github.psd2live.application.WorkspaceDepthSplitEdits.supported -> io.github.psd2live.application.WorkspaceDepthSplitEdits.apply(op, document, model, work)
 			in io.github.psd2live.application.WorkspacePartitionEdits.supported -> io.github.psd2live.application.WorkspacePartitionEdits.apply(op, document, model, work)
+			in io.github.psd2live.application.WorkspaceSimulationEdits.supported -> io.github.psd2live.application.WorkspaceSimulationEdits.apply(op, document, model, simulationWork).also { report(it.report) }.document
 			else -> throw IllegalArgumentException("$operation isn't on the iPad yet")
 		}
 		val config = next.config(PipelineConfig(exportCmo3 = false))
@@ -455,4 +458,33 @@ object RigSkeleton {
 		val s = spec(e) ?: return
 		e.reconfigure(e.model.config.copy(rigEdits = e.model.config.rigEdits.copy(skeleton = s.copy(savedPoses = s.savedPoses - name))))
 	}
+}
+
+/**
+ * Simulation on the iPad: the desktop's Simulate mode (shared WorkspaceSimulationEdits): cloth and hair simulated as
+ * soft bodies and baked into the rig's own deformers, from presets (front hair, back hair, clothing - only where it
+ * hangs loose), or the classic sway back; re-bake, clear a bake, remove one. Each is one undoable step.
+ */
+object RigSimulation {
+	class Sim(val id: String, val name: String, val kind: String, val targets: Int, val baked: Boolean, val fit: Float?, val errorPx: Float?)
+
+	fun list(e: RigEditing): List<Sim> = e.model.config.rigEdits.simEdits.map { s ->
+		Sim(s.id, s.name, s.kind.name.lowercase(), s.targets.size, s.bake != null, s.bake?.fit, s.bake?.maxErrorPx)
+	}
+
+	/** Runs a simulation document edit; [progress] hears 0..1 while it bakes. Returns the edit's report (warnings...). */
+	fun run(e: RigEditing, operation: String, request: JsonObject, progress: (Float) -> Unit = {}): JsonObject {
+		var report = JsonObject(emptyMap())
+		val work = object : io.github.psd2live.application.WorkspaceSimulationWork {
+			override fun <T> run(id: String, action: ((Float) -> Unit, () -> Boolean) -> T): T = action(progress) { false }
+		}
+		e.applyDocument(operation, request, simulationWork = work) { report = it }
+		return report
+	}
+
+	/** "front_hair", "back_hair", "clothing"; "classic_front_hair" / "classic_back_hair" put the generated sway back; "remove_clothing". */
+	fun preset(e: RigEditing, name: String, progress: (Float) -> Unit = {}) = run(e, "model_apply_preset", buildJsonObject { put("preset", name) }, progress)
+	fun bake(e: RigEditing, id: String, progress: (Float) -> Unit = {}) = run(e, "simulation_bake", buildJsonObject { put("id", id) }, progress)
+	fun clearBake(e: RigEditing, id: String) = run(e, "simulation_clear_bake", buildJsonObject { put("id", id) })
+	fun delete(e: RigEditing, id: String) = run(e, "simulation_delete", buildJsonObject { put("id", id) })
 }

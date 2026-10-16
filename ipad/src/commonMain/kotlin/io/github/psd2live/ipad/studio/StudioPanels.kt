@@ -209,6 +209,24 @@ private fun UnderlyingSection(h: PanelHost, part: StudioPart) {
 			}
 		}
 	}
+	var genPrompt by remember { mutableStateOf("Make this exact character bald and remove her hat and all hair. Preserve her face, expression, pose, clothing, accessories, framing, background, and art style. Reveal a coherent bare head, ears, neck, and any clothing previously hidden by the removed hair and hat. Do not redesign the character or add accessories.") }
+	androidx.compose.foundation.text.BasicTextField(genPrompt, { genPrompt = it }, textStyle = androidx.compose.ui.text.TextStyle(color = Text1, fontSize = 13.sp),
+		cursorBrush = androidx.compose.ui.graphics.SolidColor(Accent), modifier = Modifier.fillMaxWidth().height(90.dp).clip(RoundedCornerShape(6.dp)).background(Color(0xFF24222F)).padding(8.dp))
+	Chip("Generate it with AI (one paid edit)", enabled = !h.busy && genPrompt.isNotBlank()) {
+		PrivateStudio.signedIn { signed ->
+			if (!signed) { PrivateStudio.signIn { ok -> h.say(if (ok) "Signed in. Tap Generate again." else "Not signed in.") }; return@signedIn }
+			val prompt = genPrompt
+			h.run("Generating the underlying version (30-60 s)") {
+				val now = h.latest() ?: return@run
+				val src = withContext(Dispatchers.Default) { encodePng(now.width, now.height, StudioImages.layer(now.source, now.width, now.height).full()) }
+				val out = StudioAI.generate(src, null, prompt, "underlying-version")
+				val next = withContext(Dispatchers.Default) { StudioFace.importReference(now, encodePng(out.width, out.height, out.argb)) }
+				h.change(next)
+				StudioFace.reference(next)?.let { r -> h.showOnCanvas(withContext(Dispatchers.Default) { StudioFace.overlay(next, r, r.alignment!!) }, "The generated version over the drawing, half strength") }
+				h.say("Generated. Line it up, paint the mask over the hidden area, then Copy under.")
+			}
+		}
+	}
 	if (ref == null) return
 	val a0 = ref.alignment ?: StudioFace.Alignment(0.0, 0.0, 1.0, 0.0)
 	var x by remember(ref.art) { mutableStateOf(a0.x.toFloat()) }

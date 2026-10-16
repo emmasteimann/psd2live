@@ -165,14 +165,16 @@ class LayerPainting(val outcome: RigOutcome, val layer: SourceLayer) {
 	 * source, the rig is generated from the art as it was first rigged, so meshes and deformers stay and only the
 	 * textures follow the paint. Blocking.
 	 */
-	fun apply(progress: (String, Double) -> Unit): RigOutcome {
-		val started = RigFiles.nowSeconds()
-		progress("Cropping the painted layer", 0.01)
+	fun apply(progress: (String, Double) -> Unit): RigOutcome = applyPaintings(outcome, listOf(this), progress)
+
+	/** This layer's paint as the source layer it becomes, at the index it sits in the source (see [applyPaintings]). */
+	internal fun paintedLayer(): Pair<Int, io.github.psd2live.project.WorkspaceSourceLayer> {
 		val painted = space.crop(image)
 		val pixels = PaintPixels(painted.raster, painted.rect ?: LayerCanvasRect.of(painted.bounds))
 		val repainted = RasterPaintCommit.paintedSource(outcome.model, layer.id.raw, pixels)
-		val config = outcome.config.copy(generationSource = outcome.config.generationSource ?: outcome.source)
-		return buildRig(outcome.name, repainted.source, config, started, progress)
+		val index = repainted.source.layers.indexOfFirst { it.raster === repainted.raster }
+		check(index >= 0) { "The painted layer ${layer.name} wasn't found in the art" }
+		return index to (repainted.source.layers[index] as io.github.psd2live.project.WorkspaceSourceLayer)
 	}
 
 	private companion object {
@@ -181,6 +183,30 @@ class LayerPainting(val outcome: RigOutcome, val layer: SourceLayer) {
 			it.writeArgb(0, 0, image.width, image.height, image.readArgb(0, 0, image.width, image.height))
 		}
 	}
+}
+
+/**
+ * The rig rebuilt once with every painted layer in [paintings] (all painting the same [outcome]): each layer's pixels
+ * go into the source as the desktop's repaint does, then one rebuild from the art as it was first rigged, so meshes and
+ * deformers stay. Layers without paint are left alone. Blocking.
+ */
+fun applyPaintings(outcome: RigOutcome, paintings: List<LayerPainting>, progress: (String, Double) -> Unit): RigOutcome {
+	val started = RigFiles.nowSeconds()
+	val dirty = paintings.filter { it.isDirty }
+	require(dirty.isNotEmpty()) { "Nothing is painted yet" }
+	require(dirty.all { it.outcome === outcome }) { "These layers were painted on a different rig" }
+	// The art the repaint indexes into (the model's own), so each painted layer lands where it sits.
+	val art = outcome.model.analysis.source
+	val layers = art.layers.map { if (it is io.github.psd2live.project.WorkspaceSourceLayer) it else io.github.psd2live.project.WorkspaceSourceLayer.copyOf(it, it.order) as io.github.psd2live.project.WorkspaceSourceLayer }.toMutableList()
+	dirty.forEachIndexed { i, painting ->
+		progress("Cropping ${painting.layer.name}", 0.01 + 0.04 * i / dirty.size)
+		val (index, layer) = painting.paintedLayer()
+		layers[index] = layer
+	}
+	val source = io.github.psd2live.project.WorkspaceSourceArt(widthPx = art.widthPx, heightPx = art.heightPx,
+		layers = layers, groups = art.groups)
+	val config = outcome.config.copy(generationSource = outcome.config.generationSource ?: outcome.source)
+	return buildRig(outcome.name, source, config, started, progress)
 }
 
 /** The block ([x], [y], [width], [height]) of [image], in its pixels, stretched to [outWidth] x [outHeight], nearest pixel. */

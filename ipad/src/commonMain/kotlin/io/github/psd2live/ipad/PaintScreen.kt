@@ -72,36 +72,47 @@ private val Swatches = listOf(
 
 /**
  * Painting a rigged PSD's layers on the iPad: pick a layer, paint it with the desktop's engine (brush, eraser, bucket,
- * undo), then apply - the rig is rebuilt with the painted pixels and keeps its meshes.
+ * undo), switch to other layers and paint them too (each keeps its paint and undo), then apply once - the rig is rebuilt
+ * with every painted layer's pixels and keeps its meshes.
  */
 @Composable
 fun PaintScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onClose: () -> Unit) {
 	var painting by remember(outcome) { mutableStateOf<LayerPainting?>(null) }
 	val layers = remember(outcome) { paintableLayers(outcome) }
+	// Every layer opened so far, with its paint and undo, so switching layers keeps the work.
+	val paintings = remember(outcome) { mutableMapOf<String, LayerPainting>() }
 	Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
 		val current = painting
 		if (current == null) {
 			Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
 				Text("Paint ${outcome.name}: choose a layer", color = Text1, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-				Text("Back to the rig", color = Accent, fontSize = 15.sp, modifier = Modifier.clickable(onClick = onClose))
+				// With paint not yet applied, leaving takes a second tap: "Back" sits where "Choose another layer" was, so a
+				// double tap there would otherwise throw the paint away.
+				var confirmBack by remember { mutableStateOf(false) }
+				val unapplied = paintings.values.any { it.isDirty }
+				Text(when { !unapplied -> "Back to the rig"; confirmBack -> "Tap again to drop the paint"; else -> "Back to the rig…" },
+					color = if (confirmBack) Danger else Accent, fontSize = 15.sp,
+					modifier = Modifier.clickable { if (!unapplied || confirmBack) onClose() else confirmBack = true })
 			}
+			ApplyPaint(outcome, paintings.values.toList(), onApplied)
 			for (layer in layers) {
-				Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Color(0xFF24222F))
-					.clickable { painting = LayerPainting(outcome, layer) }.padding(horizontal = 14.dp, vertical = 10.dp),
+				val painted = paintings[layer.id.raw]?.isDirty == true
+				Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(if (painted) Color(0xFF332C4E) else Color(0xFF24222F))
+					.clickable { painting = paintings.getOrPut(layer.id.raw) { LayerPainting(outcome, layer) } }.padding(horizontal = 14.dp, vertical = 10.dp),
 					horizontalArrangement = Arrangement.SpaceBetween) {
-					Text(layer.name, color = Text1, fontSize = 15.sp)
+					Text(if (painted) "${layer.name}  ·  painted" else layer.name, color = if (painted) Accent else Text1, fontSize = 15.sp)
 					Text(layer.groupPath, color = Muted, fontSize = 13.sp)
 				}
 			}
 		} else {
-			LayerPaintView(current, onApplied, onBack = { painting = null })
+			LayerPaintView(current, paintings.values.toList(), onApplied, onBack = { painting = null })
 		}
 	}
 }
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @Composable
-private fun LayerPaintView(painting: LayerPainting, onApplied: (RigOutcome) -> Unit, onBack: () -> Unit) {
+private fun LayerPaintView(painting: LayerPainting, all: List<LayerPainting>, onApplied: (RigOutcome) -> Unit, onBack: () -> Unit) {
 	var tool by remember { mutableStateOf(PaintTool.BRUSH) }
 	var radius by remember { mutableStateOf(12f) }
 	var hardness by remember { mutableStateOf(0.7f) }
@@ -170,7 +181,7 @@ private fun LayerPaintView(painting: LayerPainting, onApplied: (RigOutcome) -> U
 
 	Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
 		Text("Painting ${painting.layer.name}", color = Text1, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-		Text(if (painting.isDirty) "Choose another layer (drops this layer's paint)" else "Choose another layer", color = Accent, fontSize = 15.sp,
+		Text(if (painting.isDirty) "Choose another layer (this paint is kept)" else "Choose another layer", color = Accent, fontSize = 15.sp,
 			modifier = Modifier.clickable { if (applying == null) onBack() })
 	}
 	Text("Pencil or a finger paints; two fingers move and zoom; tap two fingers to undo, three to redo.", color = Muted, fontSize = 13.sp)
@@ -311,8 +322,11 @@ private fun LayerPaintView(painting: LayerPainting, onApplied: (RigOutcome) -> U
 				androidx.compose.foundation.text.BasicTextField(pieceName, { pieceName = it }, singleLine = true,
 					textStyle = androidx.compose.ui.text.TextStyle(color = Text1, fontSize = 15.sp), cursorBrush = androidx.compose.ui.graphics.SolidColor(Accent),
 					modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(Color(0xFF2B283C)).padding(10.dp))
+				// A cut re-rigs from this layer alone, so other layers' paint would be lost: apply that first.
+				val otherPaint = all.any { it !== painting && it.isDirty }
+				if (otherPaint) Text("Apply the other painted layers first: cutting rebuilds the rig from this layer.", color = Muted, fontSize = 12.sp)
 				Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-					Chip("Cut to a new layer", true, enabled = painting.hasMask && applying == null) {
+					Chip("Cut to a new layer", true, enabled = painting.hasMask && applying == null && !otherPaint) {
 						applying = "Cutting" to 0.0; failure = null
 						scope.launch {
 							try {
@@ -356,12 +370,13 @@ private fun LayerPaintView(painting: LayerPainting, onApplied: (RigOutcome) -> U
 				Text(progress.first, color = Muted, fontSize = 13.sp)
 				LinearProgressIndicator(progress = progress.second.toFloat(), modifier = Modifier.fillMaxWidth(), color = Accent)
 			} else {
-				Chip("Apply to the rig", true, enabled = painting.isDirty) {
+				val dirty = all.filter { it.isDirty }
+				Chip(if (dirty.size > 1) "Apply ${dirty.size} painted layers to the rig" else "Apply to the rig", true, enabled = dirty.isNotEmpty()) {
 					applying = "Starting" to 0.0; failure = null
 					scope.launch {
 						try {
 							val updated = withContext(worker) {
-								painting.apply { stage, fraction -> scope.launch(Dispatchers.Main) { if (applying != null) applying = stage to fraction } }
+								applyPaintings(painting.outcome, dirty) { stage, fraction -> scope.launch(Dispatchers.Main) { if (applying != null) applying = stage to fraction } }
 							}
 							applying = null
 							onApplied(updated)
@@ -370,11 +385,42 @@ private fun LayerPaintView(painting: LayerPainting, onApplied: (RigOutcome) -> U
 						}
 					}
 				}
-				Text("The rig is rebuilt with this layer's new pixels; its meshes and deformers stay as they are.", color = Muted, fontSize = 12.sp)
+				Text(if (dirty.size > 1) "The rig is rebuilt once with every painted layer (${dirty.joinToString { it.layer.name }}); its meshes and deformers stay as they are."
+					else "The rig is rebuilt with the new pixels; its meshes and deformers stay as they are. Other layers can be painted first and applied together.",
+					color = Muted, fontSize = 12.sp)
 			}
 			failure?.let { Text("Couldn't apply: $it", color = Danger, fontSize = 13.sp) }
 		}
 	}
+}
+
+/** The layer list's "apply every painted layer" button, with its progress; nothing shows until something is painted. */
+@Composable
+private fun ApplyPaint(outcome: RigOutcome, paintings: List<LayerPainting>, onApplied: (RigOutcome) -> Unit) {
+	val dirty = paintings.filter { it.isDirty }
+	if (dirty.isEmpty()) return
+	var applying by remember { mutableStateOf<Pair<String, Double>?>(null) }
+	var failure by remember { mutableStateOf<String?>(null) }
+	val scope = rememberCoroutineScope()
+	val progress = applying
+	if (progress != null) {
+		Text(progress.first, color = Muted, fontSize = 13.sp)
+		LinearProgressIndicator(progress = progress.second.toFloat(), modifier = Modifier.fillMaxWidth(), color = Accent)
+	} else Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+		Chip(if (dirty.size > 1) "Apply ${dirty.size} painted layers to the rig" else "Apply the painted layer to the rig", true) {
+			applying = "Starting" to 0.0; failure = null
+			scope.launch {
+				try {
+					val updated = withContext(Dispatchers.Default) {
+						applyPaintings(outcome, dirty) { stage, fraction -> scope.launch(Dispatchers.Main) { if (applying != null) applying = stage to fraction } }
+					}
+					applying = null; onApplied(updated)
+				} catch (error: Throwable) { applying = null; failure = error.message ?: error::class.simpleName }
+			}
+		}
+		Text(dirty.joinToString { it.layer.name }, color = Muted, fontSize = 13.sp)
+	}
+	failure?.let { Text("Couldn't apply: $it", color = Danger, fontSize = 13.sp) }
 }
 
 /** What the canvas shows: the layer and, faintly, the character under it, both covering [at] (x, y, w, h on screen). */

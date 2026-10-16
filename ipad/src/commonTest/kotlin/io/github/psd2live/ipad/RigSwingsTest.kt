@@ -46,4 +46,15 @@ class RigSwingsTest {
 		e.undo()
 		assertEquals(before + 1, RigSwings.list(e).size, "undo brings it back")
 	}
+
+	/** Goose's crash (2026-10-16): the size slider went to 0.8, past the model's 0.7, and the throw closed the app. */
+	@Test fun shapeEditsPastTheLimitsAreHeldInsteadOfThrowing() {
+		val draft = io.github.psd2live.core.RigSwingEdit.single("s", "Swing", SwingKind.LATERAL, listOf("m"), listOf("P"))
+		val big = RigSwings.shape(draft, 0) { it.copy(magnitude = 0.8f) }
+		assertTrue(big.motions[0].shape.magnitude <= io.github.psd2live.core.RigSwingEdit.MAX_MAGNITUDE, "held at the limit")
+		val wild = RigSwings.shape(draft, 0) { it.copy(lift = 3f, softness = -1f) }
+		assertTrue(wild.motions[0].shape.lift <= 0.5f && wild.motions[0].shape.softness >= 0f, "every value held")
+		val nan = RigSwings.shape(draft, 0) { it.copy(magnitude = Float.NaN) }
+		assertEquals(draft.motions[0].shape.magnitude, nan.motions[0].shape.magnitude, "a bad number keeps the old value")
+	}
 }

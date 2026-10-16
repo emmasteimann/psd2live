@@ -165,7 +165,7 @@ fun SwingScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 						for (n in 1..RigSwingEdit.MAX_SEGMENTS) Chip("$n", m.segments == n, enabled = busy == null) { change { RigSwings.segments(editing, it, motion, n) } }
 					}
 					Text("How far it swings  ${(m.shape.magnitude * 100).roundToInt()}%", color = Muted, fontSize = 12.sp)
-					Slider(m.shape.magnitude, { v -> draft = RigSwings.shape(d, motion) { it.copy(magnitude = v) } }, valueRange = 0.02f..0.8f, colors = sliderColors(), modifier = Modifier.height(32.dp))
+					Slider(m.shape.magnitude, { v -> draft = RigSwings.shape(d, motion) { it.copy(magnitude = v) } }, valueRange = 0.02f..RigSwingEdit.MAX_MAGNITUDE, colors = sliderColors(), modifier = Modifier.height(32.dp))
 					Text("Soft tip  ${(m.shape.softness * 100).roundToInt()}%", color = Muted, fontSize = 12.sp)
 					Slider(m.shape.softness, { v -> draft = RigSwings.shape(d, motion) { it.copy(softness = v) } }, valueRange = 0f..1f, colors = sliderColors(), modifier = Modifier.height(32.dp))
 					Text("Lift or droop  ${(m.shape.lift * 100).roundToInt()}%", color = Muted, fontSize = 12.sp)

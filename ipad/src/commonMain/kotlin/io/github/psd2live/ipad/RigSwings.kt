@@ -50,9 +50,21 @@ object RigSwings {
 		return if (on) SwingAuthoring.resized(e.model.rig.puppet, next) else next
 	}
 
-	/** [draft] with direction [motion]'s shape changed. */
+	/**
+	 * [draft] with direction [motion]'s shape changed, each value held inside the range the swing model accepts - a
+	 * slider past a limit must never throw (on iPadOS an error inside a drag closes the app).
+	 */
 	fun shape(draft: RigSwingEdit, motion: Int, change: (SwingShape) -> SwingShape): RigSwingEdit =
-		draft.copy(motions = draft.motions.mapIndexed { i, m -> if (i == motion) m.copy(shape = change(m.shape)) else m })
+		draft.copy(motions = draft.motions.mapIndexed { i, m -> if (i == motion) m.copy(shape = clamped(m.shape, change)) else m })
+
+	private fun clamped(base: SwingShape, change: (SwingShape) -> SwingShape): SwingShape {
+		val next = runCatching { change(base) }.getOrElse { return base }
+		fun f(v: Float, lo: Float, hi: Float, fallback: Float) = if (v.isFinite()) v.coerceIn(lo, hi) else fallback
+		return runCatching {
+			next.copy(magnitude = f(next.magnitude, 0f, RigSwingEdit.MAX_MAGNITUDE, base.magnitude), lift = f(next.lift, -0.5f, 0.5f, base.lift),
+				softness = f(next.softness, 0f, 1f, base.softness), zoom = f(next.zoom, -0.5f, 0.5f, base.zoom), parallel = f(next.parallel, 0f, 1f, base.parallel))
+		}.getOrElse { base }
+	}
 
 	/**
 	 * Keeps [draft] in the rig as one undoable step (a pendulum switches physics generation on). The draft as edited, not

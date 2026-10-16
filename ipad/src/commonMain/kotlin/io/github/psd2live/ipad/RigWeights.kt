@@ -52,6 +52,14 @@ object RigSkeletonWeights {
 	fun clear(e: RigEditing, spec: SkeletonSpec, drawableId: String): SkeletonSpec =
 		SkeletonDraftEdits.apply(spec, e.model, SkeletonDraftIntent.ClearWeights(drawableId)).spec
 
+	/**
+	 * [spec] with [sourceId]'s weights copied onto [targetId] (the desktop's weight transfer, interpolated by position):
+	 * bones are paired by the skeleton's own mapping; [mirror] reflects across the symmetry line, for left onto right.
+	 */
+	fun transfer(e: RigEditing, spec: SkeletonSpec, sourceId: String, targetId: String, mirror: Boolean): SkeletonSpec =
+		SkeletonDraftEdits.apply(spec, e.model, SkeletonDraftIntent.TransferWeights(sourceId, targetId,
+			io.github.psd2live.core.SkeletonWeightTransferMode.INTERPOLATE, mirror = mirror)).spec
+
 	/** Builds the rig with [spec] (the painted weights) as one undoable step. Blocking. */
 	fun apply(e: RigEditing, spec: SkeletonSpec) {
 		val m = e.model

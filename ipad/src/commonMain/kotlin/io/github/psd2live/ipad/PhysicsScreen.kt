@@ -82,6 +82,9 @@ fun PhysicsScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onCancel
 	val paramNames = remember(outcome) { outcome.model.rig.puppet.parameters.associate { it.id.raw to it.name } }
 	var applying by remember { mutableStateOf<Pair<String, Double>?>(null) }
 	var failure by remember { mutableStateOf<String?>(null) }
+	var note by remember { mutableStateOf<String?>(null) }
+	var importing by remember { mutableStateOf(false) }
+	var working by remember { mutableStateOf(false) }
 	val scope = rememberCoroutineScope()
 
 	LaunchedEffect(config, wobble) {
@@ -152,6 +155,29 @@ fun PhysicsScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onCancel
 					Chip("Defaults", false) { config = config.copy(rigEdits = config.rigEdits.copy(physicsEdits = outcome.config.rigEdits.physicsEdits.filter { false },
 						disabledPhysicsIds = emptySet())) }
 				}
+				Chip(if (importing) "Close the list" else "Copy physics from another rig…", importing) { importing = !importing }
+				if (importing) {
+					Text("Takes that rig's physics groups as they are (its own Fps too). Groups here on the same sliders switch off.", color = Muted, fontSize = 12.sp)
+					val own = outcome.folder.trimEnd('/')
+					val files = remember { RigFiles.physicsFiles().filter { !it.startsWith("$own/") } }
+					if (files.isEmpty()) Text("No other rig has physics yet (Rigs/<name>/<name>.physics3.json).", color = Muted, fontSize = 13.sp)
+					for (path in files) Text(path.substringAfterLast('/').removeSuffix(".physics3.json"), color = Accent, fontSize = 14.sp, modifier = Modifier.fillMaxWidth().clickable {
+						if (working) return@clickable
+						working = true; note = "Reading ${path.substringAfterLast('/')}…"
+						scope.launch {
+							note = try {
+								val r = withContext(Dispatchers.Default) { RigPhysicsExtras.import(outcome.model, config, RigPhysicsExtras.readFile(path)) }
+								config = r.config; importing = false
+								"Copied ${r.ids.size} group${if (r.ids.size == 1) "" else "s"}" +
+									(if (r.disabled.isNotEmpty()) "; switched off ${r.disabled.joinToString()}" else "") +
+									(if (r.missing.isNotEmpty()) ". This rig lacks some sliders they use: ${r.missing.values.flatten().distinct().joinToString()}" else "") +
+									". Drag her to try it, then Apply."
+							} catch (e: Throwable) { "Couldn't copy it: ${e.message ?: e::class.simpleName}" }
+							working = false
+						}
+					}.padding(vertical = 6.dp))
+				}
+				note?.let { Text(it, color = Muted, fontSize = 13.sp) }
 				for (group in groups) {
 					val id = group.id
 					val on = group.enabled
@@ -177,6 +203,18 @@ fun PhysicsScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onCancel
 					}
 					if (open == id) {
 						val g = group.setting
+						Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+							for ((label, target) in listOf("Fit to the art" to 1f, "Fit softer" to 0.6f)) Chip(label, false, enabled = !working) {
+								working = true; note = "Fitting ${g.name}…"
+								scope.launch {
+									note = try {
+										config = withContext(Dispatchers.Default) { RigPhysicsExtras.fit(outcome.model, config, id, target) }
+										"Fitted ${g.name}: a full head sway now swings it to ${(target * 100).roundToInt()}% of its range."
+									} catch (e: Throwable) { "Couldn't fit it: ${e.message ?: e::class.simpleName}" }
+									working = false
+								}
+							}
+						}
 						Text("Presets", color = Text1, fontSize = 13.sp, fontWeight = FontWeight.Bold)
 						androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
 							for (preset in io.github.psd2live.core.PhysicsPresets.builtins(io.github.psd2live.core.PhysicsPresets.Kind.INPUT))

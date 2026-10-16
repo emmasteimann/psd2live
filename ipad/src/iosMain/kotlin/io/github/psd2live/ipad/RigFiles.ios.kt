@@ -23,6 +23,13 @@ actual object RigFiles {
 			.filter { it.name.lowercase().endsWith(".psd2live") }.map { it.toString() }.sortedBy { it.substringAfterLast('/').lowercase() }
 	}
 
+	actual fun physicsFiles(): List<String> {
+		val rigs = "$documents/Rigs".toPath()
+		val roots = listOf(documents.toPath()) + (if (FileSystem.SYSTEM.exists(rigs)) FileSystem.SYSTEM.list(rigs).filter { FileSystem.SYSTEM.metadataOrNull(it)?.isDirectory == true } else emptyList())
+		return roots.flatMap { root -> if (FileSystem.SYSTEM.exists(root)) FileSystem.SYSTEM.list(root) else emptyList() }
+			.filter { it.name.lowercase().endsWith(".physics3.json") }.map { it.toString() }.sortedBy { it.substringAfterLast('/').lowercase() }
+	}
+
 	actual fun read(name: String): ByteArray = FileSystem.SYSTEM.read("$documents/$name".toPath()) { readByteArray() }
 
 	actual fun putPsd(name: String, data: ByteArray) {

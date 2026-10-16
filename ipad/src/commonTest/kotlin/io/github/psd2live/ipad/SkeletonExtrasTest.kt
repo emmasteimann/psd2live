@@ -73,4 +73,20 @@ class SkeletonExtrasTest {
 		val rerig = RigEditing(PSD2LivePipeline().buildPreview(e.source!!, e.model.config), e.source)
 		assertEquals(RigSkeleton.spec(e)!!.bones.size, RigSkeleton.spec(rerig)!!.bones.size)
 	}
+
+	@Test fun weightsCopyMirroredFromOneSleeveToTheOther() {
+		val e = editing() ?: return
+		RigSkeleton.auto(e, "arms")
+		val spec = assertNotNull(RigSkeleton.spec(e))
+		val meshes = RigSkeletonWeights.meshes(e, spec)
+		// A part on the left arm and one on the right: the pair a mirrored copy is for.
+		fun side(id: String) = RigSkeletonWeights.bones(spec, id).mapNotNull { spec.bone(it.id)?.side }.firstOrNull { it != io.github.psd2live.core.Side.NONE }
+		val source = meshes.first { side(it.drawableId) == io.github.psd2live.core.Side.LEFT }.drawableId
+		val target = meshes.first { side(it.drawableId) == io.github.psd2live.core.Side.RIGHT }.drawableId
+		val axis = e.puppet.canvasWidth / 2f
+		val withAxis = spec.copy(symmetryAxisX = axis)
+		val next = RigSkeletonWeights.transfer(e, withAxis, source, target, mirror = true)
+		assertTrue(next.manualWeights.containsKey(target), "the target gets copied weights")
+		assertTrue(!withAxis.manualWeights.containsKey(target))
+	}
 }

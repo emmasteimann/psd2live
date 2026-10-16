@@ -221,6 +221,8 @@ expect object RigFiles {
 	fun psds(): List<String>
 	/** Saved projects (`.psd2live`) in Documents and Documents/Rigs, as full paths. */
 	fun projects(): List<String>
+	/** Physics files (`*.physics3.json`) in Documents and each Documents/Rigs folder, as full paths: other rigs' physics to copy. */
+	fun physicsFiles(): List<String>
 	fun read(name: String): ByteArray
 	/** Puts a file beside the PSDs (Documents/NAME, replacing one of that name): the Studio's "Send to Rig" PSD and its rig job. */
 	fun putPsd(name: String, data: ByteArray)

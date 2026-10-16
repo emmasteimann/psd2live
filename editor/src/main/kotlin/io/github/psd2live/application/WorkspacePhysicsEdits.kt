@@ -64,13 +64,9 @@ object WorkspacePhysicsEdits {
         require(target.isFinite() && target in 0.1f..3f) { "Target fraction must be in 0.1..3" }
         val group = WorkspaceDocumentEdits.physicsCatalog(document, model).firstOrNull { it.id == id }
             ?: throw IllegalArgumentException("Physics group not found: $id")
-        val ranges = PhysicsEngine.ranges(model.rig.puppet.parameters)
-        val trace = work.run(id) { progress, cancelled ->
-            PhysicsResponse.trace(group.setting, ranges, document.rigEdits.physicsFps, progress = progress, cancelled = cancelled)
-        }
-        val fitted = PhysicsAuthoring.fitScales(group.setting, trace.reach, target)
-        require(trace.reach.values.any { it > 0.01f }) { "No output of $id swings under a head sway; check its inputs" }
-        return document.copy(rigEdits = PhysicsAuthoring.put(document.rigEdits, fitted, group.generated))
+        return document.copy(rigEdits = work.run(id) { progress, cancelled ->
+            PhysicsFitting.fit(document.rigEdits, group, model.rig.puppet.parameters, target, progress, cancelled)
+        })
     }
 
     fun import(document: WorkspaceDocument, model: RigPreviewModel, text: String): WorkspacePhysicsCandidate {

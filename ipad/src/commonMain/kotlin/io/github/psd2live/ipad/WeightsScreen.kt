@@ -72,6 +72,8 @@ fun WeightsScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: (
 	var draftUndo by remember { mutableStateOf(listOf<SkeletonSpec>()) }
 	var draftRedo by remember { mutableStateOf(listOf<SkeletonSpec>()) }
 	var mesh by remember { mutableStateOf<String?>(null) }
+	var copyFrom by remember { mutableStateOf<String?>(null) }
+	var copyMirror by remember { mutableStateOf(false) }
 	var bone by remember { mutableStateOf<String?>(null) }
 	var kind by remember { mutableStateOf(VertexGroupKind.PIN) }
 	var radius by remember { mutableStateOf(40f) }
@@ -248,6 +250,18 @@ fun WeightsScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: (
 							}
 						}
 						Text("Clean up keeps at most two bones a vertex and drops stray specks. Back to automatic forgets this mesh's painted weights.", color = Muted, fontSize = 12.sp)
+						Text("Copy weights from another part onto this one", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+						Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+							for (o in meshes) if (o.drawableId != m) Chip(o.name, o.drawableId == copyFrom) { copyFrom = if (copyFrom == o.drawableId) null else o.drawableId }
+						}
+						Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+							Chip("Mirrored (left onto right)", copyMirror) { copyMirror = !copyMirror }
+							val from = copyFrom
+							Chip("Copy onto ${meshes.firstOrNull { it.drawableId == m }?.name ?: "this part"}", true, enabled = busy == null && draft != null && from != null && from != m) {
+								val d = draft!!; val mirror = copyMirror
+								step("Copying weights") { val next = RigSkeletonWeights.transfer(editing, d, from!!, m, mirror); draftUndo = draftUndo + d; draftRedo = emptyList(); draft = next }
+							}
+						}
 					} else {
 						Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
 							Chip("Fill", false, enabled = busy == null) { step("Filling") { RigSimulationWeights.fill(editing, m, kind, 1f) } }

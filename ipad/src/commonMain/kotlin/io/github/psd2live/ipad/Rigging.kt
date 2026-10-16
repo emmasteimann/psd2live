@@ -136,10 +136,18 @@ internal fun writeRig(name: String, source: org.umamo.format.art.SourceArt, conf
  * [outcome] saved as a PSD2Live project (`Rigs/NAME.psd2live`) through the desktop's own project code: the Mac editor
  * opens it with the same rig. Returns the file's path.
  */
+/**
+ * The project document for a rig built from [source] with [config], every durable input in its own field as the
+ * desktop keeps it (WorkspaceDocument.config reads the per-layer fields from there, not from the settings), so what
+ * the iPad set - per-layer mesh detail, visibility, overrides - comes back when the project opens.
+ */
+internal fun documentOf(source: org.umamo.format.art.SourceArt, config: PipelineConfig) = io.github.psd2live.project.WorkspaceDocument(
+	source, config.layerVisibility, config.deletedLayerIds, config.layerOverrides, config.parentOverrides, config.rigEdits,
+	io.github.psd2live.project.WorkspaceSettingsCodec.encode(config), config.meshOverrides, config.generationSource, config.meshSource,
+	config.textureOverrides)
+
 suspend fun saveRigProject(outcome: RigOutcome): String {
-	val document = io.github.psd2live.project.WorkspaceDocument(outcome.source, emptyMap(), emptySet(), emptyMap(), emptyMap(),
-		outcome.config.rigEdits, io.github.psd2live.project.WorkspaceSettingsCodec.encode(outcome.config),
-		generationSource = outcome.config.generationSource)
+	val document = documentOf(outcome.source, outcome.config)
 	val revision = io.github.psd2live.project.WorkspaceRevisions.of(document)
 	val history = io.github.psd2live.history.WorkspaceHistoryTree(document, revision, revision)
 	val work = io.github.psd2live.project.Files.createTempDirectory("rig-save-")

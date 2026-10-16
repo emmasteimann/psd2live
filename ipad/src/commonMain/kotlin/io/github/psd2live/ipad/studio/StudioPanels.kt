@@ -41,8 +41,8 @@ private val Accent = Color(0xFFC9B7FF)
 private val Danger = Color(0xFFFF9A9A)
 private val Good = Color(0xFF8FE0A8)
 
-/** The inspector's tabs: the part itself, repairing art, and checking the project. */
-enum class InspectorTab(val label: String) { PART("Part"), REPAIR("Repair"), CHECK("Check") }
+/** The inspector's tabs: the part itself, face and expressions, repairing art, and checking the project. */
+enum class InspectorTab(val label: String) { PART("Part"), FACE("Face"), REPAIR("Repair"), CHECK("Check") }
 
 /**
  * What the Repair and Check panels need from the studio screen: the project and selection, a way to run slow work
@@ -139,6 +139,234 @@ fun RepairPanel(h: PanelHost) {
 		}
 		Chip("Undo clone", enabled = !h.busy && part.json["cloneUndo"] is kotlinx.serialization.json.JsonObject) {
 			try { h.change(StudioRepair.undoClone(p, part.id)); h.say("Clone undone.") } catch (e: IllegalStateException) { h.say(e.message ?: "Couldn't undo.") }
+		}
+	}
+	UnderlyingSection(h, part)
+}
+
+@Composable
+private fun UnderlyingSection(h: PanelHost, part: StudioPart) {
+	val p = h.project
+	Spacer(Modifier.height(10.dp))
+	Text("Underlying version", color = Text1, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+	Text("A picture of the character without what covers it (bald, no hat, no sleeve...) - drawn yourself or from elsewhere. Line it up with the drawing, paint ${part.name}'s mask over the hidden area, and copy it into a new layer behind ${part.name}.",
+		color = Muted, fontSize = 12.sp)
+	val ref = StudioFace.reference(p)
+	Chip(if (ref == null) "Import the picture" else "Replace the picture", enabled = !h.busy) {
+		io.github.psd2live.ipad.Exchange.pick(setOf("png", "jpg", "jpeg", "webp"), multiple = false) { names ->
+			val file = names.firstOrNull() ?: return@pick
+			h.run("Importing $file") {
+				val now = h.latest() ?: return@run
+				val next = withContext(Dispatchers.Default) { StudioFace.importReference(now, io.github.psd2live.ipad.RigFiles.read(file)) }
+				h.change(next)
+				StudioFace.reference(next)?.let { r -> h.showOnCanvas(withContext(Dispatchers.Default) { StudioFace.overlay(next, r, r.alignment!!) }, "The picture over the drawing, half strength") }
+			}
+		}
+	}
+	if (ref == null) return
+	val a0 = ref.alignment ?: StudioFace.Alignment(0.0, 0.0, 1.0, 0.0)
+	var x by remember(ref.art) { mutableStateOf(a0.x.toFloat()) }
+	var y by remember(ref.art) { mutableStateOf(a0.y.toFloat()) }
+	var sc by remember(ref.art) { mutableStateOf(a0.scale.toFloat()) }
+	var rot by remember(ref.art) { mutableStateOf(a0.rotation.toFloat()) }
+	val now = StudioFace.Alignment(x.toDouble(), y.toDouble(), sc.toDouble(), rot.toDouble())
+	LaunchedEffect(ref.art, x, y, sc, rot) {
+		delay(150)
+		val pr = h.latest() ?: return@LaunchedEffect
+		h.showOnCanvas(withContext(Dispatchers.Default) { StudioFace.overlay(pr, ref, now) }, "Line the picture up with the drawing")
+	}
+	val wMax = p.width.toFloat(); val hMax = p.height.toFloat()
+	Text("Across ${x.roundToInt()} px", color = Muted, fontSize = 12.sp)
+	Slider(x, { x = it }, valueRange = -wMax..wMax, colors = sliderColors(), modifier = Modifier.height(30.dp))
+	Text("Down ${y.roundToInt()} px", color = Muted, fontSize = 12.sp)
+	Slider(y, { y = it }, valueRange = -hMax..hMax, colors = sliderColors(), modifier = Modifier.height(30.dp))
+	Text("Scale ${(sc * 100).roundToInt()}%", color = Muted, fontSize = 12.sp)
+	Slider(sc, { sc = it }, valueRange = 0.05f..4f, colors = sliderColors(), modifier = Modifier.height(30.dp))
+	Text("Turn ${rot.roundToInt()}°", color = Muted, fontSize = 12.sp)
+	Slider(rot, { rot = it }, valueRange = -45f..45f, colors = sliderColors(), modifier = Modifier.height(30.dp))
+	Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+		Chip("Nudge ←") { x -= 1 }; Chip("→") { x += 1 }; Chip("↑") { y -= 1 }; Chip("↓") { y += 1 }
+	}
+	var name by remember(part.id) { mutableStateOf("${part.name} underneath") }
+	androidx.compose.foundation.text.BasicTextField(name, { name = it }, singleLine = true, textStyle = androidx.compose.ui.text.TextStyle(color = Text1, fontSize = 14.sp),
+		cursorBrush = androidx.compose.ui.graphics.SolidColor(Accent), modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(Color(0xFF24222F)).padding(8.dp))
+	Chip("Copy under ${part.name}", true, enabled = !h.busy && part.mask != null) {
+		val n = name; val id = part.id
+		h.run("Copying") {
+			val pr = h.latest() ?: return@run
+			val withAlign = StudioFace.setAlignment(pr, now)
+			val (next, newId) = withContext(Dispatchers.Default) { StudioFace.copyUnder(withAlign, id, n, ref, now) }
+			h.change(next); h.showOnCanvas(null, null); h.select(newId)
+			h.say("Made \"$n\" behind ${part.name}. Hide ${part.name} to check it.")
+		}
+	}
+	if (part.mask == null) Text("Paint ${part.name}'s mask over the hidden area first.", color = Muted, fontSize = 12.sp)
+	Chip("Keep this alignment") { h.change(StudioFace.setAlignment(p, now)); h.say("Alignment saved with the project.") }
+}
+
+// ---- Face: eyes, expressions, keyforms, overlays ----
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun FacePanel(h: PanelHost) {
+	val p = h.project
+	val part = h.selected
+
+	// Eye assembly.
+	Text("Eyes", color = Text1, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+	Text("Separate moving iris, white and lids so the eyes can turn and blink. Each role points at a part; select a part on the left and tap Use selected.", color = Muted, fontSize = 12.sp)
+	if (p.json["eyePlan"] !is kotlinx.serialization.json.JsonObject) Chip("Plan eye parts", true, enabled = !h.busy) { h.change(StudioFace.planEyeSlots(p)); h.say("Added the eye slots (left and right sclera, iris, lids, pupil, lashes, highlight) and assigned them.") }
+	else {
+		var side by remember { mutableStateOf("left") }
+		Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { Chip("Left eye", side == "left") { side = "left" }; Chip("Right eye", side == "right") { side = "right" } }
+		for (r in StudioFace.eyeRolesOf(p, side).orEmpty()) {
+			Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Color(0xFF24222F)).padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+				Text("${r.label}${if (r.required) " · required" else ""}: ${p.part(r.partId)?.name ?: "unassigned"}${if (r.partId != null) (if (r.hasArt) " ✓" else " · no art yet") else ""}",
+					color = if (r.required && !r.hasArt) Danger else Text1, fontSize = 13.sp)
+				FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+					Chip("Use selected", enabled = part != null && part.id != r.partId) { h.change(StudioFace.setEyeRole(p, side, r.key, part!!.id)) }
+					if (r.partId != null) { Chip("Work on it") { h.select(r.partId) }; Chip("Clear") { h.change(StudioFace.setEyeRole(p, side, r.key, null)) } }
+					Chip(if (r.required) "Required" else "Optional", r.required) { h.change(StudioFace.setEyeRole(p, side, r.key, null, required = !r.required)) }
+				}
+			}
+		}
+		Chip("See the assembled eye") {
+			h.run("Assembling the eye") {
+				val now = h.latest() ?: return@run
+				val r = withContext(Dispatchers.Default) { StudioFace.assembledEye(now, side) }
+				if (r == null) h.say("None of the $side eye's parts have art yet.") else { h.showOnCanvas(r.first, "The $side eye's parts together, nothing else"); h.focus(r.second) }
+			}
+		}
+	}
+
+	// Expressions and keyforms for the selected part.
+	Spacer(Modifier.height(10.dp))
+	Text("Expressions", color = Text1, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+	if (part == null) Text("Choose a part (an eye, the mouth...) to give it expression variants.", color = Muted, fontSize = 12.sp)
+	else {
+		Text("Variants of ${part.name} you drew elsewhere (closed eye, open mouth...): a full-canvas transparent PNG, lined up with the drawing. The neutral art stays as it is.", color = Muted, fontSize = 12.sp)
+		var vname by remember(part.id) { mutableStateOf("Blink closed") }
+		FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+			for (n in listOf("Blink closed", "Smile", "Mouth open", "Frown")) Chip(n, vname == n) { vname = n }
+		}
+		androidx.compose.foundation.text.BasicTextField(vname, { vname = it }, singleLine = true, textStyle = androidx.compose.ui.text.TextStyle(color = Text1, fontSize = 14.sp),
+			cursorBrush = androidx.compose.ui.graphics.SolidColor(Accent), modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(Color(0xFF24222F)).padding(8.dp))
+		Chip("Import a variant PNG", true, enabled = !h.busy) {
+			val n = vname; val id = part.id
+			io.github.psd2live.ipad.Exchange.pick(setOf("png"), multiple = false) { names ->
+				val file = names.firstOrNull() ?: return@pick
+				h.run("Importing $file") {
+					val now = h.latest() ?: return@run
+					h.change(withContext(Dispatchers.Default) { StudioFace.importVariant(now, id, io.github.psd2live.ipad.RigFiles.read(file), n) })
+					h.say("Added \"$n\" to ${part.name}.")
+				}
+			}
+		}
+		val variants = StudioFace.variants(part)
+		for (v in variants) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+			Text(v.name, color = Text1, fontSize = 13.sp, modifier = Modifier.weight(1f))
+			Chip("Show") {
+				h.run("Showing ${v.name}") {
+					val now = h.latest() ?: return@run
+					h.showOnCanvas(withContext(Dispatchers.Default) { StudioFace.variantPreview(now, part.id, v.art) }, "${part.name}: ${v.name}")
+				}
+			}
+			Chip("Delete") { h.change(StudioFace.deleteVariant(p, part.id, v.id)) }
+		}
+
+		// Keyform plan.
+		Spacer(Modifier.height(6.dp))
+		Text("Keyform plan", color = Muted, fontSize = 12.sp)
+		Text("Which parameter value each drawing belongs to (for Cubism, or the rig): e.g. Left eye open = 0 for the closed eye.", color = Muted, fontSize = 11.sp)
+		val plan = StudioFace.keyformPlan(part)
+		FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+			Chip("None", plan == null) { if (plan != null) h.change(StudioFace.setKeyformPlan(p, part.id, null)) }
+			for (param in StudioChecks.keyformParameters) Chip(param.name, plan?.first == param.id) { if (plan?.first != param.id) h.change(StudioFace.setKeyformPlan(p, part.id, param.id, param.default, emptyMap())) }
+		}
+		if (plan != null) {
+			val param = StudioChecks.keyformParameters.first { it.id == plan.first }
+			val values = listOf(param.min, 0.0, 0.5, param.max).distinct().sorted()
+			fun fmt(v: Double) = if (v == v.toLong().toDouble()) v.toLong().toString() else v.toString()
+			Text("Neutral (the current art) at", color = Muted, fontSize = 12.sp)
+			Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { for (v in values) Chip(fmt(v), plan.second == v) { h.change(StudioFace.setKeyformPlan(p, part.id, param.id, v)) } }
+			for (vr in variants) {
+				Text("${vr.name} at", color = Muted, fontSize = 12.sp)
+				Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+					Chip("—", plan.third[vr.id] == null) { h.change(StudioFace.setKeyformPlan(p, part.id, param.id, keys = plan.third - vr.id)) }
+					for (v in values) Chip(fmt(v), plan.third[vr.id] == v) { h.change(StudioFace.setKeyformPlan(p, part.id, param.id, keys = plan.third + (vr.id to v))) }
+				}
+			}
+			val issues = try { StudioChecks.keyformIssues(part) } catch (e: IllegalStateException) { listOf(e.message ?: "Invalid plan") }
+			Text(if (issues.isNullOrEmpty()) "Both ends have a drawing." else issues.joinToString(" "), color = if (issues.isNullOrEmpty()) Good else Muted, fontSize = 12.sp)
+		}
+	}
+
+	// Face overlays.
+	Spacer(Modifier.height(10.dp))
+	Text("Face overlays", color = Text1, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+	Text("Made from the face piece's own outline. In the rig each fades in by its own parameter, and VTube Studio gets an expression to put on a hotkey.", color = Muted, fontSize = 12.sp)
+	var which by remember { mutableStateOf("shadow") }
+	Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { Chip("Shadow (gloom)", which == "shadow") { which = "shadow" }; Chip("Blush", which == "blush") { which = "blush" } }
+	if (which == "shadow") {
+		var colour by remember { mutableStateOf(0xFF463C82.toInt()) }
+		var strength by remember { mutableStateOf(0.85f) }
+		var reach by remember { mutableStateOf(0f) }
+		var lines by remember { mutableStateOf(false) }
+		var halfEyes by remember { mutableStateOf(true) }
+		var eyeOpen by remember { mutableStateOf(0.6f) }
+		var lowBrows by remember { mutableStateOf(true) }
+		var flatMouth by remember { mutableStateOf(false) }
+		io.github.psd2live.ipad.ColourPicker(colour) { colour = it }
+		Text("Strength ${(strength * 100).roundToInt()}%", color = Muted, fontSize = 12.sp)
+		Slider(strength, { strength = it }, valueRange = 0.2f..1f, colors = sliderColors(), modifier = Modifier.height(30.dp))
+		Text("Reach ${if (reach > 0) "+" else ""}${(reach * 100).roundToInt()}% (how far down it stays strong)", color = Muted, fontSize = 12.sp)
+		Slider(reach, { reach = it }, valueRange = -0.25f..0.25f, colors = sliderColors(), modifier = Modifier.height(30.dp))
+		FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+			Chip("Gloom lines", lines) { lines = !lines }
+			Chip("Half-close the eyes", halfEyes) { halfEyes = !halfEyes }
+			Chip("Lower the brows", lowBrows) { lowBrows = !lowBrows }
+			Chip("Flatten the smile", flatMouth) { flatMouth = !flatMouth }
+		}
+		if (halfEyes) {
+			Text("Eyes open ${(eyeOpen * 100).roundToInt()}% in the Gloom expression", color = Muted, fontSize = 12.sp)
+			Slider(eyeOpen, { eyeOpen = it }, valueRange = 0.3f..0.9f, colors = sliderColors(), modifier = Modifier.height(30.dp))
+		}
+		val existing = StudioFace.overlayPart(p, StudioFace.shadow)
+		Chip(if (existing != null) "Remake the face shadow" else "Make a face shadow", true, enabled = !h.busy) {
+			val c = colour; val st = strength.toDouble(); val re = reach.toDouble(); val li = lines
+			val gp = StudioFace.gloomParams(halfEyes, eyeOpen.toDouble(), lowBrows, flatMouth)
+			val settings = mapOf("colour" to kotlinx.serialization.json.JsonPrimitive("#" + (c and 0xFFFFFF).toString(16).padStart(6, '0')), "strength" to kotlinx.serialization.json.JsonPrimitive(st),
+				"reach" to kotlinx.serialization.json.JsonPrimitive(re), "lines" to kotlinx.serialization.json.JsonPrimitive(li), "halfEyes" to kotlinx.serialization.json.JsonPrimitive(halfEyes),
+				"eyeOpen" to kotlinx.serialization.json.JsonPrimitive(eyeOpen.toDouble()), "lowBrows" to kotlinx.serialization.json.JsonPrimitive(lowBrows), "flatMouth" to kotlinx.serialization.json.JsonPrimitive(flatMouth))
+			h.run("Making the face shadow") {
+				val now = h.latest() ?: return@run
+				val art = withContext(Dispatchers.Default) { StudioFace.makeShadow(now, c, st, re, li) }
+				h.change(withContext(Dispatchers.Default) { StudioFace.placeOverlay(now, StudioFace.shadow, art, settings, "multiply", gp) })
+				h.say("Made \"Face shadow\" above the face pieces. In the rig: ParamFaceShadow (0 off, 1 full) and a \"Gloom\" expression for VTube Studio.")
+			}
+		}
+	} else {
+		var colour by remember { mutableStateOf(0xFFFF6F8E.toInt()) }
+		var strength by remember { mutableStateOf(0.55f) }
+		var size by remember { mutableStateOf(1f) }
+		var lines by remember { mutableStateOf(true) }
+		io.github.psd2live.ipad.ColourPicker(colour) { colour = it }
+		Text("Strength ${(strength * 100).roundToInt()}%", color = Muted, fontSize = 12.sp)
+		Slider(strength, { strength = it }, valueRange = 0.15f..1f, colors = sliderColors(), modifier = Modifier.height(30.dp))
+		Text("Size ${(size * 100).roundToInt()}%", color = Muted, fontSize = 12.sp)
+		Slider(size, { size = it }, valueRange = 0.5f..1.8f, colors = sliderColors(), modifier = Modifier.height(30.dp))
+		Chip("Blush lines", lines) { lines = !lines }
+		val existing = StudioFace.overlayPart(p, StudioFace.blush)
+		Chip(if (existing != null) "Remake the blush" else "Make a blush", true, enabled = !h.busy) {
+			val c = colour; val st = strength.toDouble(); val sz = size.toDouble(); val li = lines
+			val settings = mapOf("colour" to kotlinx.serialization.json.JsonPrimitive("#" + (c and 0xFFFFFF).toString(16).padStart(6, '0')), "strength" to kotlinx.serialization.json.JsonPrimitive(st),
+				"size" to kotlinx.serialization.json.JsonPrimitive(sz), "lines" to kotlinx.serialization.json.JsonPrimitive(li))
+			h.run("Making the blush") {
+				val now = h.latest() ?: return@run
+				val art = withContext(Dispatchers.Default) { StudioFace.makeBlush(now, c, st, sz, li) }
+				h.change(withContext(Dispatchers.Default) { StudioFace.placeOverlay(now, StudioFace.blush, art, settings, null, emptyList()) })
+				h.say("Made \"Blush\" on the cheeks. In the rig: ParamBlush (0 off, 1 full) and a \"Blush\" expression for VTube Studio.")
+			}
 		}
 	}
 }

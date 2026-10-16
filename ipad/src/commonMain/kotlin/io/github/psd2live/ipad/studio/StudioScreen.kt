@@ -599,7 +599,12 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 			// ---- Inspector: the selected part. ----
 			if (panels) Column(Modifier.width(280.dp).fillMaxHeight().clip(RoundedCornerShape(10.dp)).background(Panel).verticalScroll(rememberScrollState()).padding(12.dp),
 				verticalArrangement = Arrangement.spacedBy(8.dp)) {
-				Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { for (t in InspectorTab.entries) Chip(t.label, tab == t) { if (tab != t) { tab = t; picking = null } } }
+				Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Color(0xFF2B283C))) {
+					for (t in InspectorTab.entries) Box(Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).background(if (tab == t) Color(0xFF4A3F78) else Color.Transparent)
+						.clickable { if (tab != t) { tab = t; picking = null } }.padding(vertical = 9.dp), contentAlignment = Alignment.Center) {
+						Text(t.label, color = if (tab == t) Text1 else Accent, fontSize = 14.sp, maxLines = 1)
+					}
+				}
 				val host = PanelHost(p, selected, busy != null,
 					run = { label, block -> scope.launch(safe) {
 						flushMask(); busy = label
@@ -625,6 +630,7 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 					select = { selectedId = it }, say = { status = it },
 					cloneSource = cloneSource, cloneDest = cloneDest, pickPoint = { picking = it }, picking = picking)
 				if (tab == InspectorTab.REPAIR) RepairPanel(host)
+				else if (tab == InspectorTab.FACE) FacePanel(host)
 				else if (tab == InspectorTab.CHECK) CheckPanel(host)
 				else {
 				if (selected == null) {

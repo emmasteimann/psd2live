@@ -91,6 +91,17 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 	var lookMesh by remember { mutableStateOf<String?>(null) }
 	var lookShown by remember { mutableStateOf<io.github.psd2live.core.PoseTweaks.Look?>(null) }
 	var lookError by remember { mutableStateOf<String?>(null) }
+	// Paths mode: deform paths (draw one along a part at rest, then drag its points at a pose to bend the part).
+	var pathMode by remember { mutableStateOf(false) }
+	val pathOn by rememberUpdatedState(pathMode)
+	var pathsShown by remember { mutableStateOf<List<RigTweaking.PathShown>>(emptyList()) }
+	val pathsNow by rememberUpdatedState(pathsShown)
+	var drawingPath by remember { mutableStateOf(false) }
+	val drawingNow by rememberUpdatedState(drawingPath)
+	var draft by remember { mutableStateOf<List<Offset>>(emptyList()) }
+	var heldPoint by remember { mutableStateOf<Pair<String, Int>?>(null) }
+	var dragAt by remember { mutableStateOf<Offset?>(null) }
+	var selectedPath by remember { mutableStateOf<String?>(null) }
 	var newParam by remember { mutableStateOf<String?>(null) }
 	var newRange by remember { mutableStateOf(-1f to 1f) }
 	var boxRect by remember { mutableStateOf<Pair<Offset, Offset>?>(null) }
@@ -120,7 +131,7 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 		// moves, the full-resolution frame (~2.2 MP) once things rest. The frame remembers which part of the canvas it
 		// shows, so a pinch or pan moves and scales it at once; only when the fingers rest is the view re-rendered.
 		var lastView: CanvasView? = null
-		snapshotFlow { listOf(tick, pose, view, box, showMesh, warpMode, pointsMode) }.collectLatest {
+		snapshotFlow { listOf(tick, pose, view, box, showMesh, warpMode, pointsMode, pathMode) }.collectLatest {
 			val (w, h) = box
 			if (w < 2f || h < 2f) return@collectLatest
 			val viewOnly = lastView != null && lastView != view
@@ -141,6 +152,7 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 			if (viewOnly) { delay(140); image = draw(2_200_000f); return@collectLatest }
 			verts = if (pointsMode) withContext(Dispatchers.Default) { tweaking.vertices(shownPose) } else emptyList()
 			wires = if (showMesh || pointsMode) withContext(Dispatchers.Default) { tweaking.wires(shownPose) } else emptyList()
+			pathsShown = if (pathMode) withContext(Dispatchers.Default) { tweaking.paths(shownPose) } else emptyList()
 			lattice?.takeIf { warpMode }?.let { held -> lattice = withContext(Dispatchers.Default) { tweaking.lattice(shownPose, held.id) } }
 			image = draw(350_000f)
 			delay(180)
@@ -184,6 +196,17 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 						}
 						override fun start(at: Offset, pressure: Float) {
 							if (saving != null) return
+							if (pathOn) {
+								if (drawingNow) { draft = draft + toCanvas(at); return }
+								// The nearest path point within reach is picked up; elsewhere nothing happens.
+								val l = layout(w, h, viewNow()); var best: Pair<String, Int>? = null; var bestD = 30f
+								for (p in pathsNow) for (i in 0 until p.points.size / 2) {
+									val d = kotlin.math.hypot(l[1] + p.points[i * 2] * l[0] - at.x, l[2] + p.points[i * 2 + 1] * l[0] - at.y)
+									if (d < bestD) { bestD = d; best = p.id to i }
+								}
+								heldPoint = best; dragAt = if (best != null) at else null; best?.let { selectedPath = it.first }
+								return
+							}
 							if (lookOn) {
 								val p = toCanvas(at); val p0 = currentPose
 								scope.launch(worker + safe) {
@@ -207,11 +230,21 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 								if (warpOn) { val l = tweaking.warpAt(p0, p.x, p.y); scope.launch(Dispatchers.Main) { lattice = l } } }
 						}
 						override fun move(at: Offset, pressure: Float) {
+							if (pathOn) { if (heldPoint != null) dragAt = at; return }
 							picking?.let { from -> boxRect = from to at; return }
 							val p = toCanvas(at); if (!pointsOn) cursor = at
 							scope.launch(worker + safe) { if (stroking) { tweaking.step(p.x, p.y); bump() } }
 						}
 						override fun end() {
+							if (pathOn) {
+								val held = heldPoint; val to = dragAt
+								heldPoint = null; dragAt = null
+								if (held != null && to != null) {
+									val c = toCanvas(to); val p0 = currentPose
+									scope.launch(worker + safe) { tweaking.movePathPoint(held.first, held.second, c.x, c.y, p0); bump() }
+								}
+								return
+							}
 							cursor = null
 							val from = picking
 							if (from != null) {
@@ -286,6 +319,22 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 								androidx.compose.ui.geometry.Size(kotlin.math.abs(b.x - a.x), kotlin.math.abs(b.y - a.y)))
 						}
 					}
+					if (pathMode) {
+						val l = layout(w, h, view)
+						fun at(x: Float, y: Float) = Offset(l[1] + x * l[0], l[2] + y * l[0])
+						for (p in pathsShown) {
+							val pts = (0 until p.points.size / 2).map { at(p.points[it * 2], p.points[it * 2 + 1]) }
+							val color = if (p.id == selectedPath) Color(0xFF8FE0A8) else Color(0xFF8FE0A8).copy(alpha = 0.6f)
+							for (i in 1 until pts.size) drawLine(color, pts[i - 1], pts[i], 3f)
+							pts.forEach { drawCircle(color, 8f, it); drawCircle(Color.Black.copy(alpha = 0.6f), 8f, it, style = Stroke(1.5f)) }
+						}
+						heldPoint?.let { dragAt?.let { d -> drawCircle(Color(0xFFFFC46B), 10f, d) } }
+						if (draft.isNotEmpty()) {
+							val pts = draft.map { at(it.x, it.y) }
+							for (i in 1 until pts.size) drawLine(Color(0xFFFFC46B), pts[i - 1], pts[i], 2.5f)
+							pts.forEach { drawCircle(Color(0xFFFFC46B), 7f, it) }
+						}
+					}
 					cursor?.let { c ->
 						val l = layout(w, h, view)
 						drawCircle(Color.White.copy(alpha = 0.8f), radius * l[0], c, style = Stroke(1.5f))
@@ -296,11 +345,13 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 			}
 			Column(Modifier.width(330.dp).height(820.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
 				@Suppress("UNUSED_VARIABLE") val changes = tick
-				Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-					Chip("Meshes", !warpMode && !pointsMode && !lookMode) { warpMode = false; pointsMode = false; lookMode = false; lattice = null }
-					Chip("Warp", warpMode) { warpMode = true; pointsMode = false }
-					Chip("Points", pointsMode) { pointsMode = true; warpMode = false; lookMode = false; lattice = null }
-					Chip("Look", lookMode) { lookMode = true; pointsMode = false; warpMode = false; lattice = null }
+				@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+				androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+					Chip("Meshes", !warpMode && !pointsMode && !lookMode && !pathMode) { warpMode = false; pointsMode = false; lookMode = false; pathMode = false; lattice = null }
+					Chip("Warp", warpMode) { warpMode = true; pointsMode = false; pathMode = false }
+					Chip("Points", pointsMode) { pointsMode = true; warpMode = false; lookMode = false; pathMode = false; lattice = null }
+					Chip("Look", lookMode) { lookMode = true; pointsMode = false; warpMode = false; pathMode = false; lattice = null }
+					Chip("Paths", pathMode) { pathMode = true; lookMode = false; pointsMode = false; warpMode = false; lattice = null }
 				}
 				if (lookMode) {
 					val id = lookMesh; val l = lookShown
@@ -330,6 +381,32 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 								Text(ch, color = Muted, fontSize = 12.sp, modifier = Modifier.width(16.dp))
 								Slider(c[i], { v -> val nc = c.toMutableList().also { it[i] = v }; lookShown = if (isMultiply) l.copy(multiply = nc) else l.copy(screen = nc) },
 									onValueChangeFinished = { lookShown?.let(::commit) }, valueRange = 0f..1f, colors = sliderColors(), modifier = Modifier.weight(1f).height(26.dp))
+							}
+						}
+					}
+				}
+				if (pathMode) {
+					if (drawingPath) {
+						Text("She's at rest. Tap points along the part, in order (${draft.size} so far).", color = Muted, fontSize = 12.sp)
+						Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+							Chip("Make the path", true, enabled = draft.size >= 2) {
+								val pts = draft.map { it.x to it.y }; drawingPath = false; draft = emptyList()
+								scope.launch(worker + safe) {
+									val mesh = tweaking.meshAt(emptyMap(), pts.first().first, pts.first().second) ?: throw IllegalStateException("Start the path on a part.")
+									val id = tweaking.addPath(mesh, pts)
+									scope.launch(Dispatchers.Main) { selectedPath = id }; bump()
+								}
+							}
+							Chip("Cancel", false) { drawingPath = false; draft = emptyList() }
+						}
+					} else {
+						Text(if (pathsShown.isEmpty()) "A path bends a part along a curve (a sleeve, a tail, a ribbon). Make one, then pose her and drag its points."
+							else "Pose her with the sliders, then drag a path point: the part bends with it at that pose.", color = Muted, fontSize = 12.sp)
+						Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+							Chip("New path (at rest)", true) { pose = tweaking.parameters.associate { it.id to it.default }; drawingPath = true; draft = emptyList() }
+							Chip("Delete this path", false, enabled = selectedPath != null && pathsShown.any { it.id == selectedPath }) {
+								val id = selectedPath!!; selectedPath = null
+								scope.launch(worker + safe) { tweaking.deletePath(id); bump() }
 							}
 						}
 					}

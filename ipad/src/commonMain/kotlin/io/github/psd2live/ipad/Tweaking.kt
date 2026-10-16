@@ -128,6 +128,80 @@ class RigTweaking(val outcome: RigOutcome) {
 
 	fun cancel() { session?.cancel(); session = null; shown = model.rig.puppet }
 
+	// ---- Deform paths (the desktop's path tool: path_put / path_deform / path_delete through the shared journal) ----
+
+	/** A path as shown: its id, its mesh, and its points as canvas positions (x, y, ...) at the pose. */
+	class PathShown(val id: String, val meshId: String, val points: FloatArray)
+
+	private fun journal(edits: List<kotlinx.serialization.json.JsonObject>) {
+		val overlay = model.config.rigEdits
+		val recorded = io.github.psd2live.core.JournalRecording.record(model.rig.puppet, model.authored.rig.puppet, overlay,
+			kotlinx.serialization.json.JsonArray(edits), model.primitiveSkins)
+		val config = model.config.copy(rigEdits = io.github.psd2live.core.SwingAuthoring.withoutTargets(
+			overlay.copy(authoringJournal = overlay.authoringJournal + recorded), io.github.psd2live.core.SwingAuthoring.deletedDeformers(recorded)))
+		val next = pipeline.updateRigEdits(model, config)
+		undos.addLast(model); if (undos.size > 60) undos.removeFirst()
+		redos.clear(); model = next; shown = model.rig.puppet
+	}
+
+	fun paths(pose: Map<String, Float>): List<PathShown> {
+		val verts = PoseTweaks.vertices(shown, pose).toMap()
+		return shown.deformPaths.mapNotNull { p ->
+			val v = verts[p.drawableId.raw] ?: return@mapNotNull null
+			val out = FloatArray(p.points.size * 2)
+			p.points.forEachIndexed { i, pt -> val (x, y) = pt.position(v); out[i * 2] = x; out[i * 2 + 1] = y }
+			PathShown(p.id, p.drawableId.raw, out)
+		}
+	}
+
+	private fun mapping(meshId: String, pose: Map<String, Float>) = requireNotNull(org.umamo.render.eval.drawableSpaceMapping(shown,
+		pose.mapKeys { org.umamo.runtime.model.ParameterId(it.key) }, org.umamo.runtime.model.DrawableId(meshId))) { "That part has no parent space" }
+
+	/** A path along mesh [meshId] through canvas points at rest (2..128). Returns its id. */
+	fun addPath(meshId: String, canvasPoints: List<Pair<Float, Float>>): String {
+		require(canvasPoints.size >= 2) { "A path needs at least two points." }
+		val m = mapping(meshId, emptyMap())
+		val rest = io.github.psd2live.core.RigGeometryTools.geometry(shown, "mesh", meshId, emptyMap()).points
+		var sx = 0f; var sy = 0f; for (i in 0 until rest.size / 2) { sx += rest[i * 2]; sy += rest[i * 2 + 1] }
+		val seed = floatArrayOf(sx / (rest.size / 2), sy / (rest.size / 2))
+		val local = canvasPoints.map { (x, y) -> m.worldToLocal(floatArrayOf(x, -y), seed, setOf(0)).also { require(it.all(Float::isFinite)) { "A point is off the part" } } }
+		val request = kotlinx.serialization.json.buildJsonObject {
+			put("target", kotlinx.serialization.json.JsonPrimitive("mesh:$meshId"))
+			put("points", kotlinx.serialization.json.JsonArray(local.map { kotlinx.serialization.json.JsonArray(listOf(kotlinx.serialization.json.JsonPrimitive(it[0]), kotlinx.serialization.json.JsonPrimitive(it[1]))) }))
+		}
+		val (id, command) = io.github.psd2live.application.WorkspacePathCommands.createPutCommand(shown, request)
+		journal(listOf(command))
+		return id
+	}
+
+	/** Moves point [index] of path [pathId] to canvas ([x], [y]) at [pose]: the part bends with it at that pose. */
+	fun movePathPoint(pathId: String, index: Int, x: Float, y: Float, pose: Map<String, Float>) {
+		val path = shown.deformPaths.first { it.id == pathId }
+		val meshId = path.drawableId.raw
+		val axes = io.github.psd2live.core.RigGeometryTools.geometry(shown, "mesh", meshId, pose).axes
+		// The posed parameters are the "selected" inputs: a pose the mesh has no key for gets one (as Tweak's strokes do).
+		val defaults = shown.parameters.associate { it.id.raw to it.default }
+		val posed = pose.filter { (id, v) -> kotlin.math.abs(v - (defaults[id] ?: v)) > 1e-4f }.keys.toList()
+		val key = io.github.psd2live.core.canvasDeformationCoordinate(shown, axes, pose, posed)
+		require(key.isNotEmpty()) { "Pose her first (a slider away from rest): a path bends the part at a pose." }
+		val base = io.github.psd2live.core.RigGeometryTools.geometry(shown, "mesh", meshId, key).base
+		val current = path.points.map { it.position(base) }
+		val target = mapping(meshId, pose).worldToLocal(floatArrayOf(x, -y), floatArrayOf(current[index].first, current[index].second), setOf(0))
+		require(target.all(Float::isFinite)) { "That point can't go there" }
+		val moved = current.mapIndexed { i, p -> if (i == index) target[0] to target[1] else p }
+		val command = io.github.psd2live.application.WorkspacePathCommands.createDeformCommand(kotlinx.serialization.json.buildJsonObject {
+			put("target", kotlinx.serialization.json.JsonPrimitive("mesh:$meshId")); put("path_id", kotlinx.serialization.json.JsonPrimitive(pathId))
+			put("key", kotlinx.serialization.json.JsonObject(key.mapValues { kotlinx.serialization.json.JsonPrimitive(it.value) }))
+			put("moved_points", kotlinx.serialization.json.JsonArray(moved.map { kotlinx.serialization.json.JsonArray(listOf(kotlinx.serialization.json.JsonPrimitive(it.first), kotlinx.serialization.json.JsonPrimitive(it.second))) }))
+		})
+		journal(listOf(command))
+	}
+
+	fun deletePath(pathId: String) {
+		journal(listOf(io.github.psd2live.application.WorkspacePathCommands.createDeleteCommand(kotlinx.serialization.json.buildJsonObject {
+			put("path_id", kotlinx.serialization.json.JsonPrimitive(pathId)) }).second))
+	}
+
 	fun undo() { if (!canUndo) return; redos.addLast(model); model = undos.removeLast(); shown = model.rig.puppet }
 	fun redo() { if (!canRedo) return; undos.addLast(model); model = redos.removeLast(); shown = model.rig.puppet }
 

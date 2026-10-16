@@ -146,27 +146,57 @@ internal fun documentOf(source: org.umamo.format.art.SourceArt, config: Pipeline
 	io.github.psd2live.project.WorkspaceSettingsCodec.encode(config), config.meshOverrides, config.generationSource, config.meshSource,
 	config.textureOverrides)
 
-suspend fun saveRigProject(outcome: RigOutcome): String {
-	val document = documentOf(outcome.source, outcome.config)
-	val revision = io.github.psd2live.project.WorkspaceRevisions.of(document)
-	val history = io.github.psd2live.history.WorkspaceHistoryTree(document, revision, revision)
+/**
+ * A project's history on the iPad: the desktop's own history tree (every kept change a node; going back to one
+ * branches, as on the Mac), the project's id and its presentation, so saving on the iPad keeps a Mac project's
+ * history instead of starting it over.
+ */
+class RigProjectHistory internal constructor(val projectId: String, val tree: io.github.psd2live.history.WorkspaceHistoryTree<io.github.psd2live.project.WorkspaceDocument>,
+	val presentation: kotlinx.serialization.json.JsonObject) {
+	/** Records [outcome]'s rig as a new node after the head, unless nothing changed. */
+	fun commit(outcome: RigOutcome, summary: String) {
+		val document = documentOf(outcome.source, outcome.config)
+		val revision = io.github.psd2live.project.WorkspaceRevisions.of(document)
+		val head = tree.head()
+		if (head.node.snapshotHash == revision) return
+		tree.commit(head.node.id, document, revision, revision, summary, actor = "ipad")
+	}
+
+	companion object {
+		@OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+		fun fresh(outcome: RigOutcome): RigProjectHistory {
+			val document = documentOf(outcome.source, outcome.config)
+			val revision = io.github.psd2live.project.WorkspaceRevisions.of(document)
+			return RigProjectHistory("project-${kotlin.uuid.Uuid.random()}", io.github.psd2live.history.WorkspaceHistoryTree(document, revision, revision),
+				kotlinx.serialization.json.JsonObject(emptyMap()))
+		}
+	}
+}
+
+/** Saves [outcome]'s project with its whole [history] (a new one-node history when there is none). */
+suspend fun saveRigProject(outcome: RigOutcome, history: RigProjectHistory? = null): String {
+	val h = history ?: RigProjectHistory.fresh(outcome)
 	val work = io.github.psd2live.project.Files.createTempDirectory("rig-save-")
 	val target = io.github.psd2live.project.pathOf(RigFiles.projectPath(outcome.name))
 	try {
-		@OptIn(kotlin.uuid.ExperimentalUuidApi::class)
-		val projectId = "project-${kotlin.uuid.Uuid.random()}"
-		io.github.psd2live.project.ProjectRepository().save(io.github.psd2live.project.ProjectSaveCapture(projectId, history.state(),
-			kotlinx.serialization.json.JsonObject(emptyMap()), io.github.psd2live.project.pathOf(RigFiles.psdPath(outcome.name)),
+		io.github.psd2live.project.ProjectRepository().save(io.github.psd2live.project.ProjectSaveCapture(h.projectId, h.tree.state(),
+			h.presentation, io.github.psd2live.project.pathOf(RigFiles.psdPath(outcome.name)),
 			io.github.psd2live.project.WorkspaceStore(work.resolve("store"))), target)
 	} finally { RigFiles.deleteTree(work.toString()) }
 	return target.toString()
+}
+
+/** The rig of the history node [nodeId] (moving the head there): built from that node's document, as opening it would. */
+fun checkoutRigHistory(outcome: RigOutcome, history: RigProjectHistory, nodeId: String, progress: (String, Double) -> Unit): RigOutcome {
+	val document = history.tree.checkout(nodeId).snapshot
+	return buildRig(outcome.name, document.source, document.config(PipelineConfig()).copy(exportCmo3 = false), RigFiles.nowSeconds(), progress)
 }
 
 /**
  * The project at [path] opened through the desktop's own project code and rigged with everything it holds - its
  * settings, hand tweaks and painted pixels - as the outcome the Rig tab shows. Its runtime files go to Rigs/NAME.
  */
-suspend fun openRigProject(path: String, progress: (String, Double) -> Unit): RigOutcome {
+suspend fun openRigProject(path: String, progress: (String, Double) -> Unit, onHistory: (RigProjectHistory) -> Unit = {}): RigOutcome {
 	val started = RigFiles.nowSeconds()
 	progress("Opening the project", 0.02)
 	val opened = io.github.psd2live.project.ProjectRepository().open(io.github.psd2live.project.pathOf(path))
@@ -180,6 +210,7 @@ suspend fun openRigProject(path: String, progress: (String, Double) -> Unit): Ri
 		if (!io.github.psd2live.project.Files.exists(psd) && io.github.psd2live.project.Files.exists(opened.source))
 			io.github.psd2live.project.Files.copy(opened.source, psd)
 		val config = document.config(PipelineConfig()).copy(exportCmo3 = false)
+		onHistory(RigProjectHistory(opened.projectId, opened.history, opened.presentation))
 		return buildRig(name, document.source, config, started) { stage, fraction -> progress(stage, 0.1 + fraction * 0.9) }
 	} finally { opened.close() }
 }

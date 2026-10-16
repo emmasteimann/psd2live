@@ -65,6 +65,8 @@ private sealed interface RigState {
 	data class Split(val outcome: RigOutcome) : RigState
 	data class Skeleton(val outcome: RigOutcome) : RigState
 	data class Simulate(val outcome: RigOutcome) : RigState
+	data class History(val outcome: RigOutcome) : RigState
+	data class Textures(val outcome: RigOutcome) : RigState
 	data class Failed(val name: String, val message: String) : RigState
 }
 
@@ -84,13 +86,24 @@ fun RigWorkspace(modifier: Modifier = Modifier, start: String? = null, onStarted
 		projects = runCatching { RigFiles.projects() }.getOrDefault(emptyList())
 	}
 
+	// The open rig's history (the project's own tree): every kept change is a node, saved with the project.
+	var history by remember { mutableStateOf<RigProjectHistory?>(null) }
+
 	// Every change of the rig is saved as its project in the background, so a long session can't be lost.
-	fun keep(outcome: RigOutcome) {
+	fun keep(outcome: RigOutcome, summary: String? = null) {
+		val label = summary ?: when (state) {
+			is RigState.Tweaking -> "Tweaked by hand"; is RigState.Painting -> "Painted a layer"; is RigState.Settings -> "Changed rig settings"
+			is RigState.Physics -> "Changed physics"; is RigState.Expressions -> "Changed expressions"; is RigState.Motions, is RigState.OwnMotions -> "Changed motions"
+			is RigState.Parameters -> "Changed parameters"; is RigState.Parts -> "Moved parts"; is RigState.DrawOrder -> "Changed draw order"
+			is RigState.Structure -> "Added deformers"; is RigState.Split -> "Split parts"; is RigState.Skeleton -> "Changed the skeleton"
+			is RigState.Simulate -> "Changed simulation"; else -> "Rigged"
+		}
 		state = RigState.Done(outcome)
 		autosave = "Saving the project…"
+		val h = history ?: RigProjectHistory.fresh(outcome).also { history = it }
 		scope.launch {
 			autosave = try {
-				val path = withContext(Dispatchers.Default) { saveRigProject(outcome) }
+				val path = withContext(Dispatchers.Default) { h.commit(outcome, label); saveRigProject(outcome, h) }
 				refresh()
 				"Saved to Rigs/${path.substringAfterLast('/')}"
 			} catch (failure: Throwable) { "Couldn't save the project: ${failure.message ?: failure::class.simpleName}" }
@@ -103,9 +116,11 @@ fun RigWorkspace(modifier: Modifier = Modifier, start: String? = null, onStarted
 		state = RigState.Rigging(name, "Opening", 0.0)
 		scope.launch {
 			try {
-				val outcome = openRigProject(path) { stage, fraction ->
+				var opened: RigProjectHistory? = null
+				val outcome = openRigProject(path, { stage, fraction ->
 					scope.launch(Dispatchers.Main) { if (state is RigState.Rigging) state = RigState.Rigging(name, stage, fraction) }
-				}
+				}) { opened = it }
+				history = opened
 				state = RigState.Done(outcome); autosave = "Opened $name"
 			} catch (failure: Throwable) {
 				state = RigState.Failed(name, failure.message ?: failure::class.simpleName ?: "Opening failed")
@@ -116,6 +131,7 @@ fun RigWorkspace(modifier: Modifier = Modifier, start: String? = null, onStarted
 
 	fun rig(name: String) {
 		if (state is RigState.Rigging) return
+		history = null // a PSD rigged afresh starts its own history
 		state = RigState.Rigging(name, "Starting", 0.0)
 		scope.launch {
 			state = try {
@@ -136,7 +152,7 @@ fun RigWorkspace(modifier: Modifier = Modifier, start: String? = null, onStarted
 
 	Column(modifier.verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
 		// An editing screen (paint, tweak, settings) has the whole tab: the file list steps aside.
-		val editing = state is RigState.Painting || state is RigState.Tweaking || state is RigState.Settings || state is RigState.Physics || state is RigState.Expressions || state is RigState.Motions || state is RigState.OwnMotions || state is RigState.Parameters || state is RigState.Parts || state is RigState.DrawOrder || state is RigState.Structure || state is RigState.Split || state is RigState.Skeleton || state is RigState.Simulate
+		val editing = state is RigState.Painting || state is RigState.Tweaking || state is RigState.Settings || state is RigState.Physics || state is RigState.Expressions || state is RigState.Motions || state is RigState.OwnMotions || state is RigState.Parameters || state is RigState.Parts || state is RigState.DrawOrder || state is RigState.Structure || state is RigState.Split || state is RigState.Skeleton || state is RigState.Simulate || state is RigState.History || state is RigState.Textures
 		if (!editing) {
 			Text("Rig a PSD", color = Text1, fontSize = 22.sp, fontWeight = FontWeight.Bold)
 			Text("Put PSDs in Files > On My iPad > Layerloom. The rig is built here on the iPad, with the same rigger as the Mac " +
@@ -184,7 +200,13 @@ fun RigWorkspace(modifier: Modifier = Modifier, start: String? = null, onStarted
 				onParameters = { state = RigState.Parameters(s.outcome) }, onParts = { state = RigState.Parts(s.outcome) },
 				onDrawOrder = { state = RigState.DrawOrder(s.outcome) }, onStructure = { state = RigState.Structure(s.outcome) },
 				onSplit = { state = RigState.Split(s.outcome) }, onSkeleton = { state = RigState.Skeleton(s.outcome) },
-				onSimulate = { state = RigState.Simulate(s.outcome) }) }
+				onSimulate = { state = RigState.Simulate(s.outcome) }, onHistory = { state = RigState.History(s.outcome) }, history = history,
+				onTextures = { state = RigState.Textures(s.outcome) }) }
+			is RigState.Textures -> TexturesScreen(s.outcome, onDone = { keep(it, "Changed textures") }, onCancel = { state = RigState.Done(s.outcome) })
+			is RigState.History -> HistoryScreen(s.outcome, history ?: RigProjectHistory.fresh(s.outcome).also { history = it },
+				onPicked = { o -> state = RigState.Done(o); autosave = "Saving the project…"
+					val h = history!!; scope.launch { autosave = try { val path = withContext(Dispatchers.Default) { saveRigProject(o, h) }; "Saved to Rigs/${path.substringAfterLast('/')}" } catch (f: Throwable) { "Couldn't save the project: ${f.message}" } } },
+				onCancel = { state = RigState.Done(s.outcome) })
 			is RigState.Simulate -> SimulateScreen(s.outcome, onDone = { keep(it) }, onCancel = { state = RigState.Done(s.outcome) })
 			is RigState.Skeleton -> SkeletonScreen(s.outcome, onDone = { keep(it) }, onCancel = { state = RigState.Done(s.outcome) })
 			is RigState.Split -> SplitScreen(s.outcome, onDone = { keep(it) }, onCancel = { state = RigState.Done(s.outcome) })
@@ -217,7 +239,7 @@ private fun Button(label: String, onClick: () -> Unit) {
 
 /** A rigged PSD: what was made and saved, and the rig drawn at the pose the sliders set. */
 @Composable
-private fun RigResult(o: RigOutcome, onPaint: () -> Unit, onTweak: () -> Unit, onSettings: () -> Unit, onPhysics: () -> Unit, onExpressions: () -> Unit, onMotions: () -> Unit, onParameters: () -> Unit, onParts: () -> Unit, onDrawOrder: () -> Unit, onStructure: () -> Unit, onSplit: () -> Unit, onSkeleton: () -> Unit, onSimulate: () -> Unit) {
+private fun RigResult(o: RigOutcome, onPaint: () -> Unit, onTweak: () -> Unit, onSettings: () -> Unit, onPhysics: () -> Unit, onExpressions: () -> Unit, onMotions: () -> Unit, onParameters: () -> Unit, onParts: () -> Unit, onDrawOrder: () -> Unit, onStructure: () -> Unit, onSplit: () -> Unit, onSkeleton: () -> Unit, onSimulate: () -> Unit, onHistory: () -> Unit, history: RigProjectHistory?, onTextures: () -> Unit) {
 	var values by remember(o) { mutableStateOf(o.preview.parameters.associate { it.id to it.default }) }
 	var saveStatus by remember(o) { mutableStateOf<String?>(null) }
 	val scope = rememberCoroutineScope()
@@ -248,6 +270,8 @@ private fun RigResult(o: RigOutcome, onPaint: () -> Unit, onTweak: () -> Unit, o
 			Button("Split parts", onSplit)
 			Button("Skeleton", onSkeleton)
 			Button("Simulate", onSimulate)
+			Button("Textures", onTextures)
+			Button("History", onHistory)
 			Button("Parameters", onParameters)
 			Button("Rig settings", onSettings)
 		}
@@ -257,7 +281,7 @@ private fun RigResult(o: RigOutcome, onPaint: () -> Unit, onTweak: () -> Unit, o
 				saveStatus = "Saving…"
 				scope.launch {
 					saveStatus = try {
-						val path = withContext(Dispatchers.Default) { saveRigProject(o) }
+						val path = withContext(Dispatchers.Default) { saveRigProject(o, history) }
 						"Saved Rigs/${path.substringAfterLast('/')} - it opens in the Mac editor"
 					} catch (failure: Throwable) { "Couldn't save: ${failure.message ?: failure::class.simpleName}" }
 				}

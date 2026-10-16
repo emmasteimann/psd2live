@@ -87,7 +87,7 @@ private enum class FitTool(val label: String) {
 }
 
 private val tips = mapOf(
-	FitTool.MOVE to "Drag the piece; corners scale (Free stretch: freely), sides stretch, the dot above turns.",
+	FitTool.MOVE to "Drag the piece; corners scale (Free stretch: freely), sides stretch. Drag outside the box (or the dot) to turn it: start farther out for a finer turn.",
 	FitTool.HANDLES to "Bend the piece with the cage's handles.",
 	FitTool.DISTORT to "Pull any of the four corners on its own (perspective, skew); sides move two corners; drag inside to move. Keeps any bends.",
 	FitTool.BOX to "Drag a box where the piece belongs: it drops in and snaps to your drawn lines.",
@@ -159,6 +159,9 @@ fun FitScreen(project: StudioProject, partId: String, pencilOnly: Boolean, onPen
 	var ghostArt by remember { mutableStateOf<IntArray?>(null) }
 	var outlineArt by remember { mutableStateOf<IntArray?>(null) }
 	var hover by remember { mutableStateOf<Pt?>(null) }
+	// The angle while the turn dot is dragged (shown on the canvas), and whether it settles on 15° steps.
+	var turning by remember { mutableStateOf<Double?>(null) }
+	var snapTurn by remember { mutableStateOf(true) }
 	val scope = rememberCoroutineScope()
 	val worker = remember { Dispatchers.Default.limitedParallelism(1) }
 	val safe = remember { CoroutineExceptionHandler { _, e -> scope.launch(Dispatchers.Main) { busy = null; status = "Something went wrong: ${e.message ?: e::class.simpleName}" } } }
@@ -412,14 +415,19 @@ fun FitScreen(project: StudioProject, partId: String, pencilOnly: Boolean, onPen
 									}
 									FitTool.HANDLES -> FitGeometry.nearestHandle(dst, p, r).takeIf { it >= 0 }?.let { f.pushCage(); Drag.Handle(it) }
 									FitTool.MOVE -> {
-										val hs = transformHandles(dst, r * 26 / 12)
+										val scale = layout(w, h, view)[0]
+										val hs = transformHandles(dst, TURN_LIFT_PX / scale)
 										val mid = Pt((hs.b.x0 + hs.b.x1) / 2, (hs.b.y0 + hs.b.y1) / 2)
 										f.pushCage()
 										val ci = FitGeometry.nearestHandle(hs.corners, p, r); val ei = FitGeometry.nearestHandle(hs.edges, p, r)
 										when {
-											hypot(p.x - hs.rotate.x, p.y - hs.rotate.y) <= r -> { val c = FitGeometry.centroid(dst); Drag.Rotate(c, dst, atan2(p.y - c.y, p.x - c.x)) }
+											// The turn dot gets the biggest target: it's small, alone, and the one people miss.
+											hypot(p.x - hs.rotate.x, p.y - hs.rotate.y) <= TURN_HIT_PX / scale -> { val c = FitGeometry.centroid(dst); Drag.Rotate(c, dst, atan2(p.y - c.y, p.x - c.x)) }
 											ci >= 0 -> Drag.Scale(dst, hs.corners[ci], if (fromMiddle) mid else hs.corners[(ci + 2) % 4], null)
 											ei >= 0 -> Drag.Scale(dst, hs.edges[ei], if (fromMiddle) mid else hs.edges[(ei + 2) % 4], if (ei % 2 == 1) 'x' else 'y')
+											// Outside the box (past the handles) turns it, as in Photoshop: the farther out the drag starts,
+											// the finer the turn - the dot alone is a short lever and turned too fast.
+											p.x < hs.b.x0 - r || p.x > hs.b.x1 + r || p.y < hs.b.y0 - r || p.y > hs.b.y1 + r -> { val c = FitGeometry.centroid(dst); Drag.Rotate(c, dst, atan2(p.y - c.y, p.x - c.x)) }
 											else -> Drag.Move(p)
 										}
 									}
@@ -476,7 +484,15 @@ fun FitScreen(project: StudioProject, partId: String, pencilOnly: Boolean, onPen
 										}
 										f.dst = d.snapshot.map { Pt(d.anchor.x + (it.x - d.anchor.x) * sx, d.anchor.y + (it.y - d.anchor.y) * sy) }
 									}
-									is Drag.Rotate -> f.dst = FitGeometry.transformPoints(d.snapshot, degrees = (atan2(p.y - d.centre.y, p.x - d.centre.x) - d.a0) * 180 / kotlin.math.PI, centre = d.centre)
+									is Drag.Rotate -> {
+										var deg = (atan2(p.y - d.centre.y, p.x - d.centre.x) - d.a0) * 180 / kotlin.math.PI
+										deg = ((deg + 540) % 360) - 180
+										// Close to a multiple of 15°, it settles there (as Procreate's snapping does); further out it's free.
+										val nearest = kotlin.math.round(deg / 15) * 15
+										if (snapTurn && kotlin.math.abs(deg - nearest) < 2.5) deg = nearest
+										turning = deg
+										f.dst = FitGeometry.transformPoints(d.snapshot, degrees = deg, centre = d.centre)
+									}
 									is Drag.GlueLine -> {
 										val g = f.glue ?: return
 										val fr = FitSession.round3(f.across(p, FitGeometry.bounds(f.dst), if (g.axisX) "x" else "y"))
@@ -497,7 +513,7 @@ fun FitScreen(project: StudioProject, partId: String, pencilOnly: Boolean, onPen
 								}
 							}
 							override fun end() {
-								val d = drag; drag = null; hover = null
+								val d = drag; drag = null; hover = null; turning = null
 								val dr = draft
 								if (d is Drag.BoxDraft) {
 									draft = null
@@ -512,7 +528,7 @@ fun FitScreen(project: StudioProject, partId: String, pencilOnly: Boolean, onPen
 							override fun cancel() {
 								// A second finger: the first finger's edit was the start of a pinch, so put it back.
 								if (drag != null && f.undoCount > historyAtStart) undoStep()
-								drag = null; draft = null; hover = null
+								drag = null; draft = null; hover = null; turning = null
 							}
 							override fun undo() { undoStep() }
 							override fun redo() {}
@@ -538,6 +554,13 @@ fun FitScreen(project: StudioProject, partId: String, pencilOnly: Boolean, onPen
 						}
 						pf?.overlay?.let { ov -> val (o, z) = place(pf.x0, pf.y0, pf.x1, pf.y1); drawImage(ov, dstOffset = o, dstSize = z) }
 						overlay(f, tool, l, draft, specks, hover?.takeIf { tool.brushes }?.let { it to brush / 2.0 }, feather, text)
+						turning?.let { deg ->
+							val c = FitGeometry.centroid(f.dst)
+							val laid = text.measure("${if (deg > 0) "+" else ""}${(deg * 10).roundToInt() / 10.0}°", TextStyle(color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold))
+							val at = Offset(l[1] + c.x.toFloat() * l[0] - laid.size.width / 2, l[2] + c.y.toFloat() * l[0] - laid.size.height / 2)
+							drawRect(CageColour.copy(alpha = 0.85f), at - Offset(8f, 4f), Size(laid.size.width + 16f, laid.size.height + 8f))
+							drawText(laid, topLeft = at)
+						}
 					}
 				}
 				// ---- Bottom bar ----
@@ -567,9 +590,19 @@ fun FitScreen(project: StudioProject, partId: String, pencilOnly: Boolean, onPen
 					// Read so the panel follows the session.
 					@Suppress("UNUSED_VARIABLE") val v = f.version
 					when (tool) {
-						FitTool.MOVE -> Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-							Chip("From middle", fromMiddle) { fromMiddle = !fromMiddle }
-							Chip("Free stretch", freeStretch) { freeStretch = !freeStretch }
+						FitTool.MOVE -> {
+							Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+								Chip("From middle", fromMiddle) { fromMiddle = !fromMiddle }
+								Chip("Free stretch", freeStretch) { freeStretch = !freeStretch }
+							}
+							Text("Turn: drag outside the box (farther out turns finer) or the dot, or", color = Muted, fontSize = 12.sp)
+							Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+								Chip("−15°") { f.nudge(degrees = -15.0) }
+								Chip("−1°") { f.nudge(degrees = -1.0) }
+								Chip("+1°") { f.nudge(degrees = 1.0) }
+								Chip("+15°") { f.nudge(degrees = 15.0) }
+							}
+							Chip(if (snapTurn) "Settles on 15° steps" else "Turns freely", snapTurn) { snapTurn = !snapTurn }
 						}
 						FitTool.WAND -> {
 							Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { for ((k, label) in listOf("new" to "New", "add" to "Add", "subtract" to "Take away")) Chip(label, wandMode == k) { wandMode = k } }
@@ -633,6 +666,10 @@ fun FitScreen(project: StudioProject, partId: String, pencilOnly: Boolean, onPen
 	}
 }
 
+/** How far above the box the turn dot sits, and how near a touch must land to grab it, in screen pixels. */
+private const val TURN_LIFT_PX = 44.0
+private const val TURN_HIT_PX = 34.0
+
 /** The move tool's handles around the cage's box: corners, side middles, and the turn dot [lift] above. */
 private class MoveHandles(val b: Box, val corners: List<Pt>, val edges: List<Pt>, val rotate: Pt)
 
@@ -661,7 +698,7 @@ private fun DrawScope.overlay(f: FitSession, tool: FitTool, l: FloatArray, draft
 			dst.forEach { knob(sc(it), 8f) }
 		}
 		FitTool.MOVE -> {
-			val hs = transformHandles(dst, 34.0 / l[0])
+			val hs = transformHandles(dst, TURN_LIFT_PX / l[0])
 			val a = sc(Pt(hs.b.x0, hs.b.y0)); val b = sc(Pt(hs.b.x1, hs.b.y1))
 			drawRect(CageColour, a, Size(b.x - a.x, b.y - a.y), style = dash)
 			drawLine(CageColour, sc(Pt((hs.b.x0 + hs.b.x1) / 2, hs.b.y0)), sc(hs.rotate), 2f)

@@ -107,6 +107,17 @@ class RigEditing(private val start: RigPreviewModel, startSource: org.umamo.form
 	/** A settings change (draw order, visibility...) as one undoable step. */
 	fun reconfigure(config: PipelineConfig) = commit(config)
 
+	/**
+	 * A change the quick replay can't build (the skeleton generates bones, deformers and parameters) as one undoable
+	 * step: the rig built again from the art with [config], as LayerloomJob.setUp and opening a project do.
+	 */
+	fun rebuild(config: PipelineConfig) {
+		val art = requireNotNull(source) { "This rig has no source art to rebuild from" }
+		val next = pipeline.buildPreview(art, config)
+		undos.addLast(model to source); if (undos.size > 60) undos.removeFirst()
+		redos.clear(); model = next
+	}
+
 	fun undo() { if (!canUndo) return; redos.addLast(model to source); undos.removeLast().let { model = it.first; source = it.second } }
 	fun redo() { if (!canRedo) return; undos.addLast(model to source); redos.removeLast().let { model = it.first; source = it.second } }
 
@@ -394,4 +405,54 @@ object RigSplits {
 	fun splitDepth(e: RigEditing, sourceMesh: String, middleMesh: String) = e.applyDocument("source_split_depth", buildJsonObject {
 		put("source_id", sourceMesh); put("middle_ids", JsonArray(listOf(JsonPrimitive(middleMesh))))
 	})
+}
+
+/**
+ * The skeleton on the iPad: the desktop's Skeleton mode (`skeleton_*` through the shared WorkspaceSkeletonMotionEdits):
+ * propose one from the art (arms only or the full body), move joints, bind parts to bones, remove a limb, switch it off,
+ * and saved poses. Bones become parameters the pose sliders, Tweak and motions use.
+ */
+object RigSkeleton {
+	fun spec(e: RigEditing): io.github.psd2live.core.SkeletonSpec? = e.model.config.rigEdits.skeleton
+
+	private fun edit(e: RigEditing, request: JsonObject) {
+		val m = e.model
+		val next = io.github.psd2live.application.WorkspaceSkeletonMotionEdits.skeleton(m.config.rigEdits.skeleton, request) {
+			io.github.psd2live.core.LayerSkeleton.propose(m.analysis, m.baseRig, request["proposal"]?.let { (it as JsonPrimitive).content } ?: "full", m.config.armJoints)
+		}
+		io.github.psd2live.core.SkeletonDraftEdits.validated(next, m.rig.puppet.drawables.mapTo(HashSet()) { it.id.raw })
+		// The skeleton generates bones, deformers and parameters: only a full build makes them (the quick replay doesn't).
+		e.rebuild(m.config.copy(rigEdits = m.config.rigEdits.copy(skeleton = next)))
+	}
+
+	/** A skeleton proposed from the art: "arms" (arms only) or "full" (arms, legs, tail, wings). */
+	fun auto(e: RigEditing, proposal: String) = edit(e, buildJsonObject { put("mode", "auto"); put("proposal", proposal) })
+	fun enable(e: RigEditing, on: Boolean) = edit(e, buildJsonObject { put("mode", "enable"); put("enabled", on) })
+	/** Moves a bone's [end] ("head" or "tail") to canvas ([x], [y]); connected joints follow, as on the desktop. */
+	fun move(e: RigEditing, boneId: String, end: String, x: Float, y: Float) = edit(e, buildJsonObject {
+		put("mode", "move"); put("bone_id", boneId); put("end", end); put("point", JsonArray(listOf(JsonPrimitive(x), JsonPrimitive(y))))
+	})
+	/** Binds part mesh [drawableId] to [boneId] (null: back to automatic). */
+	fun bind(e: RigEditing, drawableId: String, boneId: String?) = edit(e, buildJsonObject {
+		put("mode", "bind"); put("drawable_id", drawableId); boneId?.let { put("bone_id", it) }
+	})
+	fun remove(e: RigEditing, boneId: String) = edit(e, buildJsonObject { put("mode", "remove"); put("bone_id", boneId) })
+	/** Bone settings: name, joint limits (degrees). */
+	fun bone(e: RigEditing, boneId: String, name: String? = null, minAngle: Float? = null, maxAngle: Float? = null) = edit(e, buildJsonObject {
+		put("mode", "bone"); put("bone", buildJsonObject {
+			put("id", boneId); name?.let { put("name", it) }; minAngle?.let { put("minAngle", it) }; maxAngle?.let { put("maxAngle", it) }
+		})
+	})
+
+	/** Saves the current pose of the skeleton's parameters as [name] (replacing one of that name). */
+	fun savePose(e: RigEditing, name: String, pose: Map<String, Float>) {
+		val s = requireNotNull(spec(e)) { "Make a skeleton first." }
+		val ids = s.bones.filter { !it.role.anchor }.map { it.parameterId }.toSet()
+		val values = pose.filterKeys { it in ids }
+		e.reconfigure(e.model.config.copy(rigEdits = e.model.config.rigEdits.copy(skeleton = s.copy(savedPoses = s.savedPoses + (name.trim() to values)))))
+	}
+	fun deletePose(e: RigEditing, name: String) {
+		val s = spec(e) ?: return
+		e.reconfigure(e.model.config.copy(rigEdits = e.model.config.rigEdits.copy(skeleton = s.copy(savedPoses = s.savedPoses - name))))
+	}
 }

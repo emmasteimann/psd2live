@@ -47,7 +47,8 @@ class RigEditing(private val start: RigPreviewModel, startSource: org.umamo.form
 	val canRedo get() = redos.isNotEmpty()
 	/** Changes since the screen opened (journal entries and parameter definitions). */
 	val edits get() = model.config.rigEdits.authoringJournal.size - start.config.rigEdits.authoringJournal.size +
-		model.config.rigEdits.parameterEdits.size - start.config.rigEdits.parameterEdits.size
+		model.config.rigEdits.parameterEdits.size - start.config.rigEdits.parameterEdits.size +
+		(if (model.config.drawOrderOverrides != start.config.drawOrderOverrides) 1 else 0)
 
 	private fun commit(config: PipelineConfig, nextSource: org.umamo.format.art.SourceArt? = source) {
 		val next = pipeline.updateRigEdits(model, config)
@@ -81,6 +82,9 @@ class RigEditing(private val start: RigPreviewModel, startSource: org.umamo.form
 			else if (edit != null) MotionClips.withParameterRange(overlay.motionClips, id, edit.min, edit.max) else overlay.motionClips
 		commit(model.config.copy(rigEdits = overlay.copy(authoringJournal = overlay.authoringJournal + journal, motionClips = clips)))
 	}
+
+	/** A settings change (draw order, visibility...) as one undoable step. */
+	fun reconfigure(config: PipelineConfig) = commit(config)
 
 	fun undo() { if (!canUndo) return; redos.addLast(model to source); undos.removeLast().let { model = it.first; source = it.second } }
 	fun redo() { if (!canRedo) return; undos.addLast(model to source); redos.removeLast().let { model = it.first; source = it.second } }
@@ -225,5 +229,51 @@ object RigParts {
 			put("preserve_image", false)
 			put("points", JsonArray(local.map(::JsonPrimitive)))
 		}
+	}
+}
+
+/**
+ * Draw order on the iPad: the desktop's draw-order ruler (`layer_draw_order`). A part given an order (0..1000, higher
+ * in front) keeps it over any animated order until reset; reset gives back the generated or authored order.
+ */
+object RigDrawOrder {
+	class Entry(val layerId: String, val name: String, val order: Float, val overridden: Boolean)
+
+	/** Every part, front first, by its order at rest (ties: the later-drawn in front, as the renderer does). */
+	fun list(e: RigEditing): List<Entry> {
+		val overrides = e.model.config.drawOrderOverrides
+		val byLayer = e.model.rig.layerIdByDrawableId
+		val names = e.source?.layers?.associate { it.id.raw to it.name }.orEmpty()
+		val seen = LinkedHashMap<String, Pair<Float, Int>>()
+		e.puppet.drawables.forEachIndexed { index, d ->
+			val layer = byLayer[d.id.raw] ?: d.id.raw
+			val order = overrides[layer] ?: overrides[d.id.raw] ?: d.drawOrder
+			val prev = seen[layer]
+			if (prev == null || order > prev.first || (order == prev.first && index > prev.second)) seen[layer] = order to index
+		}
+		// Only your parts: meshes the rigger made itself (a mouth's lip strokes) follow their part.
+		return seen.entries.filter { it.key in names }.sortedWith(compareByDescending<Map.Entry<String, Pair<Float, Int>>> { it.value.first }.thenByDescending { it.value.second })
+			.map { (layer, v) -> Entry(layer, names.getValue(layer), v.first, layer in overrides) }
+	}
+
+	/** Sets [layerId]'s order (0..1000), or resets it when [order] is null - one undoable step. */
+	fun set(e: RigEditing, layerId: String, order: Float?) {
+		val before = e.model.config.drawOrderOverrides
+		val after = if (order == null) before - layerId else {
+			require(order.isFinite() && order in 0f..1000f) { "Draw order is 0 to 1000." }
+			before + (layerId to order)
+		}
+		if (after != before) e.reconfigure(e.model.config.copy(drawOrderOverrides = after))
+	}
+
+	/** Puts [layerId] just in front of ([inFront] true) or just behind the part next to it in [list]. */
+	fun step(e: RigEditing, list: List<Entry>, layerId: String, inFront: Boolean) {
+		val i = list.indexOfFirst { it.layerId == layerId }
+		val j = if (inFront) i - 1 else i + 1
+		if (i < 0 || j !in list.indices) return
+		// Halfway between the neighbour and the part beyond it, so it never ties with either.
+		val near = list[j].order
+		val beyond = list.getOrNull(if (inFront) j - 1 else j + 1)?.order ?: (if (inFront) near + 2f else near - 2f)
+		set(e, layerId, ((near + beyond) / 2f).coerceIn(0f, 1000f))
 	}
 }

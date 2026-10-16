@@ -41,6 +41,10 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_CFBundleDisplayName: Layerloom
+        # The app icon (Layerloom/Assets.xcassets; one 1024 px image, iOS makes the rest). TestFlight refuses a build without one.
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # Only standard HTTPS (the private studio): exempt from export rules, so uploads don't stop to ask.
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
         MARKETING_VERSION: "0.1"
         CURRENT_PROJECT_VERSION: "1"
         ENABLE_USER_SCRIPT_SANDBOXING: NO

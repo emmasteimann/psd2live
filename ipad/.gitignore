@@ -4,3 +4,4 @@ build/
 iosApp/studio/
 iosApp/Layerloom.xcodeproj/
 iosApp/build/
+.testflight-team

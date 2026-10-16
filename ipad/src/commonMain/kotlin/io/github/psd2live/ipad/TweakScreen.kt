@@ -72,6 +72,10 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 	var radius by remember { mutableStateOf(40f) }
 	var strength by remember { mutableStateOf(0.6f) }
 	var smooth by remember { mutableStateOf(false) }
+	// Inflate pushes the mesh outward from the brush's middle (a cheek puff, a breath); with the stroke going the other
+	// way it pulls in.
+	var inflate by remember { mutableStateOf(false) }
+	val inflateNow by rememberUpdatedState(inflate)
 	var view by remember { mutableStateOf(CanvasView()) }
 	var showMesh by remember { mutableStateOf(false) }
 	var mirror by remember { mutableStateOf(false) }
@@ -82,6 +86,8 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 	var pointsMode by remember { mutableStateOf(false) }
 	val pointsOn by rememberUpdatedState(pointsMode)
 	var selection by remember { mutableStateOf<Map<String, Set<Int>>>(emptyMap()) }
+	// The order points were tapped in: the knife cuts along it.
+	var pickOrder by remember { mutableStateOf<List<Pair<String, Int>>>(emptyList()) }
 	val selectionNow by rememberUpdatedState(selection)
 	var verts by remember { mutableStateOf<List<Pair<String, FloatArray>>>(emptyList()) }
 	val vertsNow by rememberUpdatedState(verts)
@@ -240,7 +246,7 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 							val p = toCanvas(at); val p0 = currentPose
 							cursor = at
 							// The Pencil's pressure scales how hard this stroke pushes.
-							scope.launch(worker + safe) { stroking = tweaking.begin(p0, p.x, p.y, r, 0.5f, (s * pressure).coerceIn(0.02f, 1f), sm, warpOn)
+							scope.launch(worker + safe) { stroking = tweaking.begin(p0, p.x, p.y, r, 0.5f, (s * pressure).coerceIn(0.02f, 1f), sm, warpOn, inflateNow && !warpOn)
 								if (warpOn) { val l = tweaking.warpAt(p0, p.x, p.y); scope.launch(Dispatchers.Main) { lattice = l } } }
 						}
 						override fun move(at: Offset, pressure: Float) {
@@ -267,6 +273,7 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 								if (kotlin.math.hypot(to.x - from.x, to.y - from.y) < 10f) {
 									// A tap: the nearest point toggles; a tap on nothing clears the selection.
 									val hit = nearest(from, 28f)
+									pickOrder = if (hit == null) emptyList() else if (pickOrder.contains(hit)) pickOrder - hit else pickOrder + hit
 									selection = if (hit == null) emptyMap() else {
 										val set = selection[hit.first].orEmpty()
 										selection + (hit.first to (if (hit.second in set) set - hit.second else set + hit.second))
@@ -453,10 +460,34 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 						Chip("Clear selection", false, enabled = count > 0) { selection = emptyMap() }
 						Chip(if (boxEveryPart) "A box takes: every part" else "A box takes: one part", boxEveryPart) { boxEveryPart = !boxEveryPart }
 					}
+					// Mesh editing by hand: on the selected points of one part (the order they were tapped is the knife's path).
+					val onePart = selection.filterValues { it.isNotEmpty() }.entries.singleOrNull()
+					Text(if (onePart == null) "Mesh editing: select points on one part to subdivide, merge, connect, cut or delete them."
+						else "Mesh editing on ${tweaking.meshName(onePart.key)}:", color = Muted, fontSize = 12.sp)
+					@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+					androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+						for ((action, label) in listOf("subdivide" to "Subdivide", "merge" to "Merge", "connect" to "Connect 2", "knife" to "Cut through",
+							"delete" to "Delete", "duplicate" to "Duplicate")) {
+							val n = onePart?.value?.size ?: 0
+							val ok = onePart != null && saving == null && when (action) { "connect" -> n == 2; "knife" -> n >= 2; "merge" -> n >= 2; else -> n >= 1 }
+							Chip(label, false, enabled = ok) {
+								val (mesh, pts) = onePart!!
+								val order = pickOrder.filter { it.first == mesh && it.second in pts }.map { it.second }.ifEmpty { pts.toList() }
+								scope.launch(worker + safe) {
+									val done = tweaking.topology(mesh, action, order)
+									scope.launch(Dispatchers.Main) {
+										if (done) { selection = emptyMap(); pickOrder = emptyList(); workError = null; bump() }
+										else workError = "That doesn't apply to these points"
+									}
+								}
+							}
+						}
+					}
 				}
 				Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-					Chip("Push", !smooth) { smooth = false }
-					Chip("Smooth", smooth) { smooth = true }
+					Chip("Push", !smooth && !inflate) { smooth = false; inflate = false }
+					Chip("Smooth", smooth && !inflate) { smooth = true; inflate = false }
+					Chip("Inflate", inflate) { inflate = true; smooth = false }
 					Chip("Fit view", false) { view = CanvasView() }
 					Chip("Mesh", showMesh) { showMesh = !showMesh }
 				}

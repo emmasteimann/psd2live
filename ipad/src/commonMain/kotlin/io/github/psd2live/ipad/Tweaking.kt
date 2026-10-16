@@ -99,18 +99,19 @@ class RigTweaking(val outcome: RigOutcome) {
 	 * deformer under the press is pushed instead of the meshes: one push moves the whole region it shapes.
 	 */
 	fun begin(pose: Map<String, Float>, x: Float, y: Float, radius: Float, hardness: Float, strength: Float, smooth: Boolean,
-		warp: Boolean = false): Boolean {
+		warp: Boolean = false, inflate: Boolean = false): Boolean {
+		val action = when { inflate -> CanvasDeformStroke.Action.INFLATE; smooth -> CanvasDeformStroke.Action.SMOOTH; else -> CanvasDeformStroke.Action.BRUSH }
 		val puppet = model.rig.puppet
 		if (warp) {
 			val lattice = PoseTweaks.warpUnder(puppet, pose, x, y) ?: return false
 			session = PoseTweaks.beginWarp(puppet, pose, lattice.id, x, y, radius, hardness, strength,
-				if (smooth) CanvasDeformStroke.Action.SMOOTH else CanvasDeformStroke.Action.BRUSH)
+				action)
 			return true
 		}
 		val meshes = PoseTweaks.meshesUnder(puppet, pose, x, y, radius).filter(::targeted)
 		if (meshes.isEmpty()) return false
 		session = PoseTweaks.begin(puppet, pose, meshes, x, y, radius, hardness, strength,
-			if (smooth) CanvasDeformStroke.Action.SMOOTH else CanvasDeformStroke.Action.BRUSH)
+			action)
 		return true
 	}
 
@@ -152,6 +153,26 @@ class RigTweaking(val outcome: RigOutcome) {
 		val next = pipeline.updateRigEdits(model, config)
 		undos.addLast(model); if (undos.size > 60) undos.removeFirst()
 		redos.clear(); model = next; shown = model.rig.puppet
+	}
+
+	/**
+	 * Mesh editing by hand (the desktop's Edit tools, `canvas_topology`): on [meshId]'s [vertices] (indices) - "subdivide"
+	 * (more points between them), "merge" (into one at their middle), "connect" (an edge between exactly two),
+	 * "delete" (and fill the hole), "duplicate", or "knife" (cut along the points in the order given). The mesh changes at
+	 * rest; keyforms, paths and weights carry over. One undoable step; false when it doesn't apply to this selection.
+	 */
+	fun topology(meshId: String, action: String, vertices: List<Int>): Boolean {
+		val mesh = model.rig.puppet.drawables.firstOrNull { it.id.raw == meshId }?.mesh ?: return false
+		val anchors = if (action == "knife") vertices.map { org.umamo.edit.MeshRefinementOps.KnifeAnchor.AtVertex(it) } else emptyList()
+		val selected = if (action == "knife") emptySet() else vertices.toSet()
+		io.github.psd2live.core.CanvasTopology.build(mesh, action, selected, anchors) ?: return false
+		journal(listOf(kotlinx.serialization.json.buildJsonObject {
+			put("op", kotlinx.serialization.json.JsonPrimitive("canvas_topology")); put("id", kotlinx.serialization.json.JsonPrimitive(meshId))
+			put("action", kotlinx.serialization.json.JsonPrimitive(action))
+			put("vertices", kotlinx.serialization.json.JsonArray(selected.sorted().map { kotlinx.serialization.json.JsonPrimitive(it) }))
+			if (action == "knife") put("anchors", io.github.psd2live.core.CanvasTopology.encodeAnchors(anchors))
+		}))
+		return true
 	}
 
 	fun paths(pose: Map<String, Float>): List<PathShown> {

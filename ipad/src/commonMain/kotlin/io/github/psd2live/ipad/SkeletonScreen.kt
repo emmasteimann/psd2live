@@ -79,6 +79,14 @@ fun SkeletonScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: 
 	var binding by remember { mutableStateOf(false) }
 	val bindingNow by rememberUpdatedState(binding)
 	var drag by remember { mutableStateOf<Triple<String, String, Offset>?>(null) } // bone, end, canvas point
+	// What a finger on the canvas does: move joints (at rest), pose by dragging (tip = IK), draw a new bone, set the middle line.
+	var tool by remember { mutableStateOf("joints") }
+	val toolNow by rememberUpdatedState(tool)
+	var posedBones by remember { mutableStateOf<List<io.github.psd2live.core.PosedBone>>(emptyList()) }
+	var poseDrag by remember { mutableStateOf<Pair<String, Boolean>?>(null) } // bone, tip
+	var newBone by remember { mutableStateOf<Pair<Offset, Offset>?>(null) } // head, tail (canvas)
+	val poseNow by rememberUpdatedState(pose)
+	val busyNow by rememberUpdatedState(busy)
 	var poseName by remember { mutableStateOf("") }
 	// Removing a bone asks twice: the panel moves as bones are picked, so one stray tap mustn't do it.
 	var confirmRemove by remember { mutableStateOf<String?>(null) }
@@ -103,6 +111,8 @@ fun SkeletonScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: 
 		}
 	}
 
+	fun pick(label: String, block: () -> String?) = run(label) { block()?.let { id -> scope.launch(Dispatchers.Main) { selected = id } } }
+
 	LaunchedEffect(editing) {
 		var lastView: CanvasView? = null
 		snapshotFlow { listOf(tick, view, box, pose) }.collectLatest {
@@ -120,6 +130,7 @@ fun SkeletonScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: 
 				val k = minOf(1f, kotlin.math.sqrt(2_200_000f / (ow.toFloat() * oh))); ow = (ow * k).roundToInt().coerceAtLeast(1); oh = (oh * k).roundToInt().coerceAtLeast(1)
 				editing.frame(p, x0, y0, x1 - x0, y1 - y0, ow, oh).toImageBitmap() to floatArrayOf(x0, y0, x1, y1)
 			}
+			if (!viewOnly) posedBones = withContext(worker) { runCatching { RigSkeleton.posed(editing, p) }.getOrDefault(emptyList()) }
 		}
 	}
 
@@ -131,6 +142,9 @@ fun SkeletonScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: 
 		Text(when {
 			spec == null -> "Bones let arms, legs, a tail or wings swing. Propose a skeleton from the art to start."
 			binding -> "Tap a part to bind it to the selected bone."
+			tool == "pose" -> "Drag a bone's tip and the bones above it follow (IK); drag along a bone to turn just that one."
+			tool == "new" -> "Drag from where the new bone starts to its tip. It hangs from the selected bone (or the root)."
+			tool == "axis" -> "Tap where the middle of the character is. Mirroring reflects across this line."
 			else -> "Drag a joint to move it (at rest). Pose a bone with its slider. Two fingers move and zoom."
 		}, color = if (binding) BoneOn else Muted, fontSize = 13.sp)
 		message?.let { Text(it, color = Danger, fontSize = 13.sp) }
@@ -146,7 +160,29 @@ fun SkeletonScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: 
 						override fun start(at: Offset, pressure: Float) {
 							at0 = at
 							val s = specNow ?: return
-							if (bindingNow || busy != null) return
+							if (bindingNow || busyNow != null) return
+							when (toolNow) {
+								"new" -> { val c = toCanvas(at); newBone = c to c; return }
+								"axis" -> return
+								"pose" -> {
+									val l = layout(w, h, view); var best: Pair<String, Boolean>? = null; var bestD = 28f
+									for (b in posedBones) {
+										val tx = l[1] + b.tailX * l[0]; val ty = l[2] + b.tailY * l[0]
+										val d = kotlin.math.hypot(tx - at.x, ty - at.y)
+										if (d < bestD) { bestD = d; best = b.bone.id to true }
+									}
+									if (best == null) for (b in posedBones) {
+										val hx = l[1] + b.headX * l[0]; val hy = l[2] + b.headY * l[0]
+										val tx = l[1] + b.tailX * l[0]; val ty = l[2] + b.tailY * l[0]
+										val vx = tx - hx; val vy = ty - hy; val len2 = (vx * vx + vy * vy).coerceAtLeast(1f)
+										val t = (((at.x - hx) * vx + (at.y - hy) * vy) / len2).coerceIn(0f, 1f)
+										val d = kotlin.math.hypot(hx + vx * t - at.x, hy + vy * t - at.y)
+										if (d < 22f && d < bestD) { bestD = d; best = b.bone.id to false }
+									}
+									poseDrag = best; best?.let { selected = it.first }
+									return
+								}
+							}
 							// The nearest joint within reach is picked up (only at rest: joints are placed on the drawing).
 							val l = layout(w, h, view); var best: Triple<String, String, Offset>? = null; var bestD = 28f
 							for (b in s.bones) for ((end, x, y) in listOf(Triple("head", b.headX, b.headY), Triple("tail", b.tailX, b.tailY))) {
@@ -155,9 +191,27 @@ fun SkeletonScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: 
 							}
 							drag = best; best?.let { selected = it.first }
 						}
-						override fun move(at: Offset, pressure: Float) { drag?.let { drag = Triple(it.first, it.second, toCanvas(at)) } }
+						override fun move(at: Offset, pressure: Float) {
+							newBone?.let { newBone = it.first to toCanvas(at); return }
+							poseDrag?.let { (id, tip) ->
+								// Fresh bones each step: the solver turns from where the pose puts them now, so the drag converges.
+								val c = toCanvas(at); val p = poseNow
+								pose = RigSkeleton.dragPose(editing, RigSkeleton.posed(editing, p), id, tip, c.x, c.y, p)
+								return
+							}
+							drag?.let { drag = Triple(it.first, it.second, toCanvas(at)) }
+						}
 						override fun end() {
 							val a = at0 ?: return; at0 = null
+							if (poseDrag != null) { poseDrag = null; return }
+							newBone?.let { (head, tail) ->
+								newBone = null
+								if (kotlin.math.hypot(tail.x - head.x, tail.y - head.y) < 4f) { message = "Drag a little further to draw a bone."; return }
+								val parent = selectedNow
+								pick("Adding the bone…") { RigSkeleton.create(editing, head.x, head.y, tail.x, tail.y, parent) }
+								return
+							}
+							if (toolNow == "axis") { val x = toCanvas(a).x; run("Setting the middle line…") { RigSkeleton.symmetry(editing, x) }; return }
 							val d = drag; drag = null
 							if (d != null) {
 								val start = specNow?.bone(d.first)?.let { if (d.second == "head") Offset(it.headX, it.headY) else Offset(it.tailX, it.tailY) }
@@ -175,7 +229,7 @@ fun SkeletonScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: 
 								}
 							}
 						}
-						override fun cancel() { at0 = null; drag = null }
+						override fun cancel() { at0 = null; drag = null; poseDrag = null; newBone = null }
 						override fun undo() { if (busy == null) run("Undoing…") { editing.undo() } }
 						override fun redo() { if (busy == null) run("Redoing…") { editing.redo() } }
 						override fun view() = view
@@ -190,7 +244,23 @@ fun SkeletonScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: 
 							dstSize = androidx.compose.ui.unit.IntSize(((r[2] - r[0]) * l[0]).roundToInt().coerceAtLeast(1), ((r[3] - r[1]) * l[0]).roundToInt().coerceAtLeast(1)))
 					}
 					val s = spec
-					if (s != null && pose.values.all { it == 0f }) for (b in s.bones) {
+					val atRest = pose.values.all { it == 0f }
+					if (s != null && (tool == "pose" || !atRest)) for (b in posedBones) {
+						val c = if (b.bone.id == selected) BoneOn else Bone
+						val hp = Offset(l[1] + b.headX * l[0], l[2] + b.headY * l[0]); val tp = Offset(l[1] + b.tailX * l[0], l[2] + b.tailY * l[0])
+						drawLine(Color.Black.copy(alpha = 0.6f), hp, tp, 6f); drawLine(c, hp, tp, 3.5f)
+						drawCircle(c, 6f, hp); drawCircle(c, 9f, tp, style = Stroke(2.5f))
+					}
+					if (s != null && tool == "axis") {
+						val x = l[1] + (s.symmetryAxisX ?: (cw / 2f)) * l[0]
+						var y = 0f
+						while (y < size.height) { drawLine(BoneOn, Offset(x, y), Offset(x, y + 14f), 2.5f); y += 24f }
+					}
+					newBone?.let { (hd, tl) ->
+						val hp = Offset(l[1] + hd.x * l[0], l[2] + hd.y * l[0]); val tp = Offset(l[1] + tl.x * l[0], l[2] + tl.y * l[0])
+						drawLine(BoneOn, hp, tp, 3.5f); drawCircle(BoneOn, 8f, hp); drawCircle(BoneOn.copy(alpha = 0.7f), 6f, tp)
+					}
+					if (s != null && atRest && tool != "pose") for (b in s.bones) {
 						if (b.role.anchor) continue
 						var hx = b.headX; var hy = b.headY; var tx = b.tailX; var ty = b.tailY
 						drag?.let { d -> if (d.first == b.id) { if (d.second == "head") { hx = d.third.x; hy = d.third.y } else { tx = d.third.x; ty = d.third.y } } }
@@ -226,6 +296,11 @@ fun SkeletonScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: 
 						Chip(if (s.enabled) "Skeleton on" else "Skeleton off", s.enabled, enabled = busy == null) { val on = !s.enabled; run("Switching…") { RigSkeleton.enable(editing, on) } }
 						Chip("Rest pose", false, enabled = pose.isNotEmpty()) { pose = emptyMap() }
 					}
+					Text("On the canvas", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+					androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+						for ((id, label) in listOf("joints" to "Move joints", "pose" to "Pose by dragging", "new" to "Draw a new bone", "axis" to "Set the middle line"))
+							Chip(label, tool == id) { tool = id; binding = false; if (id == "joints") pose = emptyMap() }
+					}
 					// The list stays put above the bone's controls, so picking a bone never moves the row under the next tap.
 					Text("Bones", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
 					for (b in s.bones.filter { !it.role.anchor }) Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
@@ -251,6 +326,26 @@ fun SkeletonScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: 
 							if (sel.role.limb) {
 								if (confirmRemove == sel.id) Chip("Tap again to remove ${sel.name}", true, enabled = busy == null) { val id = sel.id; confirmRemove = null; run("Removing the bone…") { RigSkeleton.remove(editing, id) } }
 								else Chip("Remove this bone", false, enabled = busy == null) { confirmRemove = sel.id }
+							}
+						}
+						if (sel.role.limb) {
+							val canMerge = io.github.psd2live.core.SkeletonAuthoring.canDissolve(s, sel.id)
+							Text("Shape the bones", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+							androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+								Chip("Mirror to the other side", false, enabled = busy == null) { val id = sel.id; pick("Mirroring…") { RigSkeleton.mirror(editing, id) } }
+								Chip("Split in 2", false, enabled = busy == null) { val id = sel.id; pick("Splitting…") { RigSkeleton.subdivide(editing, id, 2) } }
+								Chip("Split in 3", false, enabled = busy == null) { val id = sel.id; pick("Splitting…") { RigSkeleton.subdivide(editing, id, 3) } }
+								if (canMerge) Chip("Merge into the bone above", false, enabled = busy == null) { val id = sel.id; pick("Merging…") { RigSkeleton.dissolve(editing, id) } }
+								Chip(if (sel.flex) "Flexible chain (on)" else "Make a flexible chain", sel.flex, enabled = busy == null) { val id = sel.id; val on = !sel.flex; pick("Changing the chain…") { RigSkeleton.flex(editing, id, on) } }
+								if (sel.flex) Chip(if (sel.drawnBend != 0f) "Bend back to the drawing" else "Straighten the chain", sel.drawnBend != 0f, enabled = busy == null) {
+									val id = sel.id; val on = sel.drawnBend == 0f; pick("Straightening…") { RigSkeleton.straighten(editing, id, on) }
+								}
+							}
+							Text("Dragging its tip moves ${sel.ik.chainLength} bone${if (sel.ik.chainLength == 1) "" else "s"}", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+							androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+								for (n in 1..3) Chip("$n", sel.ik.chainLength == n, enabled = busy == null) { val id = sel.id; val b = sel.ik.bendDirection; pick("Setting IK…") { RigSkeleton.ik(editing, id, n, b) } }
+								for ((d, label) in listOf(0 to "Bends either way", 1 to "Bends one way", -1 to "Bends the other way"))
+									Chip(label, sel.ik.bendDirection == d, enabled = busy == null) { val id = sel.id; val n = sel.ik.chainLength; pick("Setting IK…") { RigSkeleton.ik(editing, id, n, d) } }
 							}
 						}
 						if (sel.drawableIds.isNotEmpty()) Text("Moves: ${sel.drawableIds.joinToString { id -> editing.puppet.drawables.firstOrNull { it.id.raw == id }?.name ?: id }}", color = Muted, fontSize = 12.sp)

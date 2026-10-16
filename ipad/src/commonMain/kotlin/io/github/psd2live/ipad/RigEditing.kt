@@ -456,6 +456,60 @@ object RigSkeleton {
 		})
 	})
 
+	/**
+	 * One reshaping step through the desktop's own draft processor (SkeletonDraftEdits, which the canvas editor and the
+	 * agent share): new bones, mirror, subdivide, flexible chains, IK settings, the symmetry line. Returns the bone the
+	 * step leaves selected, when it picks one. The rig is rebuilt (a skeleton makes bones, deformers and parameters).
+	 */
+	fun draft(e: RigEditing, intent: io.github.psd2live.core.SkeletonDraftIntent): String? {
+		val m = e.model
+		val spec = requireNotNull(m.config.rigEdits.skeleton) { "Make a skeleton first." }
+		val result = io.github.psd2live.core.SkeletonDraftEdits.apply(spec, m, intent)
+		if (result.spec == spec) return result.selected?.firstOrNull()
+		e.rebuild(m.config.copy(rigEdits = m.config.rigEdits.copy(skeleton = result.spec)))
+		return result.selected?.firstOrNull()
+	}
+
+	/** A new bone from canvas ([hx], [hy]) to ([tx], [ty]), hanging from [parentId] (none: from the root). */
+	fun create(e: RigEditing, hx: Float, hy: Float, tx: Float, ty: Float, parentId: String?) =
+		draft(e, io.github.psd2live.core.SkeletonDraftIntent.CreateBone(hx, hy, tx, ty, parentId))
+	/** A copy of [boneId] and the bones below it reflected across the symmetry line, parts on the other side bound to it. */
+	fun mirror(e: RigEditing, boneId: String) =
+		draft(e, io.github.psd2live.core.SkeletonDraftIntent.Duplicate(setOf(boneId), descendants = true, transferBindings = true, mirror = true))
+	fun subdivide(e: RigEditing, boneId: String, segments: Int) = draft(e, io.github.psd2live.core.SkeletonDraftIntent.Subdivide(boneId, segments))
+	/** Removes [boneId] and joins the bone below it to the one above (its parts go to the parent). */
+	fun dissolve(e: RigEditing, boneId: String) = draft(e, io.github.psd2live.core.SkeletonDraftIntent.Dissolve(boneId))
+	/** Makes [boneId] and the limb bones below it one flexible chain (bends as a smooth curve), or rigid bones again. */
+	fun flex(e: RigEditing, boneId: String, on: Boolean): String? {
+		val s = requireNotNull(spec(e)) { "Make a skeleton first." }
+		val ids = (listOf(boneId) + s.descendants(boneId)).filter { s.bone(it)?.role?.limb == true }.toSet()
+		return draft(e, io.github.psd2live.core.SkeletonDraftIntent.Flex(ids, on))
+	}
+	/** Straightens the flexible chain through [boneId] with its art unrolled along it (the drawing kept as a saved pose); off bends it back. */
+	fun straighten(e: RigEditing, boneId: String, on: Boolean) = draft(e, io.github.psd2live.core.SkeletonDraftIntent.Straighten(boneId, on))
+	/** How dragging [boneId]'s tip poses: [chainLength] bones follow; [bend] -1/0/+1 keeps the elbow bending one way. */
+	fun ik(e: RigEditing, boneId: String, chainLength: Int, bend: Int): String? {
+		val b = requireNotNull(spec(e)?.bone(boneId)) { "Bone not found" }
+		return draft(e, io.github.psd2live.core.SkeletonDraftIntent.Ik(boneId, b.ik.copy(chainLength = chainLength.coerceIn(1, 32), bendDirection = bend.coerceIn(-1, 1))))
+	}
+	/** The vertical line mirroring reflects across (canvas x). */
+	fun symmetry(e: RigEditing, x: Float) = draft(e, io.github.psd2live.core.SkeletonDraftIntent.SymmetryAxis(x))
+
+	/** The bones where [pose] puts them (canvas pixels), for drawing and pose-dragging. */
+	fun posed(e: RigEditing, pose: Map<String, Float>): List<io.github.psd2live.core.PosedBone> =
+		io.github.psd2live.core.SkeletonPoseSolver.posed(e.puppet, spec(e), pose.mapKeys { org.umamo.runtime.model.ParameterId(it.key) })
+
+	/**
+	 * The pose after dragging [boneId] to canvas ([x], [y]) from [pose]: the tip pulls its chain by IK (each joint inside
+	 * its limits), the body turns that bone alone - the desktop's drag-to-pose.
+	 */
+	fun dragPose(e: RigEditing, bones: List<io.github.psd2live.core.PosedBone>, boneId: String, tip: Boolean, x: Float, y: Float, pose: Map<String, Float>): Map<String, Float> {
+		val s = spec(e) ?: return pose
+		val values = pose.mapKeys { org.umamo.runtime.model.ParameterId(it.key) }
+		val changed = io.github.psd2live.core.SkeletonPoseSolver.drag(s, bones, io.github.psd2live.core.BoneHit(boneId, tip), x, y, values, ik = false)
+		return pose + changed.mapKeys { it.key.raw }
+	}
+
 	/** Saves the current pose of the skeleton's parameters as [name] (replacing one of that name). */
 	fun savePose(e: RigEditing, name: String, pose: Map<String, Float>) {
 		val s = requireNotNull(spec(e)) { "Make a skeleton first." }

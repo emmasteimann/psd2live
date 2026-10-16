@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -127,9 +128,20 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 	var pendingCommit by remember { mutableStateOf<Job?>(null) }
 	// The part being fitted by hand (Fit mode takes the whole screen), or null.
 	var fitting by remember { mutableStateOf<String?>(null) }
+	// Peel and Split apart: the new piece's name, the islands found, their names, and the last split (for Join back).
+	var peelName by remember { mutableStateOf("") }
+	var splitOpen by remember { mutableStateOf(false) }
+	var splitGap by remember { mutableStateOf(12f) }
+	var islands by remember { mutableStateOf<StudioPeel.Islands?>(null) }
+	var islandsPreview by remember { mutableStateOf<ImageBitmap?>(null) }
+	var islandNames by remember { mutableStateOf<List<String>>(emptyList()) }
+	var lastSplit by remember { mutableStateOf<Triple<String, StudioPart, List<String>>?>(null) }
 
 	val projectNow by rememberUpdatedState(project)
 	val maskNow by rememberUpdatedState(mask)
+	// The mask as the worker sees it: set on the worker as a part's mask is made, so strokes begun while it loads
+	// (pick a part, start drawing at once) queue behind it and land, instead of being dropped.
+	val workerMask = remember { arrayOfNulls<MaskEdit>(1) }
 	val settings by rememberUpdatedState(BrushSettings(tool, erasing, brush, softness, pressure, tolerance))
 
 	fun bump() { scope.launch(Dispatchers.Main) { maskTick++ } }
@@ -210,7 +222,7 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 			flushMask()
 			val p = projectNow ?: return@collectLatest
 			val part = p.part(id)
-			mask = if (part == null) null else withContext(worker) { MaskEdit(part.id, p.width, p.height, part.mask) }
+			mask = withContext(worker) { (if (part == null) null else MaskEdit(part.id, p.width, p.height, part.mask)).also { workerMask[0] = it } }
 			polygon.clear(); bump()
 			if (part != null && status.startsWith("Choose a part")) status = ""
 		}
@@ -453,9 +465,13 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 						private var lastEdge: Offset? = null
 						private fun toCanvas(o: Offset): Offset { val l = layout(w, h, view); return Offset((o.x - l[1]) / l[0], (o.y - l[2]) / l[0]) }
 						private fun diameter(pr: Float, s: BrushSettings) = if (s.pressure) maxOf(1f, s.brush * (0.15f + 0.85f * kotlin.math.sqrt(pr))) else s.brush
-						private fun ready(): MaskEdit? = maskNow.also {
-							if (it == null) status = if (selectedId == null) "Choose a part on the left first, then paint over it." else "One moment: getting the part ready."
+						/** A part is chosen (its mask may still be loading: strokes wait for it on the worker). */
+						private fun ready(): String? = selectedId.also { if (it == null) status = "Choose a part on the left first, then paint over it." }
+						/** Runs [block] on the worker with the mask of part [id], once it's there. */
+						private fun onMask(id: String?, block: (MaskEdit) -> Unit) {
+							scope.launch(worker + safe) { val edit = workerMask[0]?.takeIf { it.partId == id } ?: return@launch; block(edit); bump() }
 						}
+						private var strokePart: String? = null
 						override fun start(at: Offset, pressure: Float) {
 							val s = settings; val c = toCanvas(at); val proj = projectNow ?: return
 							when (s.tool) {
@@ -466,41 +482,43 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 								}
 								Tool.POLYGON -> if (ready() != null) polygon.add(c)
 								Tool.EDGE -> {
-									val edit = ready() ?: return
+									val id = ready() ?: return
+									strokePart = id
 									val r = diameter(pressure, s) / 2; last = c; lastEdge = c; cursor = at to r
-									scope.launch(worker + safe) { edit.edge(StudioImages.layer(proj.source, proj.width, proj.height), c.x, c.y, r, s.tolerance.roundToInt(), s.erasing); bump() }
+									onMask(id) { it.edge(StudioImages.layer(proj.source, proj.width, proj.height), c.x, c.y, r, s.tolerance.roundToInt(), s.erasing) }
 								}
 								Tool.BRUSH -> {
-									val edit = ready() ?: return
+									val id = ready() ?: return
+									strokePart = id
 									pendingCommit?.cancel()
 									val r = diameter(pressure, s) / 2; last = c; cursor = at to r
-									scope.launch(worker + safe) { edit.segment(c.x, c.y, c.x, c.y, r, 1f - s.softness / 100f, s.erasing); bump() }
+									onMask(id) { it.segment(c.x, c.y, c.x, c.y, r, 1f - s.softness / 100f, s.erasing) }
 								}
 							}
 						}
 						override fun move(at: Offset, pressure: Float) {
 							val from = last ?: return; val s = settings; val c = toCanvas(at); val r = diameter(pressure, s) / 2
-							val edit = maskNow ?: return; val proj = projectNow ?: return
+							val proj = projectNow ?: return; val id = strokePart
 							cursor = at to r
 							if (s.tool == Tool.EDGE) {
 								// Spatially throttled, as the web's: a new fill every few pixels of travel.
 								val le = lastEdge
 								if (le != null && kotlin.math.hypot(c.x - le.x, c.y - le.y) < maxOf(2f, r / 3)) return
 								lastEdge = c; last = c
-								scope.launch(worker + safe) { edit.edge(StudioImages.layer(proj.source, proj.width, proj.height), c.x, c.y, r, s.tolerance.roundToInt(), s.erasing); bump() }
+								onMask(id) { it.edge(StudioImages.layer(proj.source, proj.width, proj.height), c.x, c.y, r, s.tolerance.roundToInt(), s.erasing) }
 								return
 							}
 							last = c
-							scope.launch(worker + safe) { edit.segment(from.x, from.y, c.x, c.y, r, 1f - s.softness / 100f, s.erasing); bump() }
+							onMask(id) { it.segment(from.x, from.y, c.x, c.y, r, 1f - s.softness / 100f, s.erasing) }
 						}
 						override fun end() {
 							cursor = null
 							if (last == null) return
 							last = null; lastEdge = null
-							val s = settings
-							scope.launch(worker + safe) { maskNow?.let { it.endStroke(if (s.tool == Tool.EDGE) "Edge brush" else "Mask"); bump(); commitMaskSoon(it) } }
+							val s = settings; val id = strokePart
+							onMask(id) { it.endStroke(if (s.tool == Tool.EDGE) "Edge brush" else "Mask"); commitMaskSoon(it) }
 						}
-						override fun cancel() { cursor = null; last = null; lastEdge = null; scope.launch(worker + safe) { maskNow?.cancelStroke(); bump() } }
+						override fun cancel() { cursor = null; last = null; lastEdge = null; val id = strokePart; onMask(id) { it.cancelStroke() } }
 						override fun undo() { scope.launch(worker + safe) { maskNow?.let { it.undo(); bump(); commitMaskSoon(it, 300) } }; status = "Undone (two-finger tap). The artwork is unchanged." }
 						override fun redo() { scope.launch(worker + safe) { maskNow?.let { it.redo(); bump(); commitMaskSoon(it, 300) } } }
 						override fun view() = view
@@ -541,6 +559,13 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 					}
 				}
 				if (frame == null) Text("Drawing…", color = Muted, modifier = Modifier.align(Alignment.Center))
+				// What just happened, always in sight (at the foot of the long inspector it scrolled out of view).
+				if (status.isNotEmpty()) Row(Modifier.align(Alignment.BottomCenter).padding(10.dp).clip(RoundedCornerShape(8.dp))
+					.background(if (status.startsWith("Something") || status.startsWith("Couldn't")) Color(0xEE4A2030) else Color(0xEE2B283C))
+					.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+					Text(status, color = Text1, fontSize = 13.sp, modifier = Modifier.weight(1f, fill = false))
+					Text("✕", color = Muted, fontSize = 14.sp, modifier = Modifier.clickable { status = "" }.padding(4.dp))
+				}
 				if (selected != null) Text("${selected.name}${if (erasing) " · erasing" else ""}", color = Color(0xFF3B3550), fontSize = 13.sp,
 					modifier = Modifier.align(Alignment.TopStart).padding(10.dp).clip(RoundedCornerShape(6.dp)).background(Color.White.copy(alpha = 0.85f)).padding(horizontal = 8.dp, vertical = 4.dp))
 			}
@@ -605,6 +630,95 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 						}
 					}
 					Spacer(Modifier.height(4.dp))
+					// ---- Peel: lift the marked piece into its own part ----
+					Text("Peel", color = Text1, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+					Text("Split lifts the marked piece off ${selected.name} into its own part, just above it. A soft mask edge shares the pixels between the two, so nothing along it is lost.",
+						color = Muted, fontSize = 12.sp)
+					BasicTextField(peelName, { peelName = it }, singleLine = true, textStyle = TextStyle(color = Text1, fontSize = 15.sp), cursorBrush = SolidColor(Accent),
+						decorationBox = { inner -> Box { if (peelName.isEmpty()) Text("New part's name (e.g. Talisman)", color = Muted, fontSize = 15.sp); inner() } },
+						modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(Field).padding(10.dp))
+					Chip("Split from ${selected.name}", true, enabled = busy == null && selected.cutout != null && (selected.mask != null || mask?.canUndo == true)) {
+						val id = selected.id; val name = peelName.trim().ifEmpty { "${selected.name} piece" }
+						scope.launch(safe) {
+							flushMask(); val now = projectNow ?: return@launch
+							busy = "Lifting the piece"
+							val cut = withContext(encoder) { StudioPeel.cut(now, id) }
+							val latest = projectNow ?: return@launch
+							val (next, newId) = StudioPeel.applySplit(latest, id, cut, name)
+							change(next); busy = null; peelName = ""
+							selectedId = newId
+							status = "Peeled \"$name\" off. Undo last peel puts it back."
+						}
+					}
+					Text("Repainting what was underneath, and Reveal (painting hidden art), use the AI image edit: they come with signing in to your private studio. Until then they're in Web studio on the Mac.",
+						color = Muted, fontSize = 11.sp)
+					Chip("Undo last peel", enabled = busy == null && selected.json["peelUndo"] is kotlinx.serialization.json.JsonObject) {
+						val id = selected.id
+						try { change(StudioPeel.undo(p, id)); status = "Last peel undone." } catch (e: Throwable) { status = e.message ?: "Nothing to undo." }
+					}
+					Spacer(Modifier.height(4.dp))
+					// ---- Split apart: one part per island ----
+					Text("Split apart", color = Text1, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+					if (!splitOpen) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+						Chip("Split apart…", enabled = busy == null && selected.cutout != null) { splitOpen = true }
+						val js = lastSplit
+						if (js != null && js.first == p.id && selected.id in js.third) Chip("Join back") {
+							change(StudioPeel.joinBack(p, js.second, js.third)); selectedId = js.second.id; lastSplit = null
+							status = "Joined ${js.second.name} back together."
+						}
+					} else {
+						LaunchedEffect(selected.id, selected.cutout, splitGap.roundToInt()) {
+							delay(150)
+							val now = projectNow ?: return@LaunchedEffect
+							val found = withContext(Dispatchers.Default) {
+								val art = StudioPeel.partArt(now, selected.id) ?: return@withContext null
+								StudioPeel.findIslands(art, now.width, now.height, splitGap.roundToInt())
+							}
+							islands = found
+							islandNames = found?.let { StudioPeel.splitNames(selected.name, it.pieces) } ?: emptyList()
+							islandsPreview = found?.let { StudioPeel.preview(it) }?.let { px -> argbRegionBitmap(px.argb, px.width, px.height, 0f, 0f, px.width.toFloat(), px.height.toFloat(), px.width, px.height) }
+						}
+						Text("Join gaps under ${splitGap.roundToInt()} px", color = Muted, fontSize = 12.sp)
+						Slider(splitGap, { splitGap = it }, valueRange = 0f..80f, colors = sliderColors(), modifier = Modifier.height(30.dp))
+						islandsPreview?.let { bm ->
+							Canvas(Modifier.fillMaxWidth().height(160.dp).clip(RoundedCornerShape(6.dp)).background(Color(0xFF101017))) {
+								val k = minOf(size.width / bm.width, size.height / bm.height)
+								drawImage(bm, dstOffset = IntOffset(((size.width - bm.width * k) / 2).roundToInt(), ((size.height - bm.height * k) / 2).roundToInt()),
+									dstSize = IntSize((bm.width * k).roundToInt().coerceAtLeast(1), (bm.height * k).roundToInt().coerceAtLeast(1)),
+									filterQuality = androidx.compose.ui.graphics.FilterQuality.None)
+							}
+						}
+						val found = islands
+						val count = found?.pieces?.size ?: 0
+						if (found == null) Text("Finding the islands…", color = Muted, fontSize = 12.sp)
+						else if (count < 2) Text("This is all one island. Lower Join gaps if the parts are close together, or trim one off by hand if they touch.", color = Muted, fontSize = 12.sp)
+						else islandNames.forEachIndexed { i, n ->
+							Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+								Box(Modifier.size(14.dp).clip(RoundedCornerShape(3.dp)).background(Color(StudioPeel.tints[i % StudioPeel.tints.size])))
+								BasicTextField(n, { v -> islandNames = islandNames.mapIndexed { k, old -> if (k == i) v else old } }, singleLine = true,
+									textStyle = TextStyle(color = Text1, fontSize = 14.sp), cursorBrush = SolidColor(Accent),
+									modifier = Modifier.weight(1f).clip(RoundedCornerShape(6.dp)).background(Field).padding(8.dp))
+							}
+						}
+						Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+							Chip(if (count >= 2) "Split into $count" else "Split", true, enabled = busy == null && count >= 2) {
+								val f = found ?: return@Chip
+								val before = selected; val names = islandNames
+								scope.launch(safe) {
+									busy = "Splitting ${before.name}"
+									val urls = withContext(encoder) { StudioPeel.pieceImages(f).map { pngDataUrl(encodePng(f.w, f.h, it)) } }
+									val latest = projectNow ?: return@launch
+									val pieces = urls.mapIndexed { i, u -> u to (names.getOrNull(i)?.trim()?.ifEmpty { null } ?: "${before.name} ${i + 1}") }
+									val (next, ids) = StudioPeel.applySplitApart(latest, before.id, pieces)
+									change(next); busy = null; splitOpen = false; islands = null; islandsPreview = null
+									lastSplit = Triple(latest.id, before, ids)
+									status = "Split ${before.name} into ${pieces.joinToString { it.second }}. Each is its own layer now; Join back undoes it."
+								}
+							}
+							Chip("Cancel") { splitOpen = false; islands = null; islandsPreview = null }
+						}
+					}
+					Spacer(Modifier.height(4.dp))
 					Chip("Delete part", enabled = p.parts.size > 1) { val id = selected.id; selectedId = null; change(StudioEdits.delete(p, id)) }
 				}
 				Spacer(Modifier.height(8.dp))
@@ -612,7 +726,6 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 				Chip(if (showRest) "Remaining artwork shown" else "Remaining artwork hidden", showRest) { change(StudioEdits.showRemaining(p, !showRest)) }
 				val extracted = p.parts.count { it.cutout != null }
 				Text("$extracted of ${p.parts.size} parts extracted · ${p.width} × ${p.height}", color = Muted, fontSize = 12.sp)
-				if (status.isNotEmpty()) Text(status, color = if (status.startsWith("Something")) Danger else Muted, fontSize = 13.sp)
 			}
 		}
 	}

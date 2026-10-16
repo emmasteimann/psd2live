@@ -117,10 +117,14 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 
 	LaunchedEffect(tweaking) {
 		// Draws only what is on screen, so zooming in stays sharp: a quick draft (~0.35 MP) while the pencil or a slider
-		// moves, the full-resolution frame (~2.2 MP) once things rest for a moment. A newer change drops both.
+		// moves, the full-resolution frame (~2.2 MP) once things rest. The frame remembers which part of the canvas it
+		// shows, so a pinch or pan moves and scales it at once; only when the fingers rest is the view re-rendered.
+		var lastView: CanvasView? = null
 		snapshotFlow { listOf(tick, pose, view, box, showMesh, warpMode, pointsMode) }.collectLatest {
 			val (w, h) = box
 			if (w < 2f || h < 2f) return@collectLatest
+			val viewOnly = lastView != null && lastView != view
+			lastView = view
 			val l = layout(w, h, view)
 			val shownPose = pose
 			suspend fun draw(budget: Float) = withContext(Dispatchers.Default) {
@@ -132,8 +136,9 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 				val shrink = minOf(1f, kotlin.math.sqrt(budget / (outW.toFloat() * outH)))
 				outW = (outW * shrink).roundToInt().coerceAtLeast(1); outH = (outH * shrink).roundToInt().coerceAtLeast(1)
 				val raster = tweaking.frame(shownPose, x0, y0, x1 - x0, y1 - y0, outW, outH)
-				raster.toImageBitmap() to floatArrayOf(left + x0 * scale, top + y0 * scale, (x1 - x0) * scale, (y1 - y0) * scale)
+				raster.toImageBitmap() to floatArrayOf(x0, y0, x1, y1)
 			}
+			if (viewOnly) { delay(140); image = draw(2_200_000f); return@collectLatest }
 			verts = if (pointsMode) withContext(Dispatchers.Default) { tweaking.vertices(shownPose) } else emptyList()
 			wires = if (showMesh || pointsMode) withContext(Dispatchers.Default) { tweaking.wires(shownPose) } else emptyList()
 			lattice?.takeIf { warpMode }?.let { held -> lattice = withContext(Dispatchers.Default) { tweaking.lattice(shownPose, held.id) } }
@@ -246,9 +251,11 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 						override fun layout(view: CanvasView) = view.layout(w, h, tweaking.canvasWidth, tweaking.canvasHeight)
 					}
 				}) {
-					image?.let { (bitmap, at) ->
-						drawImage(bitmap, dstOffset = IntOffset(at[0].roundToInt(), at[1].roundToInt()),
-							dstSize = androidx.compose.ui.unit.IntSize(at[2].roundToInt(), at[3].roundToInt()))
+					image?.let { (bitmap, r) ->
+						// Where that canvas region sits now, however the view moved since it was drawn.
+						val l = layout(w, h, view)
+						drawImage(bitmap, dstOffset = IntOffset((l[1] + r[0] * l[0]).roundToInt(), (l[2] + r[1] * l[0]).roundToInt()),
+							dstSize = androidx.compose.ui.unit.IntSize(((r[2] - r[0]) * l[0]).roundToInt().coerceAtLeast(1), ((r[3] - r[1]) * l[0]).roundToInt().coerceAtLeast(1)))
 					}
 					lattice?.takeIf { warpMode }?.let { lat ->
 						// The pushed warp's lattice: its grid lines and control points.

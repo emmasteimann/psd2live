@@ -136,9 +136,13 @@ private fun LayerPaintView(painting: LayerPainting, onApplied: (RigOutcome) -> U
 
 	LaunchedEffect(painting) {
 		// Only what is on screen is drawn, at screen resolution: a draft while things move, sharp once they rest.
+		var lastView: CanvasView? = null
 		snapshotFlow { listOf(tick, view, box, ghost, tool == PaintTool.MASK || painting.hasMask) }.collectLatest {
 			val (w, h) = box
 			if (w < 2f || h < 2f) return@collectLatest
+			// A pinch or pan moves the last frame at once (it knows its canvas region); re-render once the fingers rest.
+			val viewOnly = lastView != null && lastView != view
+			lastView = view
 			val l = layout(w, h, view); val showGhost = ghost; val showMask = tool == PaintTool.MASK || painting.hasMask
 			suspend fun draw(budget: Float): PaintFrame? = withContext(Dispatchers.Default) {
 				val scale = l[0]; val left = l[1]; val top = l[2]
@@ -148,7 +152,7 @@ private fun LayerPaintView(painting: LayerPainting, onApplied: (RigOutcome) -> U
 				var outW = ((x1 - x0) * scale).roundToInt().coerceAtLeast(1); var outH = ((y1 - y0) * scale).roundToInt().coerceAtLeast(1)
 				val shrink = minOf(1f, kotlin.math.sqrt(budget / (outW.toFloat() * outH)))
 				outW = (outW * shrink).roundToInt().coerceAtLeast(1); outH = (outH * shrink).roundToInt().coerceAtLeast(1)
-				val at = floatArrayOf(left + x0 * scale, top + y0 * scale, (x1 - x0) * scale, (y1 - y0) * scale)
+				val at = floatArrayOf(x0, y0, x1, y1)
 				val sp = painting.space
 				val layer = painting.image.regionBitmap(sp.canvasToImageX(x0), sp.canvasToImageY(y0),
 					sp.canvasToImageX(x1) - sp.canvasToImageX(x0), sp.canvasToImageY(y1) - sp.canvasToImageY(y0), outW, outH)
@@ -157,6 +161,7 @@ private fun LayerPaintView(painting: LayerPainting, onApplied: (RigOutcome) -> U
 					sp.canvasToImageX(x1) - sp.canvasToImageX(x0), sp.canvasToImageY(y1) - sp.canvasToImageY(y0), outW, outH)
 				PaintFrame(layer, under, at, maskBitmap)
 			}
+			if (viewOnly) { delay(140); frame = draw(2_200_000f); return@collectLatest }
 			frame = draw(300_000f)
 			delay(160)
 			frame = draw(2_200_000f)
@@ -260,7 +265,8 @@ private fun LayerPaintView(painting: LayerPainting, onApplied: (RigOutcome) -> U
 					}
 				}
 				if (f != null) {
-					val dst = IntOffset(f.at[0].roundToInt(), f.at[1].roundToInt()); val dsz = IntSize(f.at[2].roundToInt(), f.at[3].roundToInt())
+					val dst = IntOffset((l[1] + f.at[0] * l[0]).roundToInt(), (l[2] + f.at[1] * l[0]).roundToInt())
+					val dsz = IntSize(((f.at[2] - f.at[0]) * l[0]).roundToInt().coerceAtLeast(1), ((f.at[3] - f.at[1]) * l[0]).roundToInt().coerceAtLeast(1))
 					f.under?.let { drawImage(it, dstOffset = dst, dstSize = dsz, alpha = 0.3f) }
 					drawImage(f.layer, dstOffset = dst, dstSize = dsz)
 					f.mask?.let { drawImage(it, dstOffset = dst, dstSize = dsz, alpha = 0.5f) }

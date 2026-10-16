@@ -104,6 +104,7 @@ private fun AiRequest(h: PanelHost, part: StudioPart, operation: String, prompt:
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun RepairPanel(h: PanelHost) {
+	GapsSection(h)
 	val part = h.selected
 	if (part == null) { Text("Choose a part on the left first.", color = Muted, fontSize = 13.sp); return }
 	val p = h.project
@@ -705,4 +706,53 @@ private fun ExpressionGenSection(h: PanelHost) {
 			h.say("Made ${made.joinToString { it.name }}. Tap each to look, then Apply or Discard.")
 		}
 	}
+}
+
+/** Fill hidden gaps (the web's GapsPanel): shown only when Auto-split marked gaps, or results are waiting. */
+@Composable
+private fun GapsSection(h: PanelHost) {
+	val p = h.project
+	val todo = StudioGaps.todo(p)
+	val pending = StudioGaps.pending
+	if (todo.isEmpty() && pending.isEmpty()) return
+	Text("Fill hidden gaps", color = Text1, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+	if (pending.isNotEmpty()) {
+		Text("Look at each with the parts in front hidden. Apply keeps them (Undo last peel on a part puts it back); Discard throws them away.", color = Muted, fontSize = 12.sp)
+		for (it in pending) Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+			Text(it.name, color = Text1, fontSize = 13.sp, modifier = Modifier.weight(1f))
+			Chip("Now") { h.run("Showing ${it.name}") { val now = h.latest() ?: return@run; h.showOnCanvas(withContext(Dispatchers.Default) { StudioGaps.alone(now, it.partId, null) }, "${it.name} now (parts in front hidden)"); h.focus(it.bounds) } }
+			Chip("Painted in") { h.run("Showing ${it.name}") { val now = h.latest() ?: return@run; h.showOnCanvas(withContext(Dispatchers.Default) { StudioGaps.alone(now, it.partId, it.art) }, "${it.name} painted in (not applied yet)"); h.focus(it.bounds) } }
+		}
+		Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+			Chip("Apply", true) {
+				h.latest()?.let { now -> h.change(StudioGaps.apply(now, pending)) }
+				h.say("Painted in: ${pending.joinToString { it.name }}. Undo last peel on a part puts it back.")
+				StudioGaps.pending = emptyList(); h.showOnCanvas(null, null)
+			}
+			Chip("Discard") { StudioGaps.pending = emptyList(); h.showOnCanvas(null, null); h.say("Discarded.") }
+		}
+	} else {
+		Text("Behind parts that move, some of the body was never drawn: ${todo.joinToString { it.name }}. This paints it in, one image edit per part.", color = Muted, fontSize = 12.sp)
+		var signed by remember { mutableStateOf(false) }
+		LaunchedEffect(Unit) { PrivateStudio.signedIn { signed = it } }
+		if (!signed) Chip("Sign in to your private studio", true) { PrivateStudio.signIn { ok -> signed = ok; h.say(if (ok) "Signed in for 12 hours." else "Not signed in.") } }
+		else Chip("Paint in ${todo.size} part${if (todo.size == 1) "" else "s"}", true, enabled = !h.busy) {
+			val ids = todo.map { it.id }
+			h.run("Painting in the hidden gaps (about 30-60 s each)") {
+				val made = mutableListOf<StudioGaps.Item>()
+				try {
+					for ((i, id) in ids.withIndex()) {
+						val now = h.latest() ?: return@run
+						h.say("Painting in ${now.part(id)?.name} (${i + 1} of ${ids.size})...")
+						made += StudioGaps.paint(now, id)
+					}
+				} finally { if (made.isNotEmpty()) StudioGaps.pending = made } // each was a paid edit: keep what's done
+				val now = h.latest() ?: return@run
+				val first = made.first()
+				h.showOnCanvas(withContext(Dispatchers.Default) { StudioGaps.alone(now, first.partId, first.art) }, "${first.name} painted in (not applied yet)"); h.focus(first.bounds)
+				h.say("Painted ${made.size}. Look at each, then Apply or Discard.")
+			}
+		}
+	}
+	Spacer(Modifier.height(10.dp))
 }

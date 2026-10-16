@@ -156,14 +156,6 @@ fun AssetLayerScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel
 						val s = v / px.width
 						placement = RigAssetLayers.Placement(cx - px.width * s / 2f, cy - px.height * s / 2f, s)
 					}, valueRange = 8f..canvasW, colors = SliderDefaults.colors(thumbColor = Accent, activeTrackColor = Accent), modifier = Modifier.height(32.dp))
-					Text("Sits above", color = Muted, fontSize = 12.sp)
-					Chip("Everything (on top)", above == null) { above = null }
-					for (layer in layers.take(60)) Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(if (above == layer.id.raw) Color(0xFF332C4E) else Color(0xFF24222F))
-						.clickable { above = layer.id.raw }.padding(horizontal = 12.dp, vertical = 8.dp)) {
-						Text(layer.name, color = if (above == layer.id.raw) Accent else Text1, fontSize = 14.sp)
-					}
-					Chip(if (followNothing) "Moves with nothing" else "Moves with the layer under it", false) { followNothing = !followNothing }
-					Text("Moving with the layer under it: a bow above the hair turns with the head.", color = Muted, fontSize = 12.sp)
 					val b = busy
 					if (b != null) { Text(b.first, color = Muted, fontSize = 13.sp); LinearProgressIndicator(progress = b.second.toFloat(), modifier = Modifier.fillMaxWidth(), color = Accent) }
 					else Chip("Add as a layer", true) {
@@ -175,6 +167,14 @@ fun AssetLayerScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel
 							} catch (e: Throwable) { message = e.message ?: e::class.simpleName } finally { busy = null }
 						}
 					}
+					Text("Sits above", color = Muted, fontSize = 12.sp)
+					Chip("Everything (on top)", above == null) { above = null }
+					for (layer in layers.take(60)) Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(if (above == layer.id.raw) Color(0xFF332C4E) else Color(0xFF24222F))
+						.clickable { above = layer.id.raw }.padding(horizontal = 12.dp, vertical = 8.dp)) {
+						Text(layer.name, color = if (above == layer.id.raw) Accent else Text1, fontSize = 14.sp)
+					}
+					Chip(if (followNothing) "Moves with nothing" else "Moves with the layer under it", false) { followNothing = !followNothing }
+					Text("Moving with the layer under it: a bow above the hair turns with the head.", color = Muted, fontSize = 12.sp)
 				}
 				Box(Modifier.height(8.dp))
 				Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

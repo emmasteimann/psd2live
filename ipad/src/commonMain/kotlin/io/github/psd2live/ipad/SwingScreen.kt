@@ -130,6 +130,11 @@ fun SwingScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 						Text("Bake keeps the motion as plain keyforms and stops it regenerating.", color = Muted, fontSize = 12.sp)
 					}
 					Text("New swing: tap what should swing", color = Muted, fontSize = 12.sp)
+					// The start button above the list, so a choice never needs a scroll to the bottom.
+					Chip(if (targets.isEmpty()) "Start a swing (choose parts below)" else "Start a swing on ${targets.size} part${if (targets.size == 1) "" else "s"}",
+						targets.isNotEmpty(), enabled = targets.isNotEmpty() && busy == null) {
+						step("Setting up the swing") { draft = RigSwings.start(editing, targets); motion = 0 }
+					}
 					for (m in meshes) {
 						val on = m.id.raw in targets
 						Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(if (on) Color(0xFF332C4E) else Color(0xFF24222F))
@@ -183,9 +188,6 @@ fun SwingScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 				val b = busy
 				if (b != null) { Text(b.first, color = Muted, fontSize = 13.sp); LinearProgressIndicator(progress = b.second.toFloat(), modifier = Modifier.fillMaxWidth(), color = Accent) }
 				else if (d == null) {
-					Chip("Start a swing on ${targets.size} part${if (targets.size == 1) "" else "s"}", false, enabled = targets.isNotEmpty()) {
-						step("Setting up the swing") { draft = RigSwings.start(editing, targets); motion = 0 }
-					}
 					Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
 						Chip("Undo", false, enabled = editing.canUndo) { editing.undo(); tick++ }
 						Chip("Redo", false, enabled = editing.canRedo) { editing.redo(); tick++ }

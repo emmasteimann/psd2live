@@ -186,6 +186,15 @@ class FitSession private constructor(val project: StudioProject, val part: Studi
 
 	fun removeSpecks(s: FitGeometry.Specks) { for (i in s.remove.indices) if (s.remove[i].toInt() != 0) trim[i] = 255.toByte(); refreshPiece() }
 
+	/** Worker: the piece's full art cleaned up (the trim mask stays over it). */
+	fun cleanUp(progress: (Int, Int) -> Unit): Box? {
+		val out = StudioUpscale.upscale(base, w, h, 1.0, progress)
+		val before = base.count { (it ushr 24) > 8 }; val after = out.count { (it ushr 24) > 8 }
+		// A model that answers nothing (or wipes most of the piece) must not replace the art.
+		if (after < before / 2) throw IllegalStateException("Clean up went wrong (it kept $after of $before pixels); the piece is unchanged. [${AnimeUpscaler.lastInfo}]")
+		base = out; refreshPiece(); return FitGeometry.alphaBox(base, w, h)
+	}
+
 	/** Worker: new art for the piece (a redraw already carries its trims in its outline): a clean trim mask over it. */
 	fun replaceArt(art: IntArray): Box? { base = art; trim.fill(0); refreshPiece(); return FitGeometry.alphaBox(base, w, h) }
 

@@ -363,6 +363,18 @@ fun FitScreen(project: StudioProject, partId: String, pencilOnly: Boolean, onPen
 					busy = null
 				}
 			}
+			Chip("Clean up", enabled = ready) {
+				val f = s ?: return@Chip
+				scope.launch(safe) {
+					busy = "Cleaning up the piece (anime upscaler, on the iPad)…"
+					try {
+						val r = withContext(worker) { f.settle() }; f.settled(r)
+						val b = withContext(worker) { f.cleanUp { done, total -> scope.launch(Dispatchers.Main) { busy = "Cleaning up the piece: tile $done of $total" } } }
+						if (b != null) f.newBox(b)
+						status = "Cleaned up. Save piece keeps it; Discard throws it away."
+					} catch (e: IllegalStateException) { status = e.message ?: "Clean up didn't work." } finally { busy = null }
+				}
+			}
 			Chip("Redraw… (AI)", enabled = ready) {
 				val f = s ?: return@Chip
 				PrivateStudio.signedIn { signed ->

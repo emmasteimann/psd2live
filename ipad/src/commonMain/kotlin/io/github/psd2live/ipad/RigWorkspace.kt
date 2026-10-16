@@ -59,6 +59,7 @@ private sealed interface RigState {
 	data class Motions(val outcome: RigOutcome) : RigState
 	data class OwnMotions(val outcome: RigOutcome) : RigState
 	data class Parameters(val outcome: RigOutcome) : RigState
+	data class Parts(val outcome: RigOutcome) : RigState
 	data class Failed(val name: String, val message: String) : RigState
 }
 
@@ -130,7 +131,7 @@ fun RigWorkspace(modifier: Modifier = Modifier, start: String? = null, onStarted
 
 	Column(modifier.verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
 		// An editing screen (paint, tweak, settings) has the whole tab: the file list steps aside.
-		val editing = state is RigState.Painting || state is RigState.Tweaking || state is RigState.Settings || state is RigState.Physics || state is RigState.Expressions || state is RigState.Motions || state is RigState.OwnMotions || state is RigState.Parameters
+		val editing = state is RigState.Painting || state is RigState.Tweaking || state is RigState.Settings || state is RigState.Physics || state is RigState.Expressions || state is RigState.Motions || state is RigState.OwnMotions || state is RigState.Parameters || state is RigState.Parts
 		if (!editing) {
 			Text("Rig a PSD", color = Text1, fontSize = 22.sp, fontWeight = FontWeight.Bold)
 			Text("Put PSDs in Files > On My iPad > Layerloom. The rig is built here on the iPad, with the same rigger as the Mac " +
@@ -175,7 +176,8 @@ fun RigWorkspace(modifier: Modifier = Modifier, start: String? = null, onStarted
 			is RigState.Done -> { autosave?.let { Text(it, color = Muted, fontSize = 13.sp) }; RigResult(s.outcome, onPaint = { state = RigState.Painting(s.outcome) }, onTweak = { state = RigState.Tweaking(s.outcome) },
 				onSettings = { state = RigState.Settings(s.outcome) }, onPhysics = { state = RigState.Physics(s.outcome) },
 				onExpressions = { state = RigState.Expressions(s.outcome) }, onMotions = { state = RigState.Motions(s.outcome) },
-				onParameters = { state = RigState.Parameters(s.outcome) }) }
+				onParameters = { state = RigState.Parameters(s.outcome) }, onParts = { state = RigState.Parts(s.outcome) }) }
+			is RigState.Parts -> PartsScreen(s.outcome, onDone = { keep(it) }, onCancel = { state = RigState.Done(s.outcome) })
 			is RigState.Parameters -> ParametersScreen(s.outcome, onDone = { keep(it) }, onCancel = { state = RigState.Done(s.outcome) })
 			is RigState.Motions -> MotionsScreen(s.outcome, onApplied = { keep(it) }, onCancel = { state = RigState.Done(s.outcome) },
 				onOwn = { state = RigState.OwnMotions(s.outcome) })
@@ -202,7 +204,7 @@ private fun Button(label: String, onClick: () -> Unit) {
 
 /** A rigged PSD: what was made and saved, and the rig drawn at the pose the sliders set. */
 @Composable
-private fun RigResult(o: RigOutcome, onPaint: () -> Unit, onTweak: () -> Unit, onSettings: () -> Unit, onPhysics: () -> Unit, onExpressions: () -> Unit, onMotions: () -> Unit, onParameters: () -> Unit) {
+private fun RigResult(o: RigOutcome, onPaint: () -> Unit, onTweak: () -> Unit, onSettings: () -> Unit, onPhysics: () -> Unit, onExpressions: () -> Unit, onMotions: () -> Unit, onParameters: () -> Unit, onParts: () -> Unit) {
 	var values by remember(o) { mutableStateOf(o.preview.parameters.associate { it.id to it.default }) }
 	var saveStatus by remember(o) { mutableStateOf<String?>(null) }
 	val scope = rememberCoroutineScope()
@@ -219,13 +221,15 @@ private fun RigResult(o: RigOutcome, onPaint: () -> Unit, onTweak: () -> Unit, o
 			color = Text1, fontSize = 14.sp)
 		Text("Saved to Rigs/${o.folder.substringAfterLast('/')}: ${o.files.joinToString()}", color = Muted, fontSize = 13.sp)
 		for (w in o.warnings) Text("• $w", color = Muted, fontSize = 13.sp)
-		// Editing first, then the files: two rows, so nothing is squeezed on a portrait iPad.
-		Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+		// Editing first, then the files. The editing buttons wrap onto more lines as screens are added, so none is squeezed.
+		@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+		androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
 			Button("Tweak by hand", onTweak)
 			Button("Paint a layer", onPaint)
 			Button("Physics", onPhysics)
 			Button("Expressions", onExpressions)
 			Button("Motions", onMotions)
+			Button("Move parts", onParts)
 			Button("Parameters", onParameters)
 			Button("Rig settings", onSettings)
 		}

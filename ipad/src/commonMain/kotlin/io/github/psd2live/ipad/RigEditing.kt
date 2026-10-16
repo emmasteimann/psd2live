@@ -13,6 +13,7 @@ import io.github.psd2live.core.SwingAuthoring
 import io.github.psd2live.format.compile.FrameSpec
 import io.github.psd2live.format.compile.RasterImage
 import io.github.psd2live.ui.parameterKeyMarks
+import io.github.psd2live.project.transform
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -30,13 +31,16 @@ import org.umamo.runtime.model.PuppetModel
  * Undo and redo; [finish] writes the rig's files. The screens for parameters, parts, draw order, structure... use it.
  * Not thread-safe: call from one worker; [frame] only reads immutable models and may run beside it.
  */
-class RigEditing(private val start: RigPreviewModel) {
-	constructor(outcome: RigOutcome) : this(outcome.model)
+class RigEditing(private val start: RigPreviewModel, startSource: org.umamo.format.art.SourceArt? = null) {
+	constructor(outcome: RigOutcome) : this(outcome.model, outcome.source)
 	private val pipeline = PSD2LivePipeline()
 	var model: RigPreviewModel = start
 		private set
-	private val undos = ArrayDeque<RigPreviewModel>()
-	private val redos = ArrayDeque<RigPreviewModel>()
+	/** The art the rig is built from (a moved part's placement lives on its layer, for painting); saved with the project. */
+	var source: org.umamo.format.art.SourceArt? = startSource
+		private set
+	private val undos = ArrayDeque<Pair<RigPreviewModel, org.umamo.format.art.SourceArt?>>()
+	private val redos = ArrayDeque<Pair<RigPreviewModel, org.umamo.format.art.SourceArt?>>()
 
 	val puppet: PuppetModel get() = model.rig.puppet
 	val canUndo get() = undos.isNotEmpty()
@@ -45,18 +49,18 @@ class RigEditing(private val start: RigPreviewModel) {
 	val edits get() = model.config.rigEdits.authoringJournal.size - start.config.rigEdits.authoringJournal.size +
 		model.config.rigEdits.parameterEdits.size - start.config.rigEdits.parameterEdits.size
 
-	private fun commit(config: PipelineConfig) {
+	private fun commit(config: PipelineConfig, nextSource: org.umamo.format.art.SourceArt? = source) {
 		val next = pipeline.updateRigEdits(model, config)
-		undos.addLast(model); if (undos.size > 60) undos.removeFirst()
-		redos.clear(); model = next
+		undos.addLast(model to source); if (undos.size > 60) undos.removeFirst()
+		redos.clear(); model = next; source = nextSource
 	}
 
 	/** Editor commands recorded on the shown rig, replayed on the authored one (the desktop's `journal`). Throws a readable message when the engine refuses. */
-	fun journal(edits: List<JsonObject>) {
+	fun journal(edits: List<JsonObject>, nextSource: org.umamo.format.art.SourceArt? = source) {
 		val overlay = model.config.rigEdits
 		val journal = JournalRecording.record(model.rig.puppet, model.authored.rig.puppet, overlay, JsonArray(edits), model.primitiveSkins)
 		// A deleted warp leaves the swings that moved it in the same step.
-		commit(model.config.copy(rigEdits = SwingAuthoring.withoutTargets(overlay.copy(authoringJournal = overlay.authoringJournal + journal), SwingAuthoring.deletedDeformers(journal))))
+		commit(model.config.copy(rigEdits = SwingAuthoring.withoutTargets(overlay.copy(authoringJournal = overlay.authoringJournal + journal), SwingAuthoring.deletedDeformers(journal))), nextSource)
 	}
 
 	/**
@@ -78,8 +82,8 @@ class RigEditing(private val start: RigPreviewModel) {
 		commit(model.config.copy(rigEdits = overlay.copy(authoringJournal = overlay.authoringJournal + journal, motionClips = clips)))
 	}
 
-	fun undo() { if (!canUndo) return; redos.addLast(model); model = undos.removeLast() }
-	fun redo() { if (!canRedo) return; undos.addLast(model); model = redos.removeLast() }
+	fun undo() { if (!canUndo) return; redos.addLast(model to source); undos.removeLast().let { model = it.first; source = it.second } }
+	fun redo() { if (!canRedo) return; undos.addLast(model to source); redos.removeLast().let { model = it.first; source = it.second } }
 
 	private var compiledFor: Any? = null
 	private var renderer: io.github.psd2live.format.compile.FrameSession? = null
@@ -94,7 +98,7 @@ class RigEditing(private val start: RigPreviewModel) {
 
 	/** The edited rig's runtime files written over [outcome]'s folder, as the outcome the Rig tab shows. Blocking. */
 	fun finish(outcome: RigOutcome, progress: (String, Double) -> Unit): RigOutcome =
-		writeRig(outcome.name, outcome.source, model.config, model, RigFiles.nowSeconds(), progress)
+		writeRig(outcome.name, source ?: outcome.source, model.config, model, RigFiles.nowSeconds(), progress)
 }
 
 /** Parameters and their keys on the iPad: the desktop's Parameters panel, its keys editor and its parameter dialog. */
@@ -145,5 +149,81 @@ object RigParameters {
 	fun delete(e: RigEditing, info: Info) {
 		require(!info.generated) { "${info.name} belongs to a swing or simulation: remove that instead." }
 		e.defineParameter("delete", info.id)
+	}
+}
+
+/**
+ * Parts on the iPad: the desktop's Select mode (`layer_transform`). A part moves, scales or turns as a whole; its
+ * pixels and texture stay, its meshes move at rest (one `canvas_geometry` per mesh, recorded like any mesh edit) and
+ * its layer keeps the placement for painting. Any part, under any deformer.
+ */
+object RigParts {
+	class Part(val layerId: String, val name: String, val meshes: List<String>)
+
+	fun list(e: RigEditing): List<Part> {
+		val byLayer = e.model.rig.layerIdByDrawableId
+		val meshes = e.puppet.drawables.filter { it.mesh != null }.groupBy { byLayer[it.id.raw] }
+		val src = e.source ?: return emptyList()
+		return src.layers.mapNotNull { l -> meshes[l.id.raw]?.let { ms -> Part(l.id.raw, l.name, ms.map { it.id.raw }) } }.asReversed()
+	}
+
+	/** The part whose mesh is at canvas point ([x], [y]) at rest, front first. */
+	fun at(e: RigEditing, x: Float, y: Float): Part? {
+		val mesh = io.github.psd2live.core.PoseTweaks.meshAt(e.puppet, emptyMap(), x, y) ?: return null
+		val layer = e.model.rig.layerIdByDrawableId[mesh] ?: return null
+		return list(e).firstOrNull { it.layerId == layer }
+	}
+
+	/** The part's box at rest, canvas pixels (x0, y0, x1, y1). */
+	fun bounds(e: RigEditing, part: Part): FloatArray? {
+		var x0 = Float.MAX_VALUE; var y0 = Float.MAX_VALUE; var x1 = -Float.MAX_VALUE; var y1 = -Float.MAX_VALUE
+		for ((id, pts) in io.github.psd2live.core.PoseTweaks.vertices(e.puppet, emptyMap())) if (id in part.meshes)
+			for (i in 0 until pts.size / 2) { x0 = minOf(x0, pts[i * 2]); x1 = maxOf(x1, pts[i * 2]); y0 = minOf(y0, pts[i * 2 + 1]); y1 = maxOf(y1, pts[i * 2 + 1]) }
+		return if (x1 < x0) null else floatArrayOf(x0, y0, x1, y1)
+	}
+
+	/** Scale, then turn ([degrees], clockwise on screen) about ([px], [py]), then move by ([dx], [dy]) - the desktop's `transform`. */
+	fun transformOf(dx: Float, dy: Float, scale: Float, degrees: Float, px: Float, py: Float): io.github.psd2live.project.LayerTransform {
+		val r = degrees * kotlin.math.PI / 180.0
+		val cos = kotlin.math.cos(r).toFloat(); val sin = kotlin.math.sin(r).toFloat()
+		val a = cos * scale; val b = sin * scale; val c = -sin * scale; val d = cos * scale
+		return io.github.psd2live.project.LayerTransform(a + 0f, b + 0f, c + 0f, d + 0f, px - (a * px + c * py) + dx + 0f, py - (b * px + d * py) + dy + 0f)
+	}
+
+	fun transform(e: RigEditing, part: Part, delta: io.github.psd2live.project.LayerTransform) {
+		if (delta.isIdentity) return
+		val puppet = e.puppet
+		val edits = part.meshes.map { id -> moved(puppet, id, delta) }
+		val src = e.source
+		val next = src?.let { s ->
+			io.github.psd2live.project.WorkspaceSourceArt(s.widthPx, s.heightPx, s.layers.map { l ->
+				if (l.id.raw != part.layerId) l else (io.github.psd2live.project.WorkspaceSourceLayer.copyOf(l, l.order) as io.github.psd2live.project.WorkspaceSourceLayer)
+					.copy(layerTransform = delta.after(l.transform).takeUnless { it.isIdentity })
+			}, s.groups)
+		}
+		e.journal(edits, next)
+	}
+
+	/** The Select-mode edit that takes mesh [id]'s rest geometry through [delta] on the canvas (the desktop's `moved`). */
+	private fun moved(puppet: PuppetModel, id: String, delta: io.github.psd2live.project.LayerTransform): JsonObject {
+		val geometry = io.github.psd2live.core.RigGeometryTools.geometry(puppet, "mesh", id, emptyMap())
+		val mapping = requireNotNull(org.umamo.render.eval.drawableSpaceMapping(puppet, emptyMap(), org.umamo.runtime.model.DrawableId(id))) { "Mesh $id has no parent space" }
+		// World space is canvas with y up.
+		val world = mapping.localToWorld(geometry.points)
+		val target = FloatArray(world.size)
+		for (i in 0 until world.size / 2) {
+			val x = world[i * 2]; val y = -world[i * 2 + 1]
+			target[i * 2] = delta.x(x, y); target[i * 2 + 1] = -delta.y(x, y)
+		}
+		val local = mapping.worldToLocalLinearized(target, geometry.points, geometry.points, (0 until world.size / 2).toSet())
+		val reached = mapping.localToWorld(local)
+		require(local.all(Float::isFinite) && reached.indices.all { kotlin.math.abs(reached[it] - target[it]) < 0.05f }) { "That part can't reach there under what holds it" }
+		val key = io.github.psd2live.core.canvasDeformationCoordinate(puppet, geometry.axes, emptyMap(), emptyList())
+		return buildJsonObject {
+			put("op", "canvas_geometry"); put("kind", "mesh"); put("id", id)
+			put("key", JsonObject(key.mapValues { JsonPrimitive(it.value) }))
+			put("preserve_image", false)
+			put("points", JsonArray(local.map(::JsonPrimitive)))
+		}
 	}
 }

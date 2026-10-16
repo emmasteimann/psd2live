@@ -25,6 +25,9 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.goosible.layerloom.ipad
+        # Signing (deploy-ipad.sh passes it too): the personal team Xcode is signed in with.
+        DEVELOPMENT_TEAM: 6Q6Y6U54M6
+        CODE_SIGN_STYLE: Automatic
         PRODUCT_NAME: Layerloom
         TARGETED_DEVICE_FAMILY: "2"
         GENERATE_INFOPLIST_FILE: YES

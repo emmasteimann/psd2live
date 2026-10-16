@@ -48,7 +48,7 @@ object WorkspaceLayerInsertionEdits {
             checkCancelled()
             RasterMeshCreation.encode(rig, drawable.id).let { command ->
                 if (document.rigEdits.importedCmo3 == null) command else JsonObject(command +
-                    ("source_id" to JsonPrimitive(Cmo3ModelImport.PAINT_SOURCE_ID)))
+                    ("source_id" to JsonPrimitive(CMO3_PAINT_SOURCE_ID)))
             }
         }
         val byId = records.associateBy { it.getValue("id").jsonPrimitive.content }

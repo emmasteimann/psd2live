@@ -124,6 +124,7 @@ actual object ImportedCmo3 {
 	actual fun paintingPreview(pipeline: PSD2LivePipeline, source: org.umamo.format.art.SourceArt, config: PipelineConfig): RigPreviewModel =
 		Cmo3ModelImport.paintingPreview(pipeline, source, config)
 	actual fun puppet(encoded: String): org.umamo.runtime.model.PuppetModel = Cmo3ModelImport.decode(encoded).puppet
+	actual fun textureCanvas(preview: RigPreviewModel, drawable: org.umamo.runtime.model.Drawable): FloatArray = Cmo3ModelImport.textureCanvas(preview, drawable)
 	actual fun bezierDivisions(encoded: String): Map<String, Pair<Int, Int>> {
 		val model = Cmo3.read(base64Decode(encoded)).root as CModelSource
 		val sources = Cmo3Import.elementsOf((model.deformerSourceSet as? org.umamo.format.cmo3.model.gen.CDeformerSourceSet)?._sources)

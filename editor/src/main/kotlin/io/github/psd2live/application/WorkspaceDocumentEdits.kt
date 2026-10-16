@@ -6,8 +6,6 @@ import kotlinx.serialization.json.*
 import org.umamo.runtime.model.Parameter
 import org.umamo.runtime.model.ParameterKind
 
-/** A request is a pure candidate edit; it has no paths, jobs, UI projection or history effects. */
-data class WorkspaceDocumentOperation(val operation: String, val request: JsonObject)
 
 interface WorkspaceDocumentPort {
     suspend fun applyDocumentEdits(state: String, summary: String, edits: List<WorkspaceDocumentOperation>,
@@ -21,7 +19,7 @@ object WorkspaceDocumentEdits {
     val supported: Set<String> = setOf("settings_update", "layer_classify", "layer_mesh_update",
         "parameter_create", "parameter_update", "parameter_delete", "rig_deform", "keyform_apply",
         "rig_edit_structure", "object_edit_appearance", "vertex_group_update", WorkspaceDrawOrderEdits.OP, WorkspaceRasterEdits.REBUILD_MESH) + WorkspaceLayerTransform.supported +
-        WorkspaceRasterCommands.supported + WorkspaceLayerEdits.supported + WorkspaceAssetLayerEdits.supported + WorkspacePartitionCommands.supported + WorkspaceGenerationUpdate.supported + WorkspaceWarpEdits.supported + WorkspaceWarpControlEdits.supported +
+        WorkspaceRasterCommands.supported + WorkspaceLayerEdits.supported + WorkspacePlatformEdits.assetOps + WorkspacePartitionCommands.supported + WorkspaceGenerationUpdate.supported + WorkspaceWarpEdits.supported + WorkspaceWarpControlEdits.supported +
         setOf("auto", "put", "enable", "bone", "move", "bind", "remove", "delete").map { "skeleton_$it" } +
         setOf("put", "delete", "seed_builtin", "set_key", "delete_key", "remove_curve", "pose", "move_keys", "delete_keys", "paste_keys", "replace_keys", "preset", "create", "duplicate", "rename", "properties").map { "motion_$it" } +
         setOf("warp", "rotation", "glue", "topology").map { "canvas_$it" } +
@@ -39,7 +37,7 @@ object WorkspaceDocumentEdits {
               simulationWork: WorkspaceSimulationWork = WorkspaceSimulationWork.Direct,
               physicsWork: WorkspacePhysicsWork = WorkspacePhysicsWork.Direct,
               rasterWork: WorkspaceRasterWork = WorkspaceRasterWork.Direct,
-              assetResources: WorkspaceAssetWorkflow? = null): WorkspaceDocument {
+              assetResources: WorkspaceAssetResources? = null): WorkspaceDocument {
         val request = operation.request
         WorkspaceArtPrimitives.requireCurrentReferences(document.rigEdits, request)
         return when (operation.operation) {
@@ -55,7 +53,7 @@ object WorkspaceDocumentEdits {
             in WorkspacePartitionEdits.supported -> WorkspacePartitionEdits.apply(operation, document, model, rasterWork)
             in WorkspaceGenerationUpdate.supported -> WorkspaceGenerationUpdate.apply(operation, document, model, rasterWork)
             in WorkspaceLayerEdits.supported -> WorkspaceLayerEdits.apply(document, model, operation)
-            in WorkspaceAssetLayerEdits.supported -> WorkspaceAssetLayerEdits.apply(document, model, operation, assetResources, rasterWork::checkpoint)
+            in WorkspacePlatformEdits.assetOps -> WorkspacePlatformEdits.assetLayer(document, model, operation, assetResources, rasterWork::checkpoint)
             in WorkspaceSimulationEdits.supported -> WorkspaceSimulationEdits.apply(operation, document, model, simulationWork).document
             "settings_update" -> settings(document, model, request.getValue("changes").jsonObject)
             "layer_mesh_update" -> mesh(document, model, request.text("layer_id"), request["changes"]?.jsonObject,
@@ -99,9 +97,9 @@ object WorkspaceDocumentEdits {
             in WorkspacePhysicsEdits.batchable -> WorkspacePhysicsEdits.apply(operation, document, model, physicsWork)
             "path_put", "path_delete", "path_deform" -> {
                 val command = when (operation.operation) {
-                    "path_put" -> WorkspacePathEdits.createPutCommand(model.rig.puppet, request).second
-                    "path_delete" -> WorkspacePathEdits.createDeleteCommand(request).second
-                    else -> WorkspacePathEdits.createDeformCommand(request)
+                    "path_put" -> WorkspacePathCommands.createPutCommand(model.rig.puppet, request).second
+                    "path_delete" -> WorkspacePathCommands.createDeleteCommand(request).second
+                    else -> WorkspacePathCommands.createDeformCommand(request)
                 }
                 journal(document, model, JsonArray(listOf(command)))
             }

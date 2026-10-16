@@ -40,7 +40,7 @@ object WorkspacePartitionEdits {
         val drawable = model.rig.puppet.drawables.firstOrNull { it.id.raw == id || model.rig.layerIdByDrawableId[it.id.raw] == id }
             ?: return null
         return drawable.mesh?.let { mesh ->
-            MeshComponentSplit.detectCanvas(mesh, source, Cmo3ModelImport.textureCanvas(model, drawable), checkpoint)
+            MeshComponentSplit.detectCanvas(mesh, source, ImportedCmo3.textureCanvas(model, drawable), checkpoint)
         }
     }
 
@@ -91,7 +91,7 @@ object WorkspacePartitionEdits {
         var next = install(frozen, model, id, pieces, sides)
         val ids = pieces.map { next.rigEdits.splitDrawableIds.getValue(it.id.raw) }
         val command = SourcePartitionJournal.encode(model.rig.puppet, drawable.id, pieces.map { it.id.raw }, ids, names, geometry,
-            textureSource = if (model.config.rigEdits.importedCmo3 == null) PuppetSourceAtlas.SOURCE_ID_RAW else Cmo3ModelImport.PAINT_SOURCE_ID,
+            textureSource = if (model.config.rigEdits.importedCmo3 == null) PuppetSourceAtlas.SOURCE_ID_RAW else CMO3_PAINT_SOURCE_ID,
             followCutVertices = componentPlan == null)
         val overlay = SourcePartitionJournal.migrateSimulations(
             MeshGenerationBaseline.preserve(next.rigEdits, model.config), model.rig.puppet, drawable.id.raw, ids, geometry)
@@ -105,7 +105,7 @@ object WorkspacePartitionEdits {
     fun geometry(model: RigPreviewModel, drawable: org.umamo.runtime.model.Drawable, componentPlan: MeshComponentSplit.Plan?,
                  request: JsonObject, count: Int, work: WorkspaceRasterWork = WorkspaceRasterWork.Direct): SourcePartitionGeometry.Plan {
         val mesh = requireNotNull(drawable.mesh)
-        val canvas = Cmo3ModelImport.textureCanvas(model, drawable)
+        val canvas = ImportedCmo3.textureCanvas(model, drawable)
         return if (componentPlan != null) SourcePartitionGeometry.components(mesh, canvas,
             componentPlan.ownerByVertex, count, work::checkpoint) else {
             SourcePartitionGeometry.polygon(mesh, canvas, request.getValue("polygon").jsonArray.map {

@@ -16,6 +16,8 @@ expect object ImportedCmo3 {
 	fun puppet(encoded: String): PuppetModel
 	/** The editable Bezier divisions (rows to columns) of the imported model's warps, by warp id. */
 	fun bezierDivisions(encoded: String): Map<String, Pair<Int, Int>>
+	/** [drawable]'s texture coordinates as canvas pixels (Cmo3ModelImport.textureCanvas; generated projects too). */
+	fun textureCanvas(preview: RigPreviewModel, drawable: org.umamo.runtime.model.Drawable): FloatArray
 }
 
 /** The texture source id an imported model's painted art has (Cmo3ModelImport.PAINT_SOURCE_ID). */

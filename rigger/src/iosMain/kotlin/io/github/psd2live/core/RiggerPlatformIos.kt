@@ -344,6 +344,14 @@ actual object ImportedCmo3 {
 	actual fun paintingPreview(pipeline: PSD2LivePipeline, source: org.umamo.format.art.SourceArt, config: PipelineConfig): RigPreviewModel = desktopOnly()
 	actual fun puppet(encoded: String): org.umamo.runtime.model.PuppetModel = desktopOnly()
 	actual fun bezierDivisions(encoded: String): Map<String, Pair<Int, Int>> = desktopOnly()
+	/** A generated project's (or painted art's) coordinates as Cmo3ModelImport.textureCanvas gives them; an imported model's original mesh needs the desktop. */
+	actual fun textureCanvas(preview: RigPreviewModel, drawable: org.umamo.runtime.model.Drawable): FloatArray {
+		val mesh = requireNotNull(drawable.mesh)
+		if (preview.config.rigEdits.importedCmo3 == null ||
+			preview.rig.puppet.atlas.tiles.single { it.id == drawable.atlasTileId }.source?.sourceId?.raw == CMO3_PAINT_SOURCE_ID)
+			return RasterMeshJournal.TextureCoordinates(preview.rig.puppet, drawable).toCanvas(mesh.uvs)
+		desktopOnly()
+	}
 }
 
 internal actual fun PSD2LivePipeline.exportCmo3(baseName: String, model: RigPreviewModel, warnings: MutableList<String>, write: (String, ByteArray) -> Unit) {

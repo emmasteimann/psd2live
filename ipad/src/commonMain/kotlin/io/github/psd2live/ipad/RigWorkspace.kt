@@ -61,6 +61,7 @@ private sealed interface RigState {
 	data class Swings(val outcome: RigOutcome) : RigState
 	data class AssetLayer(val outcome: RigOutcome) : RigState
 	data class LayerRoles(val outcome: RigOutcome) : RigState
+	data class Glue(val outcome: RigOutcome) : RigState
 	data class Motions(val outcome: RigOutcome) : RigState
 	data class OwnMotions(val outcome: RigOutcome) : RigState
 	data class Parameters(val outcome: RigOutcome) : RigState
@@ -158,7 +159,7 @@ fun RigWorkspace(modifier: Modifier = Modifier, start: String? = null, onStarted
 
 	Column(modifier.verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
 		// An editing screen (paint, tweak, settings) has the whole tab: the file list steps aside.
-		val editing = state is RigState.Painting || state is RigState.Tweaking || state is RigState.Settings || state is RigState.Physics || state is RigState.Expressions || state is RigState.Motions || state is RigState.OwnMotions || state is RigState.Parameters || state is RigState.Parts || state is RigState.DrawOrder || state is RigState.Structure || state is RigState.Split || state is RigState.Skeleton || state is RigState.Simulate || state is RigState.History || state is RigState.Textures || state is RigState.Mouth || state is RigState.PoseSheet || state is RigState.Weights || state is RigState.Swings || state is RigState.AssetLayer || state is RigState.LayerRoles
+		val editing = state is RigState.Painting || state is RigState.Tweaking || state is RigState.Settings || state is RigState.Physics || state is RigState.Expressions || state is RigState.Motions || state is RigState.OwnMotions || state is RigState.Parameters || state is RigState.Parts || state is RigState.DrawOrder || state is RigState.Structure || state is RigState.Split || state is RigState.Skeleton || state is RigState.Simulate || state is RigState.History || state is RigState.Textures || state is RigState.Mouth || state is RigState.PoseSheet || state is RigState.Weights || state is RigState.Swings || state is RigState.AssetLayer || state is RigState.LayerRoles || state is RigState.Glue
 		if (!editing) {
 			Text("Rig a PSD", color = Text1, fontSize = 22.sp, fontWeight = FontWeight.Bold)
 			Text("Put PSDs in Files > On My iPad > Layerloom. The rig is built here on the iPad, with the same rigger as the Mac " +
@@ -208,7 +209,8 @@ fun RigWorkspace(modifier: Modifier = Modifier, start: String? = null, onStarted
 				onSplit = { state = RigState.Split(s.outcome) }, onSkeleton = { state = RigState.Skeleton(s.outcome) },
 				onSimulate = { state = RigState.Simulate(s.outcome) }, onHistory = { state = RigState.History(s.outcome) }, history = history,
 				onTextures = { state = RigState.Textures(s.outcome) }, onMouth = { state = RigState.Mouth(s.outcome) },
-				onPoseSheet = { state = RigState.PoseSheet(s.outcome) }, onWeights = { state = RigState.Weights(s.outcome) }, onSwings = { state = RigState.Swings(s.outcome) }, onAssetLayer = { state = RigState.AssetLayer(s.outcome) }, onLayerRoles = { state = RigState.LayerRoles(s.outcome) }) }
+				onPoseSheet = { state = RigState.PoseSheet(s.outcome) }, onWeights = { state = RigState.Weights(s.outcome) }, onSwings = { state = RigState.Swings(s.outcome) }, onAssetLayer = { state = RigState.AssetLayer(s.outcome) }, onLayerRoles = { state = RigState.LayerRoles(s.outcome) }, onGlue = { state = RigState.Glue(s.outcome) }) }
+			is RigState.Glue -> GlueScreen(s.outcome, onDone = { keep(it, "Glued parts") }, onCancel = { state = RigState.Done(s.outcome) })
 			is RigState.LayerRoles -> LayerRolesScreen(s.outcome, onDone = { keep(it, "Changed layer roles") }, onCancel = { state = RigState.Done(s.outcome) })
 			is RigState.AssetLayer -> AssetLayerScreen(s.outcome, onDone = { keep(it, "Added an image layer") }, onCancel = { state = RigState.Done(s.outcome) })
 			is RigState.Swings -> SwingScreen(s.outcome, onDone = { keep(it, "Changed swings") }, onCancel = { state = RigState.Done(s.outcome) })
@@ -252,7 +254,7 @@ private fun Button(label: String, onClick: () -> Unit) {
 
 /** A rigged PSD: what was made and saved, and the rig drawn at the pose the sliders set. */
 @Composable
-private fun RigResult(o: RigOutcome, onPaint: () -> Unit, onTweak: () -> Unit, onSettings: () -> Unit, onPhysics: () -> Unit, onExpressions: () -> Unit, onMotions: () -> Unit, onParameters: () -> Unit, onParts: () -> Unit, onDrawOrder: () -> Unit, onStructure: () -> Unit, onSplit: () -> Unit, onSkeleton: () -> Unit, onSimulate: () -> Unit, onHistory: () -> Unit, history: RigProjectHistory?, onTextures: () -> Unit, onMouth: () -> Unit, onPoseSheet: () -> Unit, onWeights: () -> Unit, onSwings: () -> Unit, onAssetLayer: () -> Unit, onLayerRoles: () -> Unit) {
+private fun RigResult(o: RigOutcome, onPaint: () -> Unit, onTweak: () -> Unit, onSettings: () -> Unit, onPhysics: () -> Unit, onExpressions: () -> Unit, onMotions: () -> Unit, onParameters: () -> Unit, onParts: () -> Unit, onDrawOrder: () -> Unit, onStructure: () -> Unit, onSplit: () -> Unit, onSkeleton: () -> Unit, onSimulate: () -> Unit, onHistory: () -> Unit, history: RigProjectHistory?, onTextures: () -> Unit, onMouth: () -> Unit, onPoseSheet: () -> Unit, onWeights: () -> Unit, onSwings: () -> Unit, onAssetLayer: () -> Unit, onLayerRoles: () -> Unit, onGlue: () -> Unit) {
 	var values by remember(o) { mutableStateOf(o.preview.parameters.associate { it.id to it.default }) }
 	var saveStatus by remember(o) { mutableStateOf<String?>(null) }
 	val scope = rememberCoroutineScope()
@@ -282,6 +284,7 @@ private fun RigResult(o: RigOutcome, onPaint: () -> Unit, onTweak: () -> Unit, o
 			Button("Draw order", onDrawOrder)
 			Button("Add deformers", onStructure)
 			Button("Split parts", onSplit)
+			Button("Glue", onGlue)
 			Button("Skeleton", onSkeleton)
 			Button("Weights", onWeights)
 			Button("Swings", onSwings)

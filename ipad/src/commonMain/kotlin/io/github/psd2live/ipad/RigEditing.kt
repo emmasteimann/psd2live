@@ -101,6 +101,15 @@ class RigEditing(private val start: RigPreviewModel, startSource: org.umamo.form
 			in io.github.psd2live.application.WorkspaceSimulationEdits.supported -> io.github.psd2live.application.WorkspaceSimulationEdits.apply(op, document, model, simulationWork).also { report(it.report) }.document
 			else -> throw IllegalArgumentException("$operation isn't on the iPad yet")
 		}
+		applyDocumentEdit(next)
+	}
+
+	/** This rig as the desktop's document, for a document edit to start from. */
+	fun document(): io.github.psd2live.project.WorkspaceDocument =
+		documentOf(requireNotNull(source) { "This rig has no source art to edit" }, model.config)
+
+	/** [next] (an edit of [document]) built into the rig as one undoable step. Blocking. */
+	fun applyDocumentEdit(next: io.github.psd2live.project.WorkspaceDocument) {
 		val config = next.config(PipelineConfig(exportCmo3 = false))
 		val rebuilt = pipeline.buildPreview(next.source, config)
 		undos.addLast(model to source); if (undos.size > 60) undos.removeFirst()

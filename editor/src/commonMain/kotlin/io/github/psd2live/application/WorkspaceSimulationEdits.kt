@@ -17,25 +17,6 @@ interface WorkspaceSimulationWork {
     }
 }
 
-/** Synchronous solver loops observe the originating coroutine, even before the next suspension. */
-fun WorkspaceSimulationWork.cancellable(context: CoroutineContext,
-    progress: (String, Float) -> Unit = { id, value -> context[WorkspaceJobContext]?.progress(0.1f + 0.75f * value, "Baking simulation $id") },
-): WorkspaceSimulationWork {
-    val observer = this
-    return object : WorkspaceSimulationWork {
-        private var progressHigh = 0f
-        override fun <T> run(id: String, action: ((Float) -> Unit, () -> Boolean) -> T): T = observer.run(id) { report, cancelled ->
-            fun check() { context.ensureActive(); if (cancelled()) throw CancellationException("Simulation bake cancelled") }
-            check()
-            val result = action({ value ->
-                check(); progressHigh = maxOf(progressHigh, value); progress(id, progressHigh); report(value)
-            }, { check(); false })
-            check()
-            result
-        }
-    }
-}
-
 data class WorkspaceSimulationCandidate(val document: WorkspaceDocument, val report: JsonObject = JsonObject(emptyMap()))
 
 /** Pure document preparation shared by single calls, GUI commands and ordered atomic batches. */
@@ -128,8 +109,8 @@ object WorkspaceSimulationEdits {
             val warnings = applied.simulationIds.mapNotNull { id ->
                 val bake = overlay.simEdits.firstOrNull { it.id == id }?.bake ?: return@mapNotNull null
                 if (bake.fit >= MIN_FIT_R2 && bake.maxErrorPx <= MAX_ERROR_P95_PX) null
-                else "$id reproduces the simulation poorly (fit_r2 ${"%.2f".format(java.util.Locale.ROOT, bake.fit)}, " +
-                    "error_p95_px ${"%.1f".format(java.util.Locale.ROOT, bake.maxErrorPx)}): check it with view_render_poses at full range, " +
+                else "$id reproduces the simulation poorly (fit_r2 ${formatFixedRoot(bake.fit.toDouble(), 2)}, " +
+                    "error_p95_px ${formatFixedRoot(bake.maxErrorPx.toDouble(), 1)}): check it with view_render_poses at full range, " +
                     "and roll it back with history_checkout if the art tears. A short cut may suit the classic sway better."
             } + listOfNotNull(("This replaced the generated hair sway (its parameter and physics group) with the simulation; " +
                 "history_checkout restores it.").takeIf { replacesSway })

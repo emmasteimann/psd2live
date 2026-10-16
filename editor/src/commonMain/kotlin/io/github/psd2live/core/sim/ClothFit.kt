@@ -99,7 +99,7 @@ object ClothFit {
         for (c in supported.indices) if (supported[c]) { distance[c] = 0f; queue += 0f to c }
         val diagonal = sqrt(2f)
         while (queue.isNotEmpty()) {
-            val (d, c) = queue.poll()
+            val (d, c) = queue.poll()!!
             if (d > distance[c]) continue
             for (oy in -1..1) for (ox in -1..1) {
                 if (ox == 0 && oy == 0) continue

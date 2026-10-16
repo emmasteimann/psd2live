@@ -136,6 +136,12 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 	var islandsPreview by remember { mutableStateOf<ImageBitmap?>(null) }
 	var islandNames by remember { mutableStateOf<List<String>>(emptyList()) }
 	var lastSplit by remember { mutableStateOf<Triple<String, StudioPart, List<String>>?>(null) }
+	// The inspector's tab; a picture the Check panels show on the canvas instead of the art; clone points.
+	var tab by remember { mutableStateOf(InspectorTab.PART) }
+	var canvasPreview by remember { mutableStateOf<Pair<IntArray, String>?>(null) }
+	var cloneSource by remember { mutableStateOf<Pt?>(null) }
+	var cloneDest by remember { mutableStateOf<Pt?>(null) }
+	var picking by remember { mutableStateOf<String?>(null) }
 
 	val projectNow by rememberUpdatedState(project)
 	val maskNow by rememberUpdatedState(mask)
@@ -224,6 +230,7 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 			val part = p.part(id)
 			mask = withContext(worker) { (if (part == null) null else MaskEdit(part.id, p.width, p.height, part.mask)).also { workerMask[0] = it } }
 			polygon.clear(); bump()
+			canvasPreview = null; picking = null
 			if (part != null && status.startsWith("Choose a part")) status = ""
 		}
 	}
@@ -237,16 +244,16 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 	// re-render per frame); a sharp render of the visible region follows once the view rests. Paint redraws at once.
 	LaunchedEffect(Unit) {
 		var lastView: CanvasView? = null
-		snapshotFlow { listOf(composite, maskTick, view, box, showMask, mask) }.collectLatest {
+		snapshotFlow { listOf(composite, maskTick, view, box, showMask, mask, canvasPreview) }.collectLatest {
 			val p = projectNow ?: return@collectLatest
-			val art = composite ?: return@collectLatest
+			val art = canvasPreview?.first?.takeIf { it.size == p.width * p.height } ?: composite ?: return@collectLatest
 			val (w, h) = box
 			if (w < 2f || h < 2f) return@collectLatest
 			val viewOnly = lastView != null && lastView != view
 			lastView = view
 			if (viewOnly) delay(120)
 			val l = layout(w, h, view)
-			val edit = mask; val withMask = showMask && edit != null
+			val edit = mask; val withMask = showMask && edit != null && canvasPreview == null
 			frame = withContext(Dispatchers.Default) {
 				val scale = l[0]; val left = l[1]; val top = l[2]
 				val x0 = maxOf(0f, -left / scale); val y0 = maxOf(0f, -top / scale)
@@ -474,6 +481,11 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 						private var strokePart: String? = null
 						override fun start(at: Offset, pressure: Float) {
 							val s = settings; val c = toCanvas(at); val proj = projectNow ?: return
+							picking?.let { which ->
+								val pt = Pt(c.x.toDouble().coerceIn(0.0, proj.width - 1.0), c.y.toDouble().coerceIn(0.0, proj.height - 1.0))
+								if (which == "source") cloneSource = pt else cloneDest = pt
+								picking = null; return
+							}
 							when (s.tool) {
 								Tool.PAN -> {}
 								Tool.PICK -> scope.launch(worker + safe) {
@@ -548,6 +560,12 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 						drawImage(f.art, dstOffset = dst, dstSize = dsz)
 						f.mask?.let { drawImage(it, dstOffset = dst, dstSize = dsz, alpha = 0.55f) }
 					}
+					// The clone points: source green, where it lands red.
+					for ((pt, colour) in listOf(cloneSource to Color(0xFF3DD68C), cloneDest to Color(0xFFFF5C7A))) pt?.let {
+						val c = Offset(l[1] + it.x.toFloat() * l[0], l[2] + it.y.toFloat() * l[0])
+						drawCircle(Color.Black.copy(alpha = 0.6f), 13f, c, style = Stroke(5f)); drawCircle(colour, 13f, c, style = Stroke(3f))
+						drawLine(colour, c - Offset(20f, 0f), c + Offset(20f, 0f), 2f); drawLine(colour, c - Offset(0f, 20f), c + Offset(0f, 20f), 2f)
+					}
 					if (polygon.isNotEmpty()) {
 						val pts = polygon.map { Offset(l[1] + it.x * l[0], l[2] + it.y * l[0]) }
 						for (i in 1 until pts.size) drawLine(Color(0xFFC4AAFF), pts[i - 1], pts[i], strokeWidth = 3f)
@@ -559,6 +577,15 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 					}
 				}
 				if (frame == null) Text("Drawing…", color = Muted, modifier = Modifier.align(Alignment.Center))
+				canvasPreview?.let { (_, label) ->
+					Row(Modifier.align(Alignment.TopCenter).padding(10.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xEE3A3358)).padding(horizontal = 12.dp, vertical = 8.dp),
+						verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+						Text(label, color = Text1, fontSize = 13.sp, modifier = Modifier.weight(1f, fill = false))
+						Text("Back to the art", color = Accent, fontSize = 13.sp, modifier = Modifier.clickable { canvasPreview = null }.padding(4.dp))
+					}
+				}
+				if (picking != null) Text(if (picking == "source") "Tap where to copy from" else "Tap where it lands", color = Color.White, fontSize = 14.sp,
+					modifier = Modifier.align(Alignment.Center).clip(RoundedCornerShape(8.dp)).background(Color(0xCC000000)).padding(horizontal = 14.dp, vertical = 8.dp))
 				// What just happened, always in sight (at the foot of the long inspector it scrolled out of view).
 				if (status.isNotEmpty()) Row(Modifier.align(Alignment.BottomCenter).padding(10.dp).clip(RoundedCornerShape(8.dp))
 					.background(if (status.startsWith("Something") || status.startsWith("Couldn't")) Color(0xEE4A2030) else Color(0xEE2B283C))
@@ -566,12 +593,40 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 					Text(status, color = Text1, fontSize = 13.sp, modifier = Modifier.weight(1f, fill = false))
 					Text("✕", color = Muted, fontSize = 14.sp, modifier = Modifier.clickable { status = "" }.padding(4.dp))
 				}
-				if (selected != null) Text("${selected.name}${if (erasing) " · erasing" else ""}", color = Color(0xFF3B3550), fontSize = 13.sp,
+				if (selected != null && canvasPreview == null) Text("${selected.name}${if (erasing) " · erasing" else ""}", color = Color(0xFF3B3550), fontSize = 13.sp,
 					modifier = Modifier.align(Alignment.TopStart).padding(10.dp).clip(RoundedCornerShape(6.dp)).background(Color.White.copy(alpha = 0.85f)).padding(horizontal = 8.dp, vertical = 4.dp))
 			}
 			// ---- Inspector: the selected part. ----
 			if (panels) Column(Modifier.width(280.dp).fillMaxHeight().clip(RoundedCornerShape(10.dp)).background(Panel).verticalScroll(rememberScrollState()).padding(12.dp),
 				verticalArrangement = Arrangement.spacedBy(8.dp)) {
+				Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { for (t in InspectorTab.entries) Chip(t.label, tab == t) { if (tab != t) { tab = t; picking = null } } }
+				val host = PanelHost(p, selected, busy != null,
+					run = { label, block -> scope.launch(safe) {
+						flushMask(); busy = label
+						try { block() } catch (e: IllegalStateException) { status = e.message ?: "Couldn't do that." } finally { busy = null }
+					} },
+					change = { change(it) }, latest = { projectNow },
+					showOnCanvas = { img, label -> canvasPreview = if (img == null) null else img to (label ?: "") },
+					focus = { b ->
+						val (bw, bh) = box; val proj = projectNow
+						if (proj != null && bw > 2f && bh > 2f) {
+							val fit = minOf(bw / proj.width, bh / proj.height)
+							val rw = maxOf(1, b[2] - b[0]); val rh = maxOf(1, b[3] - b[1])
+							val zoom = minOf(0.6f * bw / (rw * fit), 0.6f * bh / (rh * fit)).coerceIn(1f, 12f)
+							val scale = fit * zoom
+							val cx = (b[0] + b[2]) / 2f; val cy = (b[1] + b[3]) / 2f
+							view = CanvasView(zoom, bw / 2f - cx * scale - (bw - proj.width * scale) / 2f, bh / 2f - cy * scale - (bh - proj.height * scale) / 2f)
+						}
+					},
+					reloadMask = { id, url -> scope.launch(safe) {
+						val proj = projectNow ?: return@launch
+						mask = withContext(worker) { MaskEdit(id, proj.width, proj.height, url).also { workerMask[0] = it } }; bump()
+					} },
+					select = { selectedId = it }, say = { status = it },
+					cloneSource = cloneSource, cloneDest = cloneDest, pickPoint = { picking = it }, picking = picking)
+				if (tab == InspectorTab.REPAIR) RepairPanel(host)
+				else if (tab == InspectorTab.CHECK) CheckPanel(host)
+				else {
 				if (selected == null) {
 					Text("Choose a part on the left, then paint over it on the canvas.", color = Muted, fontSize = 13.sp)
 				} else {
@@ -726,6 +781,7 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 				Chip(if (showRest) "Remaining artwork shown" else "Remaining artwork hidden", showRest) { change(StudioEdits.showRemaining(p, !showRest)) }
 				val extracted = p.parts.count { it.cutout != null }
 				Text("$extracted of ${p.parts.size} parts extracted · ${p.width} × ${p.height}", color = Muted, fontSize = 12.sp)
+				}
 			}
 		}
 	}

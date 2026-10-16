@@ -363,6 +363,23 @@ fun FitScreen(project: StudioProject, partId: String, pencilOnly: Boolean, onPen
 					busy = null
 				}
 			}
+			Chip("Redraw… (AI)", enabled = ready) {
+				val f = s ?: return@Chip
+				PrivateStudio.signedIn { signed ->
+					if (!signed) { PrivateStudio.signIn { ok -> status = if (ok) "Signed in. Tap Redraw again." else "Redraw needs your private studio." }; return@signedIn }
+					scope.launch(safe) {
+						busy = "Redrawing the piece (one image edit, 30-60 s)…"
+						try {
+							val r = withContext(worker) { f.settle() }; f.settled(r)
+							val (art, iou) = StudioRedraw.redraw(f.piece, f.w, f.h)
+							val b = withContext(worker) { f.replaceArt(art) }
+							if (b != null) f.newBox(b)
+							status = "Redrawn (shape kept; overlap ${(iou * 100).roundToInt()}%). Save piece keeps it; Discard throws it away."
+						} catch (e: IllegalStateException) { status = e.message ?: "Redraw didn't work." }
+						finally { busy = null }
+					}
+				}
+			}
 			if (s?.part?.json?.str("fitOriginal") != null) Chip("Start over from original", enabled = ready) {
 				val f = s
 				scope.launch(safe) { val b = withContext(worker) { f.startOver() }; if (b != null) { f.newBox(b); status = "Back to the original piece (its trims too). Fit it again; Discard changes keeps the last fit instead." } }

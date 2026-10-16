@@ -49,3 +49,33 @@ class AITest {
 		} finally { StudioAI.transport = old }
 	}
 }
+
+class RedrawTest {
+	@Test fun redrawKeepsTheOutlineAndTakesTheNewPaint(): Unit = kotlinx.coroutines.runBlocking {
+		val w = 80; val h = 60
+		// A red blob with grey specks of dust inside; the "editor" answers the same blob, clean blue, slightly shifted.
+		val piece = IntArray(w * h) { i -> val x = i % w; val y = i / w; if (x in 20..59 && y in 15..44) (if ((x + y) % 7 == 0) 0xFF808080.toInt() else 0xFFCC2222.toInt()) else 0 }
+		val old = StudioRedraw.transport
+		StudioRedraw.transport = { png, _ ->
+			val sheet = decodeImage(png)!!
+			// Repaint everything that isn't green screen as clean blue, nudged 3 px right.
+			val out = IntArray(sheet.argb.size) { 0xFF00FF00.toInt() }
+			for (y in 0 until sheet.height) for (x in 3 until sheet.width) { val p = sheet.argb[y * sheet.width + x - 3]; if (p != 0xFF00FF00.toInt()) out[y * sheet.width + x] = 0xFF2244CC.toInt() }
+			Pixels(sheet.width, sheet.height, out)
+		}
+		try {
+			val (art, iou) = StudioRedraw.redraw(piece, w, h)
+			assertTrue(iou > 0.9, "overlap $iou")
+			for (i in art.indices) assertEquals(piece[i] ushr 24, art[i] ushr 24) // exactly the piece's own outline
+			val c = art[30 * w + 40]; assertTrue((c and 0xFF) > 150 && ((c ushr 16) and 0xFF) < 100, "blue paint, got ${c.toString(16)}")
+		} finally { StudioRedraw.transport = old }
+	}
+
+	@Test fun aRedrawThatChangesTheShapeIsRefused(): Unit = kotlinx.coroutines.runBlocking {
+		val w = 80; val h = 60
+		val piece = IntArray(w * h) { i -> if (i % w in 20..59 && i / w in 15..44) -1 else 0 }
+		val old = StudioRedraw.transport
+		StudioRedraw.transport = { png, _ -> val s = decodeImage(png)!!; Pixels(s.width, s.height, IntArray(s.argb.size) { i -> if (i % s.width < s.width / 4) -1 else 0xFF00FF00.toInt() }) }
+		try { kotlin.test.assertFailsWith<IllegalStateException> { StudioRedraw.redraw(piece, w, h) } } finally { StudioRedraw.transport = old }
+	}
+}

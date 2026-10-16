@@ -180,3 +180,148 @@ object StudioAI {
 		return if (x1 < 0) null else intArrayOf(x0, y0, x1, y1)
 	}
 }
+
+/**
+ * Redraw a piece cleanly (the web's `redraw-browser.js`, from the Mac's redraw-piece.py): its box goes on a flat green
+ * sheet at the editor's size, the answer is keyed, put back, nudged into line, and keeps the piece's OWN alpha - so
+ * masking, trims and reshaping stay exactly as they were and only the paint is redrawn. A redraw whose shape no
+ * longer matches (overlap under 0.85) is refused.
+ */
+object StudioRedraw {
+	class Prepared(val sheet: IntArray, val sw: Int, val sh: Int, val box: IntArray, val fit: IntArray, val piece: IntArray, val w: Int, val h: Int)
+
+	/** Where redraws go: the private studio's /redraw (a test puts a stand-in here). */
+	var transport: suspend (sheetPng: ByteArray, size: String) -> Pixels = { png, size -> send(png, size) }
+
+	fun prepare(piece: IntArray, w: Int, h: Int): Prepared {
+		var bx0 = w; var by0 = h; var bx1 = -1; var by1 = -1
+		for (y in 0 until h) for (x in 0 until w) if ((piece[y * w + x] ushr 24) != 0) { if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y < by0) by0 = y; if (y > by1) by1 = y }
+		if (bx1 < 0) throw IllegalStateException("The piece is empty.")
+		val bw = bx1 + 1 - bx0; val bh = by1 + 1 - by0; val m = max(16, (0.08 * max(bw, bh)).toInt())
+		val x0 = max(0, bx0 - m); val y0 = max(0, by0 - m); val x1 = min(w, bx1 + 1 + m); val y1 = min(h, by1 + 1 + m)
+		val cw = x1 - x0; val ch = y1 - y0; val aspect = cw.toDouble() / ch
+		val (SW, SH) = if (aspect > 1.25) 1536 to 1024 else if (aspect < 0.8) 1024 to 1536 else 1024 to 1024
+		val s = min(SW.toDouble() / cw, SH.toDouble() / ch); val fw = (cw * s).roundToInt(); val fh = (ch * s).roundToInt()
+		val ox = (SW - fw) / 2; val oy = (SH - fh) / 2
+		val sheet = IntArray(SW * SH) { 0xFF00FF00.toInt() }
+		val scaled = StudioAI.resample(piece, w, h, x0, y0, cw, ch, fw, fh)
+		for (y in 0 until fh) for (x in 0 until fw) { val i = (oy + y) * SW + ox + x; sheet[i] = StudioRender.blend(sheet[i], scaled[y * fw + x]) }
+		return Prepared(sheet, SW, SH, intArrayOf(x0, y0, x1, y1), intArrayOf(ox, oy, fw, fh), piece, w, h)
+	}
+
+	/** The editor's green-screen answer to straight ARGB (gen-snap-bench.py key_green). */
+	fun keyGreen(src: IntArray, w: Int, h: Int): IntArray {
+		val n = w * h
+		fun r(i: Int) = (src[i] ushr 16) and 0xFF
+		fun g(i: Int) = (src[i] ushr 8) and 0xFF
+		fun b(i: Int) = src[i] and 0xFF
+		val greenness = FloatArray(n) { (g(it) - max(r(it), b(it))).toFloat() }
+		var sr = 0.0; var sg = 0.0; var sb = 0.0; var strong = 0
+		for (i in 0 until n) if (greenness[i] > 120) { sr += r(i); sg += g(i); sb += b(i); strong++ }
+		val screen = if (strong > 100) doubleArrayOf(sr / strong, sg / strong, sb / strong) else doubleArrayOf(0.0, 255.0, 0.0)
+		val excess = max(1.0, screen[1] - max(screen[0], screen[2]))
+		val t = FloatArray(n) { (greenness[it] / excess).coerceIn(0.0, 1.0).toFloat() }
+		val bright = screen.max()
+		val greenish = BooleanArray(n) { i ->
+			val rr = r(i) / 255.0; val gg = g(i) / 255.0; val bb = b(i) / 255.0
+			val mx = maxOf(rr, gg, bb); val mn = minOf(rr, gg, bb); val sat = if (mx > 0) (mx - mn) / mx else 0.0
+			var hue = 0.0
+			if (mx != mn) hue = when (mx) { gg -> 60 * ((bb - rr) / (mx - mn)) + 120; rr -> 60 * (((gg - bb) / (mx - mn)) % 6); else -> 60 * ((rr - gg) / (mx - mn)) + 240 }
+			if (hue < 0) hue += 360
+			hue in 80.0..164.0 && sat >= 90 / 255.0 && greenness[i] > 0 && mx * 255 < 0.85 * bright
+		}
+		val seen = BooleanArray(n); val queue = IntArray(n); var head = 0; var tail = 0
+		for (i in 0 until n) if (t[i] > 0.6f) { seen[i] = true; queue[tail++] = i }
+		fun nbrs(i: Int): IntArray { val x = i % w; val y = i / w; return intArrayOf(if (x > 0) i - 1 else -1, if (x < w - 1) i + 1 else -1, if (y > 0) i - w else -1, if (y < h - 1) i + w else -1) }
+		while (head < tail) {
+			val i = queue[head++]
+			for (j in nbrs(i)) { if (j < 0 || seen[j] || !(greenish[j] || t[j] > 0.6f)) continue; seen[j] = true; queue[tail++] = j; if (greenish[j]) t[j] = 1f }
+		}
+		val alpha = FloatArray(n); val oc = Array(3) { FloatArray(n) }
+		for (i in 0 until n) {
+			val a = 1 - t[i]; alpha[i] = a
+			val obs = intArrayOf(r(i), g(i), b(i))
+			for (c in 0 until 3) oc[c][i] = (if (a > 0.02f) (obs[c] - t[i] * screen[c]) / max(a.toDouble(), 0.02) else obs[c].toDouble()).toFloat().coerceIn(0f, 255f)
+			oc[1][i] = min(oc[1][i], max(oc[0][i], oc[2][i]))
+		}
+		val depth = FloatArray(n) { Float.POSITIVE_INFINITY }; head = 0; tail = 0
+		for (i in 0 until n) if (alpha[i] <= 0.08f) { depth[i] = 0f; queue[tail++] = i }
+		while (head < tail) { val i = queue[head++]; for (j in nbrs(i)) { if (j < 0 || depth[j] <= depth[i] + 1) continue; depth[j] = depth[i] + 1; queue[tail++] = j } }
+		return IntArray(n) { i ->
+			val band = (1 - depth[i] / 10).coerceIn(0f, 1f)
+			val rr = oc[0][i]; val gg = oc[1][i]; val bb = oc[2][i]
+			val g2 = gg - band * max(0f, gg - (rr + bb) / 2 - 2)
+			((alpha[i] * 255).roundToInt().coerceIn(0, 255) shl 24) or (rr.toInt() shl 16) or (g2.toInt().coerceIn(0, 255) shl 8) or bb.toInt()
+		}
+	}
+
+	private fun overlap(a: IntArray, b: IntArray): Double {
+		var both = 0; var either = 0
+		for (i in a.indices) { val x = (a[i] ushr 24) > 128; val y = (b[i] ushr 24) > 128; if (x && y) both++; if (x || y) either++ }
+		return both.toDouble() / max(1, either)
+	}
+
+	/** Puts the answer back onto the piece. Returns the full-canvas piece and the overlap, or throws when refused. */
+	fun finish(p: Prepared, answer: Pixels): Pair<IntArray, Double> {
+		val (x0, y0, x1, y1) = p.box.let { listOf(it[0], it[1], it[2], it[3]) }
+		val (ox, oy, fw, fh) = p.fit.let { listOf(it[0], it[1], it[2], it[3]) }
+		val sheet = StudioAI.resample(answer.argb, answer.width, answer.height, 0, 0, answer.width, answer.height, p.sw, p.sh)
+		val keyed = keyGreen(sheet, p.sw, p.sh)
+		val w = x1 - x0; val h = y1 - y0
+		var theirs = StudioAI.resample(keyed, p.sw, p.sh, ox, oy, fw, fh, w, h)
+		val mine = IntArray(w * h) { p.piece[(y0 + it / w) * p.w + x0 + it % w] }
+		// Best shift within ±12 px (a redraw is nudged, not reshaped).
+		var best = Triple(0, 0, -1.0); val step = max(1, max(w, h) / 256)
+		for (dy in -12..12) for (dx in -12..12) {
+			var both = 0; var either = 0
+			var y = 0; while (y < h) { var x = 0; while (x < w) {
+				val sx = x - dx; val sy = y - dy
+				val m = (mine[y * w + x] ushr 24) > 128
+				val t = sx in 0 until w && sy in 0 until h && (theirs[sy * w + sx] ushr 24) > 128
+				if (m && t) both++; if (m || t) either++
+				x += step }; y += step }
+			val score = both.toDouble() / max(1, either)
+			if (score > best.third) best = Triple(dx, dy, score)
+		}
+		if (best.first != 0 || best.second != 0) {
+			val src = theirs; val (dx, dy) = best.first to best.second
+			theirs = IntArray(w * h) { i -> val sx = i % w - dx; val sy = i / w - dy; if (sx in 0 until w && sy in 0 until h) src[sy * w + sx] else 0 }
+		}
+		val iou = overlap(mine, theirs)
+		if (iou < 0.85) throw IllegalStateException("The redraw changed the piece's shape too much (overlap ${(iou * 100).roundToInt() / 100.0}); nothing was applied.")
+		// Paint from the redraw wherever it has paint; elsewhere inside the piece, the nearest redrawn colour.
+		val n = w * h; val rgb = IntArray(n); val has = BooleanArray(n); val queue = IntArray(n); var head = 0; var tail = 0
+		for (i in 0 until n) if ((theirs[i] ushr 24) > 32) { has[i] = true; queue[tail++] = i; rgb[i] = theirs[i] and 0xFFFFFF }
+		if (tail == 0) for (i in 0 until n) rgb[i] = mine[i] and 0xFFFFFF
+		while (head < tail) {
+			val i = queue[head++]; val x = i % w; val y = i / w
+			for (j in intArrayOf(if (x > 0) i - 1 else -1, if (x < w - 1) i + 1 else -1, if (y > 0) i - w else -1, if (y < h - 1) i + w else -1)) {
+				if (j < 0 || has[j]) continue; has[j] = true; queue[tail++] = j; rgb[j] = rgb[i]
+			}
+		}
+		val full = IntArray(p.w * p.h)
+		for (i in 0 until n) full[(y0 + i / w) * p.w + x0 + i % w] = (mine[i] and 0xFF000000.toInt()) or rgb[i] // the piece's own outline
+		return full to iou
+	}
+
+	/** One /redraw call: the green sheet as a multipart upload; the answer's pixels or a readable error. */
+	private suspend fun send(png: ByteArray, size: String): Pixels {
+		val boundary = "layerloom-${uuid()}"
+		val body = okio.Buffer().apply {
+			writeUtf8("--$boundary\r\nContent-Disposition: form-data; name=\"image\"; filename=\"piece.png\"\r\nContent-Type: image/png\r\n\r\n"); write(png)
+			writeUtf8("\r\n--$boundary\r\nContent-Disposition: form-data; name=\"size\"\r\n\r\n$size\r\n--$boundary--\r\n")
+		}.readByteArray()
+		val (status, text) = suspendCancellableCoroutine { done -> PrivateStudio.post("/redraw", "multipart/form-data; boundary=$boundary", body) { s, t -> done.resume(s to t) } }
+		val json = try { Json.parseToJsonElement(text).jsonObject } catch (_: Throwable) { null }
+		val out = json?.str("png")
+		if (status !in 200..299 || out == null) throw IllegalStateException(json?.str("error") ?: if (status == 0) "Your private studio could not be reached." else "Sign in to your private studio first (it answered $status).")
+		return decodeImage(dataUrlBytes(out)) ?: throw IllegalStateException("The redraw came back unreadable.")
+	}
+
+	/** Redraws [piece] (the whole canvas): one paid edit. Returns the redrawn piece and the shape overlap. */
+	suspend fun redraw(piece: IntArray, w: Int, h: Int): Pair<IntArray, Double> {
+		val p = prepare(piece, w, h)
+		val answer = transport(encodePng(p.sw, p.sh, p.sheet), "${p.sw}x${p.sh}")
+		return finish(p, answer)
+	}
+}

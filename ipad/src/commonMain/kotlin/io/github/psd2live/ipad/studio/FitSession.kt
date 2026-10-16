@@ -186,6 +186,9 @@ class FitSession private constructor(val project: StudioProject, val part: Studi
 
 	fun removeSpecks(s: FitGeometry.Specks) { for (i in s.remove.indices) if (s.remove[i].toInt() != 0) trim[i] = 255.toByte(); refreshPiece() }
 
+	/** Worker: new art for the piece (a redraw already carries its trims in its outline): a clean trim mask over it. */
+	fun replaceArt(art: IntArray): Box? { base = art; trim.fill(0); refreshPiece(); return FitGeometry.alphaBox(base, w, h) }
+
 	/** Back to the piece as it was before its first fit (its trims cleared). Returns the new box. */
 	fun startOver(): Box? {
 		val original = part.json.str("fitOriginal") ?: return null

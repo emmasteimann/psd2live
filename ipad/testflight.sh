@@ -7,7 +7,7 @@
 #   ipad/testflight.sh --no-upload           build and export only (the .ipa lands in ipad/build/testflight/export)
 #
 # Needs, once: Xcode > Settings > Accounts signed in with the paid developer account, and the app created in App Store
-# Connect (My Apps > + > New App, bundle ID com.goosible.layerloom.ipad). Signing uses that Xcode account - no API key
+# Connect (My Apps > + > New App, bundle ID com.goosible.layerloom). Signing uses that Xcode account - no API key
 # or password is stored anywhere. Each upload gets a fresh build number (the date and time), so uploads never clash.
 # After an upload, App Store Connect processes it (~10-30 min); then it appears in TestFlight on the iPad.
 
@@ -76,7 +76,7 @@ if ! xcodebuild -exportArchive -archivePath "$ARCHIVE" -exportPath "$OUT/export"
     -exportOptionsPlist "$OUT/ExportOptions.plist" -allowProvisioningUpdates >>"$LOG" 2>&1; then
     grep -aiE "error|failed|not found|No suitable application records" "$LOG" | sort -u | tail -15
     if grep -aqi "No suitable application records" "$LOG"; then
-        echo "App Store Connect has no app with this bundle ID yet: My Apps > + > New App (bundle ID com.goosible.layerloom.ipad)."
+        echo "App Store Connect has no app with this bundle ID yet: My Apps > + > New App (bundle ID com.goosible.layerloom)."
     fi
     echo "The upload failed; full log: $LOG"
     exit 1

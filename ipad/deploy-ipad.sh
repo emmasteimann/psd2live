@@ -17,7 +17,7 @@ cd "$(dirname "$0")"
 ROOT="$PWD"
 
 TEAM="${LAYERLOOM_TEAM:-6Q6Y6U54M6}"
-BUNDLE_ID="com.goosible.layerloom.ipad"
+BUNDLE_ID="com.goosible.layerloom"
 DERIVED="$ROOT/build/device-derived"
 LOG_DIR="$ROOT/build/logs"
 CONFIG="Release"

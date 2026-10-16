@@ -30,7 +30,9 @@ targets:
         LSSupportsOpeningDocumentsInPlace: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.goosible.layerloom.ipad
+        # Registered in App Store Connect as "Layerloom Studio" (2026-10-16). Was com.goosible.layerloom.ipad before: an app
+        # installed under the old ID is a separate app with its own Documents - move projects across in the Files app.
+        PRODUCT_BUNDLE_IDENTIFIER: com.goosible.layerloom
         # Signing (deploy-ipad.sh passes it too): the personal team Xcode is signed in with.
         DEVELOPMENT_TEAM: 6Q6Y6U54M6
         CODE_SIGN_STYLE: Automatic

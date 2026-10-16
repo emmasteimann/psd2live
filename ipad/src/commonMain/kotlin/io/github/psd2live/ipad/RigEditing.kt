@@ -14,6 +14,7 @@ import io.github.psd2live.format.compile.FrameSpec
 import io.github.psd2live.format.compile.RasterImage
 import io.github.psd2live.ui.parameterKeyMarks
 import io.github.psd2live.project.transform
+import io.github.psd2live.project.config
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -81,6 +82,26 @@ class RigEditing(private val start: RigPreviewModel, startSource: org.umamo.form
 		val clips = if (mode == "delete") MotionClips.withoutParameter(overlay.motionClips, id)
 			else if (edit != null) MotionClips.withParameterRange(overlay.motionClips, id, edit.min, edit.max) else overlay.motionClips
 		commit(model.config.copy(rigEdits = overlay.copy(authoringJournal = overlay.authoringJournal + journal, motionClips = clips)))
+	}
+
+	/**
+	 * A document edit (the desktop's WorkspaceDocumentEdits families shared so far: depth split, mesh/polygon split)
+	 * as one undoable step: the shared edit runs on the project document, and the rig is built again from the result,
+	 * exactly as opening that project would build it.
+	 */
+	fun applyDocument(operation: String, request: JsonObject, work: io.github.psd2live.application.WorkspaceRasterWork = io.github.psd2live.application.WorkspaceRasterWork.Direct) {
+		val art = requireNotNull(source) { "This rig has no source art to edit" }
+		val document = documentOf(art, model.config)
+		val op = io.github.psd2live.application.WorkspaceDocumentOperation(operation, request)
+		val next = when (operation) {
+			in io.github.psd2live.application.WorkspaceDepthSplitEdits.supported -> io.github.psd2live.application.WorkspaceDepthSplitEdits.apply(op, document, model, work)
+			in io.github.psd2live.application.WorkspacePartitionEdits.supported -> io.github.psd2live.application.WorkspacePartitionEdits.apply(op, document, model, work)
+			else -> throw IllegalArgumentException("$operation isn't on the iPad yet")
+		}
+		val config = next.config(PipelineConfig(exportCmo3 = false))
+		val rebuilt = pipeline.buildPreview(next.source, config)
+		undos.addLast(model to source); if (undos.size > 60) undos.removeFirst()
+		redos.clear(); model = rebuilt; source = next.source
 	}
 
 	/** A settings change (draw order, visibility...) as one undoable step. */
@@ -343,4 +364,34 @@ object RigStructure {
 		val p = e.puppet.drawables.firstOrNull { it.id.raw == mesh }?.parentDeformerId ?: return null
 		return e.puppet.deformers.firstOrNull { it.id == p }?.name
 	}
+}
+
+/** Splitting parts on the iPad: the desktop's mesh-island split, polygon split and depth split. */
+object RigSplits {
+	/** How many separate islands [layerId]'s art has (0 when it can't be split that way), with each island's middle. */
+	fun islands(e: RigEditing, layerId: String): List<Pair<Float, Float>> =
+		io.github.psd2live.application.WorkspacePartitionEdits.componentPlan(e.model, layerId)?.components?.map { it.centerX to it.centerY }.orEmpty()
+
+	/** Names for the islands: left/right or top/bottom for two, numbered otherwise (the desktop dialog's defaults). */
+	fun names(base: String, centers: List<Pair<Float, Float>>): List<String> = if (centers.size == 2) {
+		val horizontal = kotlin.math.abs(centers[0].first - centers[1].first) >= kotlin.math.abs(centers[0].second - centers[1].second)
+		val firstIsLow = if (horizontal) centers[0].first <= centers[1].first else centers[0].second <= centers[1].second
+		val (a, b) = if (horizontal) "left" to "right" else "top" to "bottom"
+		if (firstIsLow) listOf("$base $a", "$base $b") else listOf("$base $b", "$base $a")
+	} else centers.indices.map { "$base ${it + 1}" }
+
+	fun splitIslands(e: RigEditing, layerId: String, names: List<String>) = e.applyDocument("source_split_components", buildJsonObject {
+		put("layer_id", layerId); put("names", JsonArray(names.map(::JsonPrimitive)))
+	})
+
+	/** Cuts [layerId] with a canvas polygon into the part inside ([inside]) and the rest ([outside]). */
+	fun splitPolygon(e: RigEditing, layerId: String, polygon: List<Pair<Float, Float>>, inside: String, outside: String) = e.applyDocument("source_split_polygon", buildJsonObject {
+		put("layer_id", layerId); put("names", JsonArray(listOf(inside, outside).map(::JsonPrimitive)))
+		put("polygon", JsonArray(polygon.map { (x, y) -> JsonArray(listOf(JsonPrimitive(x), JsonPrimitive(y))) }))
+	})
+
+	/** [sourceMesh] in two slices, front and back, with [middleMesh] drawn between them (a scarf round a neck). */
+	fun splitDepth(e: RigEditing, sourceMesh: String, middleMesh: String) = e.applyDocument("source_split_depth", buildJsonObject {
+		put("source_id", sourceMesh); put("middle_ids", JsonArray(listOf(JsonPrimitive(middleMesh))))
+	})
 }

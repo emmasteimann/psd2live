@@ -62,6 +62,7 @@ private sealed interface RigState {
 	data class Parts(val outcome: RigOutcome) : RigState
 	data class DrawOrder(val outcome: RigOutcome) : RigState
 	data class Structure(val outcome: RigOutcome) : RigState
+	data class Split(val outcome: RigOutcome) : RigState
 	data class Failed(val name: String, val message: String) : RigState
 }
 
@@ -133,7 +134,7 @@ fun RigWorkspace(modifier: Modifier = Modifier, start: String? = null, onStarted
 
 	Column(modifier.verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
 		// An editing screen (paint, tweak, settings) has the whole tab: the file list steps aside.
-		val editing = state is RigState.Painting || state is RigState.Tweaking || state is RigState.Settings || state is RigState.Physics || state is RigState.Expressions || state is RigState.Motions || state is RigState.OwnMotions || state is RigState.Parameters || state is RigState.Parts || state is RigState.DrawOrder || state is RigState.Structure
+		val editing = state is RigState.Painting || state is RigState.Tweaking || state is RigState.Settings || state is RigState.Physics || state is RigState.Expressions || state is RigState.Motions || state is RigState.OwnMotions || state is RigState.Parameters || state is RigState.Parts || state is RigState.DrawOrder || state is RigState.Structure || state is RigState.Split
 		if (!editing) {
 			Text("Rig a PSD", color = Text1, fontSize = 22.sp, fontWeight = FontWeight.Bold)
 			Text("Put PSDs in Files > On My iPad > Layerloom. The rig is built here on the iPad, with the same rigger as the Mac " +
@@ -179,7 +180,9 @@ fun RigWorkspace(modifier: Modifier = Modifier, start: String? = null, onStarted
 				onSettings = { state = RigState.Settings(s.outcome) }, onPhysics = { state = RigState.Physics(s.outcome) },
 				onExpressions = { state = RigState.Expressions(s.outcome) }, onMotions = { state = RigState.Motions(s.outcome) },
 				onParameters = { state = RigState.Parameters(s.outcome) }, onParts = { state = RigState.Parts(s.outcome) },
-				onDrawOrder = { state = RigState.DrawOrder(s.outcome) }, onStructure = { state = RigState.Structure(s.outcome) }) }
+				onDrawOrder = { state = RigState.DrawOrder(s.outcome) }, onStructure = { state = RigState.Structure(s.outcome) },
+				onSplit = { state = RigState.Split(s.outcome) }) }
+			is RigState.Split -> SplitScreen(s.outcome, onDone = { keep(it) }, onCancel = { state = RigState.Done(s.outcome) })
 			is RigState.Structure -> StructureScreen(s.outcome, onDone = { keep(it) }, onCancel = { state = RigState.Done(s.outcome) })
 			is RigState.DrawOrder -> DrawOrderScreen(s.outcome, onDone = { keep(it) }, onCancel = { state = RigState.Done(s.outcome) })
 			is RigState.Parts -> PartsScreen(s.outcome, onDone = { keep(it) }, onCancel = { state = RigState.Done(s.outcome) })
@@ -209,7 +212,7 @@ private fun Button(label: String, onClick: () -> Unit) {
 
 /** A rigged PSD: what was made and saved, and the rig drawn at the pose the sliders set. */
 @Composable
-private fun RigResult(o: RigOutcome, onPaint: () -> Unit, onTweak: () -> Unit, onSettings: () -> Unit, onPhysics: () -> Unit, onExpressions: () -> Unit, onMotions: () -> Unit, onParameters: () -> Unit, onParts: () -> Unit, onDrawOrder: () -> Unit, onStructure: () -> Unit) {
+private fun RigResult(o: RigOutcome, onPaint: () -> Unit, onTweak: () -> Unit, onSettings: () -> Unit, onPhysics: () -> Unit, onExpressions: () -> Unit, onMotions: () -> Unit, onParameters: () -> Unit, onParts: () -> Unit, onDrawOrder: () -> Unit, onStructure: () -> Unit, onSplit: () -> Unit) {
 	var values by remember(o) { mutableStateOf(o.preview.parameters.associate { it.id to it.default }) }
 	var saveStatus by remember(o) { mutableStateOf<String?>(null) }
 	val scope = rememberCoroutineScope()
@@ -237,6 +240,7 @@ private fun RigResult(o: RigOutcome, onPaint: () -> Unit, onTweak: () -> Unit, o
 			Button("Move parts", onParts)
 			Button("Draw order", onDrawOrder)
 			Button("Add deformers", onStructure)
+			Button("Split parts", onSplit)
 			Button("Parameters", onParameters)
 			Button("Rig settings", onSettings)
 		}

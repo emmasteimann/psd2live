@@ -2,7 +2,6 @@ package io.github.psd2live.application
 
 import io.github.psd2live.project.WorkspaceTaskSnapshot
 
-import java.time.Instant
 
 /**
  * The Agent task log older builds kept per project. Nothing records tasks any more; a project that has them keeps
@@ -20,7 +19,7 @@ class WorkspaceTaskRecords {
 			require(snapshot.plan.isNotEmpty()) { "Persisted task plan must not be empty" }
 			require(snapshot.progress.isFinite() && snapshot.progress in 0f..1f) { "Persisted task progress is invalid" }
 			snapshot.currentStep?.let { require(it in snapshot.plan.indices) { "Persisted current task step is invalid" } }
-			Instant.parse(snapshot.createdAt); Instant.parse(snapshot.updatedAt)
+			@OptIn(kotlin.time.ExperimentalTime::class) run { kotlin.time.Instant.parse(snapshot.createdAt); kotlin.time.Instant.parse(snapshot.updatedAt) }
 			require(snapshot.events.map { it.sequence }.toSet().size == snapshot.events.size) { "Persisted task event sequences must be unique" }
 		}
 		tasks = snapshots.map { it.copy(events = it.events.sortedBy { event -> event.sequence }) }

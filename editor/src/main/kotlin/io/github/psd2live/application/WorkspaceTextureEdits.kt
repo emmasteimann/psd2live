@@ -16,7 +16,6 @@ import org.umamo.format.art.LayerRaster
 import org.umamo.format.art.SourceArt
 import org.umamo.format.art.SourceLayer
 import org.umamo.format.raster.RasterCodec
-import java.nio.ByteBuffer
 import kotlin.math.ceil
 import kotlin.math.floor
 import io.github.psd2live.core.legacy.RigGenerationFrames
@@ -662,7 +661,9 @@ object WorkspaceTextureEdits {
         require(bytes.size in 1..MAX_PNG_BYTES) { "PNG must hold 1 byte to 64 MiB" }
         val codec = FormatRegistry.detect(bytes, "image.png") as? RasterCodec
         require(codec?.kind == FileKind.Png && bytes.size >= 24 && bytes.copyOfRange(12, 16).decodeToString() == "IHDR") { "png_base64 is not a PNG image" }
-        val width = ByteBuffer.wrap(bytes).getInt(16).toLong(); val height = ByteBuffer.wrap(bytes).getInt(20).toLong()
+        // Big-endian ints at 16 and 20 (the PNG header's width and height), as ByteBuffer.getInt reads them.
+        fun int(at: Int) = ((bytes[at].toInt() and 0xff) shl 24) or ((bytes[at + 1].toInt() and 0xff) shl 16) or ((bytes[at + 2].toInt() and 0xff) shl 8) or (bytes[at + 3].toInt() and 0xff)
+        val width = int(16).toLong(); val height = int(20).toLong()
         require(width > 0 && height > 0 && width * height <= MAX_PIXELS) { "Image exceeds 16 megapixels" }
         checkCancelled()
         val image = requireNotNull(codec).read(bytes)

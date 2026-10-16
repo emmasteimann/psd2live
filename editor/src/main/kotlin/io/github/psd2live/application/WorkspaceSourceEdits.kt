@@ -10,7 +10,6 @@ import io.github.psd2live.project.transform
 import io.github.psd2live.core.*
 import kotlinx.serialization.json.*
 import org.umamo.format.art.*
-import java.awt.geom.Path2D
 
 fun sourceArtwork(arguments: JsonObject): Pair<WorkspaceSourceArt, Map<String, LayerClassificationOverride>> {
     val width = arguments.getValue("width").jsonPrimitive.int; val height = arguments.getValue("height").jsonPrimitive.int
@@ -45,8 +44,8 @@ fun partitionSourcePolygon(layer: SourceLayer, arguments: JsonObject, pieceIds: 
     require(polygon.size in 3..32 && polygon.all { it.size == 2 && it.all(Double::isFinite) })
     val names = arguments.getValue("names").jsonArray.map { it.jsonPrimitive.content }
     require(names.size == 2 && names.all { it.isNotBlank() })
-    val shape = Path2D.Double()
-    shape.moveTo(polygon.first()[0], polygon.first()[1]); polygon.drop(1).forEach { shape.lineTo(it[0], it[1]) }; shape.closePath()
+    // Path2D.Double's contains, edge rules included (PolygonPath matches it exactly).
+    val shape = io.github.psd2live.core.PolygonPath(polygon.map { it[0] to it[1] })
     val sourceRaster = layer.raster
     val selected = sourceRaster.rgba.copyOf(); val remainder = sourceRaster.rgba.copyOf()
     var selectedPixels = 0; var remainingPixels = 0

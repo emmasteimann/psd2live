@@ -5,7 +5,7 @@ import io.github.psd2live.core.IdentityHashMap
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.*
-import java.io.IOException
+import okio.IOException
 
 class WorkspaceOutputContractFailure(val operation: String, val validation: WorkspaceValidationException) :
     IllegalStateException("Operation $operation returned an invalid result: ${validation.message}", validation)

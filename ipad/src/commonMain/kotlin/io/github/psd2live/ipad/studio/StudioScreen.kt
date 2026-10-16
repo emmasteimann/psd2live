@@ -149,6 +149,7 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 	var cloneSource by remember { mutableStateOf<Pt?>(null) }
 	var cloneDest by remember { mutableStateOf<Pt?>(null) }
 	var picking by remember { mutableStateOf<String?>(null) }
+	var aiPending by remember { mutableStateOf<StudioRepairAI.Candidate?>(null) }
 
 	val projectNow by rememberUpdatedState(project)
 	val maskNow by rememberUpdatedState(mask)
@@ -643,7 +644,8 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 						mask = withContext(worker) { MaskEdit(id, proj.width, proj.height, url).also { workerMask[0] = it } }; bump()
 					} },
 					select = { selectedId = it }, say = { status = it },
-					cloneSource = cloneSource, cloneDest = cloneDest, pickPoint = { picking = it }, picking = picking)
+					cloneSource = cloneSource, cloneDest = cloneDest, pickPoint = { picking = it }, picking = picking,
+					pending = aiPending, setPending = { aiPending = it })
 				if (tab == InspectorTab.REPAIR) RepairPanel(host)
 				else if (tab == InspectorTab.FACE) FacePanel(host)
 				else if (tab == InspectorTab.CHECK) CheckPanel(host)

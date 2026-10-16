@@ -325,3 +325,101 @@ object StudioRedraw {
 		return finish(p, answer)
 	}
 }
+
+/**
+ * AI hidden-art repair and AI expressions (the web's `repair` in App.jsx, `repairInputs`, `constrainCandidate`,
+ * `createVariant`): the drawing (or, for an expression, the character with this part shown) and an edit mask - white
+ * with the part's mask punched out - go to the private studio's /repair; the answer is clipped to the mask. A repair
+ * becomes a patch under the part it belongs to; an expression becomes a variant. /repair/check is free.
+ */
+object StudioRepairAI {
+	class Candidate(val partId: String, val operation: String, val patch: String, val variantArt: String?, val preview: IntArray, val prompt: String, val model: String?, val mask: String, val scaled: Boolean)
+
+	var transport: suspend (path: String, body: ByteArray, contentType: String) -> Pair<Int, String> = { path, body, type ->
+		suspendCancellableCoroutine { done -> PrivateStudio.post(path, type, body) { s, t -> done.resume(s to t) } }
+	}
+
+	private fun inputs(project: StudioProject, partId: String, operation: String): Triple<ByteArray, ByteArray, String> {
+		val w = project.width; val h = project.height
+		val part = project.part(partId) ?: throw IllegalStateException("That part is gone.")
+		val maskUrl = part.mask ?: throw IllegalStateException("Paint a mask over the area first.")
+		val image = if (operation == "expression") {
+			val art = StudioPeel.partArt(project, partId) ?: throw IllegalStateException("Extract or import the part's neutral art first.")
+			StudioFace.variantPreview(project, partId, pngDataUrl(encodePng(w, h, art)))
+		} else StudioImages.layer(project.source, w, h).full()
+		val m = StudioImages.layer(maskUrl, w, h)
+		val edit = IntArray(w * h) { -1 }
+		for (r in 0 until m.height) for (c in 0 until m.width) { val a = m.argb[r * m.width + c] ushr 24; if (a > 0) edit[(m.y + r) * w + m.x + c] = ((255 - a) shl 24) or 0xFFFFFF }
+		return Triple(encodePng(w, h, image), encodePng(w, h, edit), maskUrl)
+	}
+
+	private fun multipart(image: ByteArray, mask: ByteArray, prompt: String, operation: String): Pair<ByteArray, String> {
+		val b = "layerloom-${uuid()}"
+		val body = okio.Buffer().apply {
+			fun file(name: String, data: ByteArray) { writeUtf8("--$b\r\nContent-Disposition: form-data; name=\"$name\"; filename=\"$name.png\"\r\nContent-Type: image/png\r\n\r\n"); write(data); writeUtf8("\r\n") }
+			fun field(name: String, v: String) { writeUtf8("--$b\r\nContent-Disposition: form-data; name=\"$name\"\r\n\r\n"); writeUtf8(v); writeUtf8("\r\n") }
+			file("image", image); file("mask", mask); field("prompt", prompt); field("operation", operation); writeUtf8("--$b--\r\n")
+		}.readByteArray()
+		return body to "multipart/form-data; boundary=$b"
+	}
+
+	private fun parse(status: Int, text: String): JsonObject {
+		val json = try { Json.parseToJsonElement(text).jsonObject } catch (_: Throwable) { null }
+		if (status !in 200..299 || json == null) throw IllegalStateException(json?.str("error") ?: if (status == 0) "Your private studio could not be reached." else "Sign in to your private studio first (it answered $status).")
+		return json
+	}
+
+	/** The free check: the upload is accepted and today's attempts left, without calling the image editor. */
+	suspend fun check(project: StudioProject, partId: String, prompt: String, operation: String): String {
+		val (img, mask, _) = inputs(project, partId, operation)
+		val (body, type) = multipart(img, mask, prompt.ifBlank { "check" }, operation)
+		val (s, t) = transport("/repair/check", body, type)
+		val q = parse(s, t)["quota"] as? JsonObject
+		return "Request check passed (no image edit sent, nothing spent). Attempts left today: ${q?.get("remainingConnection") ?: "?"} on this connection, ${q?.get("remainingStudio") ?: "?"} for the studio."
+	}
+
+	/** One paid edit: the candidate clipped to the mask, ready to review. */
+	suspend fun generate(project: StudioProject, partId: String, prompt: String, operation: String): Candidate {
+		val w = project.width; val h = project.height
+		if (prompt.isBlank()) throw IllegalStateException(if (operation == "expression") "Name and describe the expression first." else "Describe the hidden art first.")
+		val (img, mask, maskUrl) = inputs(project, partId, operation)
+		val (body, type) = multipart(img, mask, prompt, operation)
+		val (s, t) = transport("/repair", body, type)
+		val json = parse(s, t)
+		val cand = decodeImage(dataUrlBytes(json.str("candidate") ?: throw IllegalStateException("The private studio returned no image."))) ?: throw IllegalStateException("The image came back unreadable.")
+		val scaled = cand.width != w || cand.height != h
+		val full = if (scaled) StudioAI.resample(cand.argb, cand.width, cand.height, 0, 0, cand.width, cand.height, w, h) else cand.argb
+		// Clip to the mask (destination-in by its alpha).
+		val m = IntArray(w * h).also { a -> val l = StudioImages.layer(maskUrl, w, h); for (r in 0 until l.height) for (c in 0 until l.width) a[(l.y + r) * w + l.x + c] = l.argb[r * l.width + c] ushr 24 }
+		val patch = IntArray(w * h) { i -> val p = full[i]; ((((p ushr 24) * m[i]) / 255) shl 24) or (p and 0xFFFFFF) }
+		val patchUrl = pngDataUrl(encodePng(w, h, patch))
+		return if (operation == "expression") {
+			val art = StudioPeel.partArt(project, partId)!!
+			val variant = IntArray(w * h) { i -> val p = art[i]; ((((p ushr 24) * (255 - m[i])) / 255) shl 24) or (p and 0xFFFFFF) }
+			for (i in variant.indices) variant[i] = StudioRender.blend(variant[i], patch[i])
+			val vUrl = pngDataUrl(encodePng(w, h, variant))
+			Candidate(partId, operation, patchUrl, vUrl, StudioFace.variantPreview(project, partId, vUrl), prompt, json.str("model"), maskUrl, scaled)
+		} else {
+			val preview = StudioImages.layer(project.source, w, h).full()
+			for (i in preview.indices) preview[i] = StudioRender.blend(preview[i], patch[i])
+			Candidate(partId, operation, patchUrl, null, preview, prompt, json.str("model"), maskUrl, scaled)
+		}
+	}
+
+	/** Approves a candidate: a repair patch (belonging to [targetId], or a separate layer), or an expression variant named [name]. */
+	fun approve(project: StudioProject, c: Candidate, targetId: String?, name: String): StudioProject {
+		val part = project.part(c.partId) ?: return project
+		val now = nowIso()
+		return if (c.operation == "expression") {
+			val v = JsonObject(mapOf("id" to JsonPrimitive(uuid()), "name" to JsonPrimitive(name.trim().ifEmpty { "Expression" }), "art" to JsonPrimitive(c.variantArt!!),
+				"prompt" to JsonPrimitive(c.prompt), "model" to JsonPrimitive(c.model ?: "openai"), "billing" to kotlinx.serialization.json.JsonNull,
+				"createdAt" to JsonPrimitive(now), "approvedAt" to JsonPrimitive(now), "scaled" to JsonPrimitive(c.scaled)))
+			project.updatePart(c.partId, mapOf("variants" to kotlinx.serialization.json.JsonArray(((part.json["variants"] as? kotlinx.serialization.json.JsonArray) ?: kotlinx.serialization.json.JsonArray(emptyList())) + v)), "Approved expression variant")
+		} else {
+			val r = JsonObject(mapOf("id" to JsonPrimitive(uuid()), "kind" to JsonPrimitive("repair"), "patch" to JsonPrimitive(c.patch), "prompt" to JsonPrimitive(c.prompt),
+				"model" to JsonPrimitive(c.model ?: "openai"), "createdAt" to JsonPrimitive(now), "mask" to JsonPrimitive(c.mask), "scaled" to JsonPrimitive(c.scaled),
+				"targetPartId" to (targetId?.let { JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)))
+			project.updatePart(c.partId, mapOf("repairs" to kotlinx.serialization.json.JsonArray(part.repairs + r), "repairTargetId" to (targetId?.let { JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)), "Approved reconstructed hidden art")
+		}
+	}
+}

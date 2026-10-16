@@ -79,3 +79,45 @@ class RedrawTest {
 		try { kotlin.test.assertFailsWith<IllegalStateException> { StudioRedraw.redraw(piece, w, h) } } finally { StudioRedraw.transport = old }
 	}
 }
+
+class RepairAITest {
+	private val w = 40; private val h = 40
+	private fun png(f: (Int, Int) -> Int) = pngDataUrl(encodePng(w, h, IntArray(w * h) { f(it % w, it / w) }))
+	private val PINK = 0xFFFF88AA.toInt()
+
+	private fun project(): StudioProject {
+		val src = png { _, _ -> -1 }; val art = png { x, _ -> if (x < 20) 0xFF334455.toInt() else 0 }
+		val mask = png { x, y -> if (x in 10..14 && y in 10..14) MASK_ARGB else 0 }
+		return StudioProject.parse("""{"format":"layerloom-project","version":1,"id":"p","name":"T","source":"$src","width":$w,"height":$h,"parts":[
+			{"id":"back","name":"Back hair","group":"Hair","visible":true,"mask":null,"repairs":[]},
+			{"id":"a","name":"Arm","group":"Body","visible":true,"mask":"$mask","repairs":[],"cutout":"$art","extractionMask":"$art"}],"history":[]}""")
+	}
+
+	@Test fun repairIsClippedToTheMaskAndBecomesAPatch(): Unit = kotlinx.coroutines.runBlocking {
+		val old = StudioRepairAI.transport
+		var sentBody = ByteArray(0)
+		// The stand-in AI paints the whole image pink, at a different size (the studio must line it up).
+		StudioRepairAI.transport = { path, body, _ ->
+			sentBody = body
+			assertEquals("/repair", path)
+			200 to """{"candidate":"${pngDataUrl(encodePng(80, 80, IntArray(6400) { PINK }))}","model":"test"}"""
+		}
+		try {
+			val p = project()
+			val c = StudioRepairAI.generate(p, "a", "the hair behind the arm", "repair")
+			assertTrue(c.scaled)
+			val patch = StudioImages.layer(c.patch, w, h)
+			assertEquals(PINK, patch.at(12, 12)); assertEquals(0, patch.at(30, 30)) // only inside the mask
+			assertTrue(sentBody.decodeToString().contains("name=\"operation\"\r\n\r\nrepair"))
+			val p2 = StudioRepairAI.approve(p, c, "back", "")
+			assertEquals("back", p2.part("a")!!.repairs.single().str("targetPartId"))
+			// The patch now shows under the arm as the back hair's art.
+			assertTrue(StudioRender.layers(p2).any { it.partId == "back" })
+			// An expression becomes a variant, the part's own art kept outside the mask.
+			val e = StudioRepairAI.generate(p, "a", "smile", "expression")
+			val v = StudioImages.layer(e.variantArt, w, h)
+			assertEquals(PINK, v.at(12, 12)); assertEquals(0xFF334455.toInt(), v.at(2, 2))
+			assertEquals(1, StudioFace.variants(StudioRepairAI.approve(p, e, null, "Smile").part("a")!!).size)
+		} finally { StudioRepairAI.transport = old }
+	}
+}

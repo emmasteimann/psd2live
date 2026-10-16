@@ -63,7 +63,39 @@ class PanelHost(
 	val say: (String) -> Unit,
 	val cloneSource: Pt?, val cloneDest: Pt?,
 	val pickPoint: (String?) -> Unit, val picking: String?,
+	/** An AI candidate waiting for review (kept across tabs), and setting it. */
+	val pending: StudioRepairAI.Candidate? = null, val setPending: (StudioRepairAI.Candidate?) -> Unit = {},
 )
+
+/** The AI request row: sign in when needed, a free check, and the paid edit; then Approve / Reject on review. */
+@Composable
+private fun AiRequest(h: PanelHost, part: StudioPart, operation: String, prompt: String, label: String, onApprove: (StudioRepairAI.Candidate) -> StudioProject) {
+	var signed by remember { mutableStateOf(false) }
+	LaunchedEffect(Unit) { PrivateStudio.signedIn { signed = it } }
+	val c = h.pending
+	if (c != null && c.partId == part.id && c.operation == operation) {
+		Text(if (c.scaled) "The AI changed the image size; it was lined up with your drawing. Check the edges." else "Review it on the canvas. Approving keeps your art as it is and adds this on top.", color = Muted, fontSize = 12.sp)
+		Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+			Chip("Approve", true) { h.latest()?.let { h.change(onApprove(c)) }; h.setPending(null); h.showOnCanvas(null, null); h.say("Approved.") }
+			Chip("Reject") { h.setPending(null); h.showOnCanvas(null, null); h.say("Rejected. Your art is unchanged.") }
+		}
+		return
+	}
+	if (!signed) { Chip("Sign in to your private studio", true) { PrivateStudio.signIn { ok -> signed = ok; h.say(if (ok) "Signed in for 12 hours." else "Not signed in.") } }; return }
+	Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+		Chip("Check (free)", enabled = !h.busy && part.mask != null) {
+			h.run("Checking the request") { val now = h.latest() ?: return@run; h.say(StudioRepairAI.check(now, part.id, prompt, operation)) }
+		}
+		Chip(label, true, enabled = !h.busy && part.mask != null && prompt.isNotBlank()) {
+			h.run("Sending one image edit (it can take a minute or two)") {
+				val now = h.latest() ?: return@run
+				val cand = StudioRepairAI.generate(now, part.id, prompt, operation)
+				h.setPending(cand); h.showOnCanvas(cand.preview, "AI candidate (not applied yet)")
+			}
+		}
+	}
+	if (part.mask == null) Text("Paint the part's mask over the area first.", color = Muted, fontSize = 12.sp)
+}
 
 // ---- Repair: Cleanup and Clone ----
 
@@ -141,6 +173,20 @@ fun RepairPanel(h: PanelHost) {
 			try { h.change(StudioRepair.undoClone(p, part.id)); h.say("Clone undone.") } catch (e: IllegalStateException) { h.say(e.message ?: "Couldn't undo.") }
 		}
 	}
+	Spacer(Modifier.height(10.dp))
+	Text("AI hidden-art repair", color = Text1, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+	Text("Paints hidden art the drawing doesn't show (under ${part.name}'s mask) as its own transparent patch. Your art stays as it is. One paid image edit per try.", color = Muted, fontSize = 12.sp)
+	var prompt by remember(part.id) { mutableStateOf("") }
+	androidx.compose.foundation.text.BasicTextField(prompt, { prompt = it }, textStyle = androidx.compose.ui.text.TextStyle(color = Text1, fontSize = 14.sp),
+		cursorBrush = androidx.compose.ui.graphics.SolidColor(Accent), decorationBox = { inner -> Box { if (prompt.isEmpty()) Text("Describe the hidden art (e.g. the hair behind her shoulder)", color = Muted, fontSize = 14.sp); inner() } },
+		modifier = Modifier.fillMaxWidth().height(70.dp).clip(RoundedCornerShape(6.dp)).background(Color(0xFF24222F)).padding(8.dp))
+	var repairTarget by remember(part.id) { mutableStateOf(part.json.str("repairTargetId")) }
+	Text("It belongs to", color = Muted, fontSize = 12.sp)
+	FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+		Chip("Its own layer", repairTarget == null) { repairTarget = null }
+		for (o in p.parts.take(maxOf(0, index)).asReversed()) Chip(o.name, repairTarget == o.id) { repairTarget = o.id }
+	}
+	AiRequest(h, part, "repair", prompt, "Repair with AI") { c -> StudioRepairAI.approve(h.latest()!!, c, repairTarget, "") }
 	UnderlyingSection(h, part)
 }
 
@@ -269,6 +315,12 @@ fun FacePanel(h: PanelHost) {
 				}
 			}
 		}
+		var intent by remember(part.id) { mutableStateOf("") }
+		androidx.compose.foundation.text.BasicTextField(intent, { intent = it }, textStyle = androidx.compose.ui.text.TextStyle(color = Text1, fontSize = 14.sp),
+			cursorBrush = androidx.compose.ui.graphics.SolidColor(Accent), decorationBox = { inner -> Box { if (intent.isEmpty()) Text("Or generate it with AI: describe the change (paint the part's mask over it)", color = Muted, fontSize = 14.sp); inner() } },
+			modifier = Modifier.fillMaxWidth().height(64.dp).clip(RoundedCornerShape(6.dp)).background(Color(0xFF24222F)).padding(8.dp))
+		val full = "Create aligned expression artwork for the selected component ${part.name}: $vname. ${intent.trim()} Change only the artist-selected mask. Preserve all surrounding artwork, exact character identity, line weight, palette, lighting and alignment. This is an expression variation, not removal of a foreground occluder. Do not change the pose, camera, outfit or other components."
+		AiRequest(h, part, "expression", if (intent.isBlank()) "" else full, "Generate with AI") { c -> StudioRepairAI.approve(h.latest()!!, c, null, vname) }
 		val variants = StudioFace.variants(part)
 		for (v in variants) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
 			Text(v.name, color = Text1, fontSize = 13.sp, modifier = Modifier.weight(1f))

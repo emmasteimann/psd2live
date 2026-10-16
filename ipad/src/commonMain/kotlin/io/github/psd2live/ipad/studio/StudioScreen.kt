@@ -336,6 +336,14 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 					busy = null; Exchange.share(listOf(path))
 				}
 			}
+			if (p != null) Chip("Export PNG layers") {
+				scope.launch(safe) {
+					flushMask(); val now = projectNow ?: return@launch
+					busy = "Writing the PNG layers"
+					val path = withContext(Dispatchers.Default) { val (name, bytes) = StudioExports.layersZip(now); StudioStore.export(name, bytes) }
+					busy = null; Exchange.share(listOf(path))
+				}
+			}
 			if (p != null) {
 				Chip("Save recovery checkpoint") {
 					scope.launch(safe) {

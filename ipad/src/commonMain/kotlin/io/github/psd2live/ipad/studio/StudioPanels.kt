@@ -237,6 +237,13 @@ fun FacePanel(h: PanelHost) {
 				if (r == null) h.say("None of the $side eye's parts have art yet.") else { h.showOnCanvas(r.first, "The $side eye's parts together, nothing else"); h.focus(r.second) }
 			}
 		}
+		Chip("Export the $side eye drawing kit") {
+			h.run("Writing the drawing kit") {
+				val now = h.latest() ?: return@run
+				val path = withContext(Dispatchers.Default) { val (name, bytes) = StudioExports.eyeKitZip(now, side); StudioStore.export(name, bytes) }
+				io.github.psd2live.ipad.Exchange.share(listOf(path))
+			}
+		}
 	}
 
 	// Expressions and keyforms for the selected part.
@@ -298,6 +305,14 @@ fun FacePanel(h: PanelHost) {
 			}
 			val issues = try { StudioChecks.keyformIssues(part) } catch (e: IllegalStateException) { listOf(e.message ?: "Invalid plan") }
 			Text(if (issues.isNullOrEmpty()) "Both ends have a drawing." else issues.joinToString(" "), color = if (issues.isNullOrEmpty()) Good else Muted, fontSize = 12.sp)
+		}
+	}
+
+	Chip("Export the expressions pack", enabled = !h.busy) {
+		h.run("Writing the expressions pack") {
+			val now = h.latest() ?: return@run
+			val path = withContext(Dispatchers.Default) { val (name, bytes) = StudioExports.expressionsZip(now); StudioStore.export(name, bytes) }
+			io.github.psd2live.ipad.Exchange.share(listOf(path))
 		}
 	}
 

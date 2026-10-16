@@ -43,9 +43,7 @@ class WorkspaceSwingSessions(private val runtime: WorkspaceRuntime<RigPreviewMod
         var session = if (mode == "begin") {
             val targets = request.getValue("targets").jsonArray.map { it.jsonPrimitive.content }
             require(targets.size in 1..128 && targets.distinct().size == targets.size) { "Give distinct swing targets" }
-            val puppet = capture.model.rig.puppet
-            val parents = targets.mapNotNull { id -> puppet.drawables.firstOrNull { it.id.raw == id }?.parentDeformerId?.raw }
-            val existing = capture.document.rigEdits.swingEdits.firstOrNull { swing -> swing.targets.any { it in targets || it in parents } }
+            val existing = WorkspaceSwingDrafts.existing(capture.model, capture.document.rigEdits, targets)
             val preset = request["preset"]?.jsonPrimitive?.content?.let { SwingPreset.valueOf(it.uppercase()) } ?: SwingPreset.HAIR
             val draft = existing ?: defaults(capture, targets, preset, request["name"]?.jsonPrimitive?.content)
             val (model, prepared) = prepare(capture, draft)
@@ -143,9 +141,8 @@ class WorkspaceSwingSessions(private val runtime: WorkspaceRuntime<RigPreviewMod
     private fun values(session: Session, time: Float? = null): Map<ParameterId, Float> {
         val pose = PreviewSessions.read(session.model.rig.puppet.parameters, session.capture.auxiliary, session.workspace)
         val elapsed = time ?: if (session.playing) (nanoTime() - session.started) / 1e9f else 0f
-        val motion = session.draft.motions.withIndex().flatMap { (m, entry) -> entry.parameterIds.withIndex().map { (k, id) ->
-            ParameterId(id) to if (session.playing || time != null) sin(2f * PI.toFloat() * elapsed / (if (m == 0) 1.6f else 1.3f) - k * 0.7f - m * 1.3f) else 0f
-        } }.toMap().filterKeys { it !in pose.locked }
+        val motion = WorkspaceSwingDrafts.audition(session.draft, elapsed)
+            .mapValues { if (session.playing || time != null) it.value else 0f }.filterKeys { it !in pose.locked }
         return boundedPreviewPose(pose.values + motion, session.model.rig.puppet.parameters)
     }
 
@@ -164,27 +161,11 @@ class WorkspaceSwingSessions(private val runtime: WorkspaceRuntime<RigPreviewMod
     }
 
     private suspend fun prepare(capture: WorkspaceCapture<RigPreviewModel>, edit: RigSwingEdit): Pair<RigPreviewModel, RigSwingEdit> = runInterruptible(Dispatchers.Default) {
-        val before = capture.document.rigEdits
-        val puppet = before.swingEdits.firstOrNull { it.id == edit.id }?.let { SwingGenerator.strip(capture.model.rig.puppet, it) } ?: capture.model.rig.puppet
-        val overlay = SwingAuthoring.put(before, puppet, edit)
-        val prepared = overlay.swingEdits.single { it.id == edit.id }
-        val wrapped = overlay.authoringJournal.drop(before.authoringJournal.size).fold(puppet, RigAuthoringJournal::apply)
-        capture.model.copy(rig = capture.model.rig.copy(puppet = SwingGenerator.apply(wrapped, listOf(prepared)))) to prepared
+        WorkspaceSwingDrafts.prepare(capture.model, capture.document.rigEdits, edit)
     }
 
-    private fun defaults(capture: WorkspaceCapture<RigPreviewModel>, targets: List<String>, preset: SwingPreset, name: String?): RigSwingEdit {
-        val puppet = capture.model.rig.puppet; val first = targets.first()
-        val targetName = puppet.deformers.firstOrNull { it.id.raw == first }?.name ?: puppet.drawables.firstOrNull { it.id.raw == first }?.name
-            ?: throw IllegalArgumentException("Swing target not found: $first")
-        val (id, parameters) = SwingAuthoring.freshIds(puppet, capture.document.rigEdits, first, 1)
-        val length = SwingGenerator.measure(puppet, first)?.second ?: puppet.drawables.firstOrNull { it.id.raw == first }?.let { drawable ->
-            val bounds = RigGeometryTools.bounds(requireNotNull(drawable.mesh).positions)
-            val scale = (puppet.deformers.firstOrNull { it.id == drawable.parentDeformerId } as? Deformer.Warp)?.let { SwingGenerator.measure(puppet, it.id.raw)?.second } ?: 1f
-            maxOf(bounds[2], bounds[3]) * scale
-        }
-        return RigSwingEdit.single(id, name ?: "Swing $targetName", SwingKind.LATERAL, targets, parameters,
-            shape = SwingPresets.shape(preset, SwingKind.LATERAL), preset = preset, physics = SwingPresets.physics(preset, SwingKind.LATERAL, length))
-    }
+    private fun defaults(capture: WorkspaceCapture<RigPreviewModel>, targets: List<String>, preset: SwingPreset, name: String?): RigSwingEdit =
+        WorkspaceSwingDrafts.defaults(capture.model, capture.document.rigEdits, targets, preset, name)
 }
 
 class WorkspaceSwingJobExecution(private val completion: WorkspaceJobCompletion) : kotlin.coroutines.AbstractCoroutineContextElement(Key) {

@@ -44,9 +44,41 @@ object WorkspaceLayerInsertionEdits {
         val transforms = document.source.layers.filter { it.id.raw in ids }.associate { it.id.raw to it.transform }
         val rig = RasterMeshPlacement.underParents(generated.rig, current.rig.puppet, { parentId },
             { mesh -> generated.rig.layerIdByDrawableId[mesh.raw]?.let(transforms::get) ?: LayerTransform.IDENTITY }, checkCancelled)
-        val records = rig.puppet.drawables.map { drawable ->
+        // Built alone, a new layer's meshes are ranked first of one in a part of their own guess - the back of the figure,
+        // or under a whole part drawn over them. They join the nearest layer under them in the stack instead: its part,
+        // and its draw order (created after the generated meshes, on a tie they draw just above it), where it was put.
+        val ordered = document.source.layers.sortedBy { it.order }
+        val shown = current.rig.puppet.drawables.groupBy { current.rig.layerIdByDrawableId[it.id.raw] }
+        fun under(layerId: String): org.umamo.runtime.model.Drawable? {
+            val at = ordered.indexOfFirst { it.id.raw == layerId }
+            if (at < 0) return null
+            for (i in at + 1 until ordered.size) shown[ordered[i].id.raw]?.let { meshes -> return meshes.maxBy { it.drawOrder } }
+            return null
+        }
+        val neighbour = rig.puppet.drawables.associate { drawable ->
+            drawable.id to rig.layerIdByDrawableId[drawable.id.raw]?.takeUnless { config.drawOrderOverrides.containsKey(it) }?.let(::under)
+        }
+        val placed = rig.copy(puppet = rig.puppet.copy(drawables = rig.puppet.drawables.map { drawable ->
+            neighbour[drawable.id]?.let { drawable.copy(drawOrder = it.drawOrder) } ?: drawable
+        }))
+        fun chain(id: org.umamo.runtime.model.DrawableId): List<org.umamo.runtime.model.Part> {
+            val puppet = current.rig.puppet
+            val parts = mutableListOf<org.umamo.runtime.model.Part>()
+            var part = puppet.parts.singleOrNull { org.umamo.runtime.model.OrgChild.Drawable(id) in it.children }
+            while (part != null && parts.none { it.id == part!!.id }) {
+                val currentPart = part
+                parts.add(0, currentPart)
+                part = puppet.parts.singleOrNull { org.umamo.runtime.model.OrgChild.Part(currentPart.id) in it.children }
+            }
+            return parts
+        }
+        val records = placed.puppet.drawables.map { drawable ->
             checkCancelled()
-            RasterMeshCreation.encode(rig, drawable.id).let { command ->
+            val home = neighbour[drawable.id]?.let { chain(it.id) }?.takeIf { it.isNotEmpty() }
+            RasterMeshCreation.encode(placed, drawable.id).let { command ->
+                if (home == null) command else JsonObject(command + ("part" to JsonPrimitive(home.last().id.raw)) +
+                    ("parts" to JsonArray(home.map { buildJsonObject { put("id", it.id.raw); put("name", it.name) } })))
+            }.let { command ->
                 if (document.rigEdits.importedCmo3 == null) command else JsonObject(command +
                     ("source_id" to JsonPrimitive(CMO3_PAINT_SOURCE_ID)))
             }

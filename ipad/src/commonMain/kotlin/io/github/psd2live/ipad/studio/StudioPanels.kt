@@ -33,6 +33,8 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
 
 private val Text1 = Color(0xFFF2ECFD)
@@ -309,6 +311,10 @@ fun FacePanel(h: PanelHost) {
 			}
 		}
 	}
+
+	// Blink and mouth shapes, generated from the whole face.
+	Spacer(Modifier.height(10.dp))
+	ExpressionGenSection(h)
 
 	// Expressions and keyforms for the selected part.
 	Spacer(Modifier.height(10.dp))
@@ -624,5 +630,79 @@ private fun Chip(label: String, selected: Boolean = false, enabled: Boolean = tr
 	Box(Modifier.clip(RoundedCornerShape(8.dp)).background(if (selected) Color(0xFF4A3F78) else Color(0xFF2B283C))
 		.clickable(enabled = enabled, onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
 		Text(label, color = if (enabled) Accent else Muted, fontSize = 14.sp)
+	}
+}
+
+/** Blink and mouth shapes the drawing doesn't have, made by AI from the whole face (the web's ExpressionGenPanel). */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ExpressionGenSection(h: PanelHost) {
+	val p = h.project
+	Text("Blink and mouth shapes", color = Text1, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+	Text("A blink and mouth shapes the drawing doesn't have, made from the whole face so they match it. Each becomes a hidden part above the eye or mouth it replaces, ready for the rig to switch. One image edit per expression.",
+		color = Muted, fontSize = 12.sp)
+	val face = remember(p) { StudioExpressionGen.findFace(p) }
+	val existing = p.parts.mapNotNull { it.json.str("expressionRole") }
+	Text("Found: " + (if (face.left.isEmpty() && face.right.isEmpty()) "no eye parts" else "eyes (${face.left.size} left, ${face.right.size} right parts)") +
+		" · " + (face.mouth?.let { "mouth (${it.name})" } ?: "no mouth part") + (if (existing.isNotEmpty()) " · already made: ${existing.joinToString()}" else ""), color = Muted, fontSize = 12.sp)
+	val empty = remember(p) { StudioExpressionGen.emptySlots(p) }
+	if (empty > 0 && (face.mouth == null || (face.left.isEmpty() && face.right.isEmpty())))
+		Text("$empty eye or mouth slot${if (empty == 1) " has" else "s have"} no artwork yet: mask and extract them first, then they're used here.", color = Muted, fontSize = 12.sp)
+	val pending = StudioExpressionGen.pending
+	if (pending.isNotEmpty()) {
+		Text("Review them on the canvas. Apply adds each as a hidden part above what it replaces; Discard throws them away.", color = Muted, fontSize = 12.sp)
+		FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+			Chip("Neutral") {
+				h.run("Showing the neutral face") { val now = h.latest() ?: return@run; h.showOnCanvas(withContext(Dispatchers.Default) { StudioExpressionGen.preview(now, emptyList()) }, "Neutral (as drawn)"); StudioExpressionGen.pendingBounds?.let(h.focus) }
+			}
+			val groups = if (pending.all { it.role.startsWith("eye-close") }) listOf("Blink" to pending) else pending.map { it.name to listOf(it) }
+			for ((label, items) in groups) Chip(label) {
+				h.run("Showing $label") { val now = h.latest() ?: return@run; h.showOnCanvas(withContext(Dispatchers.Default) { StudioExpressionGen.preview(now, items) }, "$label (not applied yet)"); StudioExpressionGen.pendingBounds?.let(h.focus) }
+			}
+		}
+		Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+			Chip("Apply", true) {
+				h.latest()?.let { h.change(StudioExpressionGen.apply(it, pending)) }
+				h.say("Added ${pending.joinToString { it.name }} as hidden parts. Show one with its eye toggle to see it on the character.")
+				StudioExpressionGen.pending = emptyList(); h.showOnCanvas(null, null)
+			}
+			Chip("Discard") { StudioExpressionGen.pending = emptyList(); h.showOnCanvas(null, null); h.say("Discarded.") }
+		}
+		return
+	}
+	var signed by remember { mutableStateOf(false) }
+	LaunchedEffect(Unit) { PrivateStudio.signedIn { signed = it } }
+	if (!signed) { Chip("Sign in to your private studio", true) { PrivateStudio.signIn { ok -> signed = ok; h.say(if (ok) "Signed in for 12 hours." else "Not signed in.") } }; return }
+	Chip("Generate blink", true, enabled = !h.busy && (face.left.isNotEmpty() || face.right.isNotEmpty())) {
+		h.run("Closing both eyes (one image edit, about 30-60 s)") {
+			val now = h.latest() ?: return@run
+			val r = StudioExpressionGen.blink(now)
+			StudioExpressionGen.pendingBounds = r.bounds; StudioExpressionGen.pending = r.items
+			h.showOnCanvas(withContext(Dispatchers.Default) { StudioExpressionGen.preview(now, r.items) }, "Blink (not applied yet)"); h.focus(r.bounds)
+		}
+	}
+	var shapes by remember { mutableStateOf(setOf("open", "smile", "frown")) }
+	FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+		for (m in StudioExpressionGen.mouths) Chip(m.name.removePrefix("Mouth "), m.id in shapes) { shapes = if (m.id in shapes) shapes - m.id else shapes + m.id }
+	}
+	Chip("Generate ${shapes.size} mouth shape${if (shapes.size == 1) "" else "s"}", true, enabled = !h.busy && face.mouth != null && shapes.isNotEmpty()) {
+		val list = StudioExpressionGen.mouths.filter { it.id in shapes }
+		h.run("Making ${list.size} mouth shape${if (list.size == 1) "" else "s"} (one image edit each, about 30-60 s)") {
+			val made = mutableListOf<StudioExpressionGen.Item>(); var box: IntArray? = null
+			try {
+				for ((i, shape) in list.withIndex()) {
+					h.say("Mouth ${i + 1} of ${list.size}: ${shape.name}...")
+					val now = h.latest() ?: return@run
+					val r = StudioExpressionGen.mouth(now, shape)
+					made += r.items; box = box?.let { intArrayOf(min(it[0], r.bounds[0]), min(it[1], r.bounds[1]), max(it[2], r.bounds[2]), max(it[3], r.bounds[3])) } ?: r.bounds
+				}
+			} finally {
+				// Keep whatever was made even if a later shape failed: each one was a paid edit.
+				if (made.isNotEmpty()) { StudioExpressionGen.pendingBounds = box; StudioExpressionGen.pending = made }
+			}
+			val now = h.latest() ?: return@run
+			h.showOnCanvas(withContext(Dispatchers.Default) { StudioExpressionGen.preview(now, made.take(1)) }, "${made.first().name} (not applied yet)"); box?.let(h.focus)
+			h.say("Made ${made.joinToString { it.name }}. Tap each to look, then Apply or Discard.")
+		}
 	}
 }

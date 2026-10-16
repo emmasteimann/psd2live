@@ -81,7 +81,7 @@ object StudioAI {
 	private fun dist(p: Int, q: Int) = abs(((p ushr 16) and 0xFF) - ((q ushr 16) and 0xFF)) + abs(((p ushr 8) and 0xFF) - ((q ushr 8) and 0xFF)) + abs((p and 0xFF) - (q and 0xFF))
 
 	/** Sends the [box] square of [context] with [region] editable, and returns the answer at the square's own size. */
-	private suspend fun edit(context: IntArray, region: ByteArray, w: Int, h: Int, box: IntArray, prompt: String, kind: String): IntArray {
+	internal suspend fun edit(context: IntArray, region: ByteArray, w: Int, h: Int, box: IntArray, prompt: String, kind: String): IntArray {
 		val (bx, by, side) = Triple(box[0], box[1], box[2])
 		val img = resample(context, w, h, bx, by, side, side, SIDE, SIDE)
 		val m = IntArray(side * side) { i -> if (region[(by + i / side) * w + bx + i % side].toInt() != 0) 0x00FFFFFF else -1 }

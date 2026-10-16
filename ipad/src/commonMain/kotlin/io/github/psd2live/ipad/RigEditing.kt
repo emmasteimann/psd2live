@@ -277,3 +277,70 @@ object RigDrawOrder {
 		set(e, layerId, ((near + beyond) / 2f).coerceIn(0f, 1000f))
 	}
 }
+
+/**
+ * New deformers on the iPad: the desktop's Edit mode create tools (`canvas_create_warp` with its bezier divisions,
+ * `canvas_create_rotation`), placed in the parent's own units as the desktop places them. The chosen meshes move
+ * under the new deformer and keep their pose.
+ */
+object RigStructure {
+	private fun localPoints(puppet: PuppetModel, id: String) = io.github.psd2live.core.RigGeometryTools.geometry(puppet, "mesh", id, emptyMap()).points
+
+	/** Why [meshes] can't share a new parent, or null when they can. */
+	fun problem(e: RigEditing, meshes: List<String>): String? {
+		if (meshes.isEmpty()) return "Pick a part first."
+		val parents = e.puppet.drawables.filter { it.id.raw in meshes }.map { it.parentDeformerId }.distinct()
+		return if (parents.size > 1) "These parts hang from different deformers: pick parts that move together." else null
+	}
+
+	/** A warp (a grid of [rows] x [cols]) around [meshes], a little bigger than them. Returns its id. */
+	fun addWarp(e: RigEditing, meshes: List<String>, name: String, rows: Int = 5, cols: Int = 5, bezierRows: Int = 2, bezierCols: Int = 2): String {
+		problem(e, meshes)?.let { throw IllegalArgumentException(it) }
+		val puppet = e.puppet
+		var x0 = Float.MAX_VALUE; var y0 = Float.MAX_VALUE; var x1 = -Float.MAX_VALUE; var y1 = -Float.MAX_VALUE
+		for (id in meshes) { val p = localPoints(puppet, id); for (i in 0 until p.size / 2) { x0 = minOf(x0, p[i * 2]); x1 = maxOf(x1, p[i * 2]); y0 = minOf(y0, p[i * 2 + 1]); y1 = maxOf(y1, p[i * 2 + 1]) } }
+		val mx = (x1 - x0) * 0.06f; val my = (y1 - y0) * 0.06f
+		val id = io.github.psd2live.core.StableIds.fresh(io.github.psd2live.core.StableIds.stem("Warp_", meshes, name, rows, cols)) { t -> puppet.deformers.any { it.id.raw == t } }
+		val cmd = buildJsonObject {
+			put("op", "canvas_create_warp"); put("id", id); put("name", name.trim().ifEmpty { "Warp" })
+			put("rows", rows); put("columns", cols)
+			put("bounds", buildJsonObject { put("x", x0 - mx); put("y", y0 - my); put("w", (x1 - x0) + 2 * mx); put("h", (y1 - y0) + 2 * my) })
+			put("add_to", "parent_of_selected"); put("meshes", JsonArray(meshes.map(::JsonPrimitive)))
+		}
+		val controls = io.github.psd2live.core.RigBezierJournal.prepare(io.github.psd2live.core.CanvasEdits.apply(puppet, cmd), e.model.config.rigEdits, "divisions",
+			buildJsonObject { put("target", "warp:$id"); put("rows", bezierRows); put("columns", bezierCols) })
+		e.journal(listOf(cmd, controls))
+		return id
+	}
+
+	/** A rotation deformer pivoting at canvas point ([px], [py]) above [meshes], its handle pointing up. Returns its id. */
+	fun addRotation(e: RigEditing, meshes: List<String>, name: String, px: Float, py: Float): String {
+		problem(e, meshes)?.let { throw IllegalArgumentException(it) }
+		val puppet = e.puppet
+		val first = meshes.first()
+		val mapping = requireNotNull(org.umamo.render.eval.drawableSpaceMapping(puppet, emptyMap(), org.umamo.runtime.model.DrawableId(first))) { "That part has no parent space" }
+		val pts = localPoints(puppet, first)
+		var sx = 0f; var sy = 0f; for (i in 0 until pts.size / 2) { sx += pts[i * 2]; sy += pts[i * 2 + 1] }
+		val seed = floatArrayOf(sx / (pts.size / 2), sy / (pts.size / 2))
+		// Canvas is y down, world y up: the handle points up on screen, a tenth of the canvas long.
+		val len = maxOf(puppet.canvasWidth, puppet.canvasHeight) * 0.1f
+		val o = mapping.worldToLocal(floatArrayOf(px, -py), seed, setOf(0))
+		val t = mapping.worldToLocal(floatArrayOf(px, -(py - len)), seed, setOf(0))
+		require(o.all(Float::isFinite) && t.all(Float::isFinite)) { "The pivot can't be placed there" }
+		val angle = (kotlin.math.atan2((t[1] - o[1]).toDouble(), (t[0] - o[0]).toDouble()) * 180.0 / kotlin.math.PI).toFloat()
+		val id = io.github.psd2live.core.StableIds.fresh(io.github.psd2live.core.StableIds.stem("Rotation_", meshes, name, px, py)) { s -> puppet.deformers.any { it.id.raw == s } }
+		e.journal(listOf(buildJsonObject {
+			put("op", "canvas_create_rotation"); put("preservePose", true); put("id", id); put("name", name.trim().ifEmpty { "Rotation" })
+			put("origin", JsonArray(listOf(o[0], o[1]).map(::JsonPrimitive))); put("angle", angle)
+			put("handle_length", kotlin.math.hypot(t[0] - o[0], t[1] - o[1]).coerceAtLeast(1e-4f))
+			put("add_to", "parent_of_selected"); put("meshes", JsonArray(meshes.map(::JsonPrimitive)))
+		}))
+		return id
+	}
+
+	/** The deformer each mesh hangs from, by name (for showing where a part sits). */
+	fun parentName(e: RigEditing, mesh: String): String? {
+		val p = e.puppet.drawables.firstOrNull { it.id.raw == mesh }?.parentDeformerId ?: return null
+		return e.puppet.deformers.firstOrNull { it.id == p }?.name
+	}
+}

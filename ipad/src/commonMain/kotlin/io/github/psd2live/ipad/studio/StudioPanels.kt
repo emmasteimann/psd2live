@@ -67,6 +67,8 @@ class PanelHost(
 	val pickPoint: (String?) -> Unit, val picking: String?,
 	/** An AI candidate waiting for review (kept across tabs), and setting it. */
 	val pending: StudioRepairAI.Candidate? = null, val setPending: (StudioRepairAI.Candidate?) -> Unit = {},
+	/** Opens a whole new project in place of this one, keeping this one as "previous". */
+	val replace: suspend (StudioProject, String) -> Unit = { _, _ -> },
 )
 
 /** The AI request row: sign in when needed, a free check, and the paid edit; then Approve / Reject on review. */
@@ -105,6 +107,7 @@ private fun AiRequest(h: PanelHost, part: StudioPart, operation: String, prompt:
 @Composable
 fun RepairPanel(h: PanelHost) {
 	GapsSection(h)
+	UpscaleSection(h)
 	val part = h.selected
 	if (part == null) { Text("Choose a part on the left first.", color = Muted, fontSize = 13.sp); return }
 	val p = h.project
@@ -751,6 +754,37 @@ private fun GapsSection(h: PanelHost) {
 				val first = made.first()
 				h.showOnCanvas(withContext(Dispatchers.Default) { StudioGaps.alone(now, first.partId, first.art) }, "${first.name} painted in (not applied yet)"); h.focus(first.bounds)
 				h.say("Painted ${made.size}. Look at each, then Apply or Discard.")
+			}
+		}
+	}
+	Spacer(Modifier.height(10.dp))
+}
+
+/** Upscale the project 2× or clean up every piece, with the anime upscaler on the iPad (the web's UpscalePanel). */
+@Composable
+private fun UpscaleSection(h: PanelHost) {
+	val p = h.project
+	var open by remember { mutableStateOf(false) }
+	Row(Modifier.fillMaxWidth().clickable { open = !open }, verticalAlignment = Alignment.CenterVertically) {
+		Text("Upscale & clean up", color = Text1, fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+		Text(if (open) "Hide" else "Show", color = Accent, fontSize = 13.sp)
+	}
+	if (open) {
+		Text("The anime upscaler redraws the pieces so blur and jaggies from generating, squishing and stretching go away. It runs on this iPad (free). Project size: ${p.width}×${p.height}.",
+			color = Muted, fontSize = 12.sp)
+		Chip("Upscale the project 2× (new copy, ${p.width * 2}×${p.height * 2})", true, enabled = !h.busy) {
+			h.run("Upscaling the project 2×") {
+				val now = h.latest() ?: return@run
+				val r = withContext(Dispatchers.Default) { StudioProjectUpscale.upscaleProject(now) { d, t -> h.say("Upscaling: $d of $t images…") } }
+				h.replace(r.project, "Now working on \"${r.project.name}\" at ${r.project.width}×${r.project.height}. The 1× project is one tap away: Back to previous project." +
+					(if (r.skipped > 0) " ${r.skipped} image(s) weren't full-canvas and were left as they were." else ""))
+			}
+		}
+		Chip("Clean up every piece (same size)", enabled = !h.busy) {
+			h.run("Cleaning up every piece") {
+				val now = h.latest() ?: return@run
+				val next = withContext(Dispatchers.Default) { StudioProjectUpscale.cleanUpParts(now) { d, t -> h.say("Cleaning up: $d of $t images…") } }
+				h.change(next); h.say("Every piece cleaned up. Undo puts them back; Fit's Start over from original also gets each piece's old art back.")
 			}
 		}
 	}

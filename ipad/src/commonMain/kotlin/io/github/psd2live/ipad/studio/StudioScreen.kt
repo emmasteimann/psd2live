@@ -260,7 +260,11 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 		var lastView: CanvasView? = null
 		snapshotFlow { listOf(composite, maskTick, view, box, showMask, mask, canvasPreview) }.collectLatest {
 			val p = projectNow ?: return@collectLatest
-			val art = canvasPreview?.first?.takeIf { it.size == p.width * p.height } ?: composite ?: return@collectLatest
+			// Right after a project of another size opens (Open, Upscale 2×), the composite is still the old one's until it's
+			// redone: wait for it rather than read past its end.
+			val art = canvasPreview?.first?.takeIf { it.size == p.width * p.height } ?: composite?.takeIf { it.size == p.width * p.height } ?: return@collectLatest
+			val edit0 = mask
+			if (edit0 != null && (edit0.width != p.width || edit0.height != p.height)) return@collectLatest
 			val (w, h) = box
 			if (w < 2f || h < 2f) return@collectLatest
 			val viewOnly = lastView != null && lastView != view
@@ -706,7 +710,8 @@ fun NativeStudio(modifier: Modifier, onOpenWebStudio: () -> Unit) {
 					} },
 					select = { selectedId = it }, say = { status = it },
 					cloneSource = cloneSource, cloneDest = cloneDest, pickPoint = { picking = it }, picking = picking,
-					pending = aiPending, setPending = { aiPending = it })
+					pending = aiPending, setPending = { aiPending = it },
+					replace = { next, message -> replaceWith(next, message) })
 				if (tab == InspectorTab.REPAIR) RepairPanel(host)
 				else if (tab == InspectorTab.FACE) FacePanel(host)
 				else if (tab == InspectorTab.CHECK) CheckPanel(host)

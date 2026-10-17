@@ -24,4 +24,6 @@ internal actual fun <R> boundedParallel(count: Int, bytes: (Int) -> Long, task: 
 	return results.asList() as List<R>
 }
 
+internal actual val renderBands: Int = 1
+
 internal actual fun identityHashOf(value: Any): Int = System.identityHashCode(value)

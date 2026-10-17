@@ -3,18 +3,19 @@ package io.github.psd2live.ipad
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import io.github.psd2live.format.compile.RasterImage
+import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.convert
+import kotlinx.cinterop.usePinned
 import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.ColorType
 import org.jetbrains.skia.Image
 import org.jetbrains.skia.ImageInfo
 
-/** ARGB straight alpha as a Compose image: little-endian 0xAARRGGBB is BGRA in memory. */
+/** ARGB straight alpha as a Compose image: little-endian 0xAARRGGBB is BGRA in memory, so the ints copy over as they are. */
+@OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
 actual fun RasterImage.toImageBitmap(): ImageBitmap {
 	val bytes = ByteArray(argb.size * 4)
-	for (i in argb.indices) {
-		val p = argb[i]
-		bytes[i * 4] = p.toByte(); bytes[i * 4 + 1] = (p ushr 8).toByte(); bytes[i * 4 + 2] = (p ushr 16).toByte(); bytes[i * 4 + 3] = (p ushr 24).toByte()
-	}
+	if (argb.isNotEmpty()) argb.usePinned { from -> bytes.usePinned { to -> platform.posix.memcpy(to.addressOf(0), from.addressOf(0), (argb.size * 4).convert()) } }
 	return Image.makeRaster(ImageInfo(width, height, ColorType.BGRA_8888, ColorAlphaType.UNPREMUL), bytes, width * 4).toComposeImageBitmap()
 }
 

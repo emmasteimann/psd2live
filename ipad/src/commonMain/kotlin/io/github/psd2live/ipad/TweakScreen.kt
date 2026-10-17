@@ -124,6 +124,7 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 	fun setTargets(next: Set<String>) { targets = next; tweaking.targets = next }
 	var tick by remember { mutableStateOf(0L) }
 	var image by remember { mutableStateOf<Pair<ImageBitmap, FloatArray>?>(null) }
+	var overview by remember { mutableStateOf<CanvasPicture?>(null) }
 	var cursor by remember { mutableStateOf<Offset?>(null) }
 	var saving by remember { mutableStateOf<Pair<String, Double>?>(null) }
 	var failure by remember { mutableStateOf<String?>(null) }
@@ -169,6 +170,12 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 			image = draw(350_000f)
 			delay(180)
 			image = draw(2_200_000f)
+			// The whole canvas under it, so a pan or zoom out shows her at once (the same picture when she all shows).
+			val cw = tweaking.canvasWidth; val ch = tweaking.canvasHeight
+			overview = if (visibleRegion(w, h, l, cw, ch, 1f)?.whole(cw, ch) == true) image else withContext(Dispatchers.Default) {
+				val r = wholeCanvas(w, h, cw, ch)
+				tweaking.frame(shownPose, 0f, 0f, cw, ch, r.width, r.height).toImageBitmap() to r.rect
+			}
 		}
 	}
 
@@ -305,12 +312,8 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 						override fun layout(view: CanvasView) = view.layout(w, h, tweaking.canvasWidth, tweaking.canvasHeight)
 					}
 				}) {
-					image?.let { (bitmap, r) ->
-						// Where that canvas region sits now, however the view moved since it was drawn.
-						val l = layout(w, h, view)
-						drawImage(bitmap, dstOffset = IntOffset((l[1] + r[0] * l[0]).roundToInt(), (l[2] + r[1] * l[0]).roundToInt()),
-							dstSize = androidx.compose.ui.unit.IntSize(((r[2] - r[0]) * l[0]).roundToInt().coerceAtLeast(1), ((r[3] - r[1]) * l[0]).roundToInt().coerceAtLeast(1)))
-					}
+					// Where the pictures' canvas regions sit now, however the view moved since they were drawn.
+					layout(w, h, view).let { l -> drawCanvasPicture(overview, l); drawCanvasPicture(image, l) }
 					lattice?.takeIf { warpMode }?.let { lat ->
 						// The pushed warp's lattice: its grid lines and control points.
 						val l = layout(w, h, view)

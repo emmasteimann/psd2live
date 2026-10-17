@@ -93,6 +93,7 @@ fun SplitScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 	var box by remember { mutableStateOf(0f to 0f) }
 	var tick by remember { mutableStateOf(0L) }
 	var image by remember { mutableStateOf<Pair<ImageBitmap, FloatArray>?>(null) }
+	var overview by remember { mutableStateOf<CanvasPicture?>(null) }
 	var saving by remember { mutableStateOf<Pair<String, Double>?>(null) }
 	val scope = rememberCoroutineScope()
 	val cw = editing.puppet.canvasWidth; val ch = editing.puppet.canvasHeight
@@ -132,12 +133,13 @@ fun SplitScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 			if (viewOnly) delay(140)
 			val l = layout(w, h, v)
 			image = withContext(worker) {
-				val x0 = maxOf(0f, -l[1] / l[0]); val y0 = maxOf(0f, -l[2] / l[0])
-				val x1 = minOf(cw, (w - l[1]) / l[0]); val y1 = minOf(ch, (h - l[2]) / l[0])
-				if (x1 - x0 < 1f || y1 - y0 < 1f) return@withContext null
-				var ow = ((x1 - x0) * l[0]).roundToInt().coerceAtLeast(1); var oh = ((y1 - y0) * l[0]).roundToInt().coerceAtLeast(1)
-				val k = minOf(1f, kotlin.math.sqrt(2_200_000f / (ow.toFloat() * oh))); ow = (ow * k).roundToInt().coerceAtLeast(1); oh = (oh * k).roundToInt().coerceAtLeast(1)
-				editing.frame(emptyMap(), x0, y0, x1 - x0, y1 - y0, ow, oh).toImageBitmap() to floatArrayOf(x0, y0, x1, y1)
+				val r = visibleRegion(w, h, l, cw, ch, 2_200_000f) ?: return@withContext null
+				editing.frame(emptyMap(), r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0, r.width, r.height).toImageBitmap() to r.rect
+			}
+			// The whole canvas under it, so a pan or zoom out shows her at once (the same picture when she all shows).
+			if (!viewOnly) overview = if (visibleRegion(w, h, l, cw, ch, 1f)?.whole(cw, ch) == true) image else withContext(worker) {
+				val r = wholeCanvas(w, h, cw, ch)
+				editing.frame(emptyMap(), 0f, 0f, cw, ch, r.width, r.height).toImageBitmap() to r.rect
 			}
 		}
 	}
@@ -192,10 +194,8 @@ fun SplitScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 					}
 				}) {
 					val l = layout(w, h, view)
-					image?.let { (bitmap, r) ->
-						drawImage(bitmap, dstOffset = IntOffset((l[1] + r[0] * l[0]).roundToInt(), (l[2] + r[1] * l[0]).roundToInt()),
-							dstSize = androidx.compose.ui.unit.IntSize(((r[2] - r[0]) * l[0]).roundToInt().coerceAtLeast(1), ((r[3] - r[1]) * l[0]).roundToInt().coerceAtLeast(1)))
-					}
+					drawCanvasPicture(overview, l)
+					drawCanvasPicture(image, l)
 					fun rect(b: FloatArray, c: Color) = drawRect(c, Offset(l[1] + b[0] * l[0], l[2] + b[1] * l[0]), androidx.compose.ui.geometry.Size((b[2] - b[0]) * l[0], (b[3] - b[1]) * l[0]), style = Stroke(2.5f))
 					bounds?.let { rect(it, Pick) }
 					middleBounds?.let { rect(it, Second) }

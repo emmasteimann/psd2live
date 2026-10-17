@@ -5,6 +5,7 @@ import io.github.psd2live.format.compile.PlacedRaster
 import io.github.psd2live.format.compile.PoseGeometry
 import io.github.psd2live.format.compile.RasterImage
 import io.github.psd2live.format.compile.boundedParallel
+import io.github.psd2live.format.compile.renderBands
 import io.github.psd2live.format.compile.decodePngArgb
 import io.github.psd2live.format.compile.forEachBand
 import io.github.psd2live.format.compile.identityHashOf
@@ -131,8 +132,20 @@ public class SoftwareRasterizer(
 	 * ([IrColors.parts]); a part left out keeps its static draw order and composite.
 	 */
 	public fun render(pose: PoseGeometry, colors: Map<String, IrColors.MeshColor>, frame: FrameSpec, only: Set<String>? = null,
-	                  parts: Map<String, IrColors.PartComposite> = emptyMap()): RasterImage =
-		render(pose, colors, parts, frame, only, 0, 0, frame.outputWidth - 1, frame.outputHeight - 1)
+	                  parts: Map<String, IrColors.PartComposite> = emptyMap()): RasterImage {
+		val w = frame.outputWidth; val h = frame.outputHeight
+		val bands = if (w.toLong() * h < BAND_MIN_PIXELS) 1 else minOf(renderBands, h / BAND_MIN_ROWS).coerceAtLeast(1)
+		if (bands <= 1) return render(pose, colors, parts, frame, only, 0, 0, w - 1, h - 1)
+		// Horizontal bands drawn side by side, each exactly the rows of the whole frame, then stacked.
+		val rows = (h + bands - 1) / bands
+		val pieces = boundedParallel(bands, { band -> rows.toLong() * w * 16 * 2 }) { band ->
+			val y0 = band * rows; val y1 = minOf(h - 1, y0 + rows - 1)
+			if (y0 > y1) null else y0 to render(pose, colors, parts, frame, only, 0, y0, w - 1, y1)
+		}
+		val argb = IntArray(w * h)
+		for (piece in pieces) { val (y0, image) = piece ?: continue; image.argb.copyInto(argb, y0 * w) }
+		return RasterImage(w, h, argb)
+	}
 
 	/**
 	 * [mesh] alone at [pose] (its masks still apply), drawn only over the frame pixels its vertices can reach:
@@ -486,6 +499,10 @@ public class SoftwareRasterizer(
 
 		/** Each 8-bit value over 255, as dividing gives it. */
 		val UNIT = FloatArray(256) { it / 255f }
+
+		/** Frames smaller than this, or bands thinner than [BAND_MIN_ROWS], are drawn whole ([renderBands]). */
+		const val BAND_MIN_PIXELS = 160_000L
+		const val BAND_MIN_ROWS = 48
 
 		/** Red, green, blue and alpha's bit offsets in ARGB. */
 		val CHANNEL_SHIFT = intArrayOf(16, 8, 0, 24)

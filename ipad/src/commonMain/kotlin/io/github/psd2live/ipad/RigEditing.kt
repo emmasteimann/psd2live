@@ -392,8 +392,14 @@ object RigStructure {
 /** Splitting parts on the iPad: the desktop's mesh-island split, polygon split and depth split. */
 object RigSplits {
 	/** How many separate islands [layerId]'s art has (0 when it can't be split that way), with each island's middle. */
-	fun islands(e: RigEditing, layerId: String): List<Pair<Float, Float>> =
-		io.github.psd2live.application.WorkspacePartitionEdits.componentPlan(e.model, layerId)?.components?.map { it.centerX to it.centerY }.orEmpty()
+	/** Each island's centre on the canvas (the plan gives them in the layer's raster pixels, so they are mapped back). */
+	fun islands(e: RigEditing, layerId: String): List<Pair<Float, Float>> {
+		val plan = io.github.psd2live.application.WorkspacePartitionEdits.componentPlan(e.model, layerId) ?: return emptyList()
+		val source = e.model.analysis.source.layers.firstOrNull { it.id.raw == layerId }
+			?: e.model.analysis.layers.firstOrNull { it.source.id.raw == layerId }?.source ?: return emptyList()
+		val space = io.github.psd2live.core.LayerSpace.of(source)
+		return plan.components.map { space.rasterToCanvasX(it.centerX) to space.rasterToCanvasY(it.centerY) }
+	}
 
 	/** Names for the islands: left/right or top/bottom for two, numbered otherwise (the desktop dialog's defaults). */
 	fun names(base: String, centers: List<Pair<Float, Float>>): List<String> = if (centers.size == 2) {

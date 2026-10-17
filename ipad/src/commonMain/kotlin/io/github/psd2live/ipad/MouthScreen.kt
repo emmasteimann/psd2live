@@ -121,7 +121,9 @@ fun MouthScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 		}
 	}
 
-	Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+	val undoRedo = UndoRedo(canUndo = editing.canUndo && busy == null, canRedo = editing.canRedo && busy == null,
+		undo = { editing.undo(); val c = editing.model.config; shape = c.mouthShape; curve = c.mouthCurve; thickness = c.mouthThickness; color = c.mouthColor; tick++ }, redo = { editing.redo(); val c = editing.model.config; shape = c.mouthShape; curve = c.mouthCurve; thickness = c.mouthThickness; color = c.mouthColor; tick++ })
+	Column(Modifier.undoTaps(undoRedo).fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
 		Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
 			Text("Mouth of ${outcome.name}", color = Text1, fontSize = 16.sp, fontWeight = FontWeight.Bold)
 			Text("Back without keeping changes", color = Accent, fontSize = 15.sp, modifier = Modifier.clickable { if (busy == null) onCancel() })
@@ -139,7 +141,8 @@ fun MouthScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 			}
 			Column(Modifier.width(420.dp).height(860.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
 				Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-					Chip("Undo", false, enabled = editing.canUndo && busy == null) { editing.undo(); val c = editing.model.config; shape = c.mouthShape; curve = c.mouthCurve; thickness = c.mouthThickness; color = c.mouthColor; tick++ }
+					Chip("Undo", false, enabled = undoRedo.canUndo) { undoRedo.undo() }
+					Chip("Redo", false, enabled = undoRedo.canRedo) { undoRedo.redo() }
 					Chip("Apply", true, enabled = changed && busy == null) { apply() }
 				}
 				val b = busy

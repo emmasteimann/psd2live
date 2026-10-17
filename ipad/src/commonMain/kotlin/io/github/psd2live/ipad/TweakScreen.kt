@@ -179,7 +179,9 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 		}
 	}
 
-	Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+	val undoRedo = UndoRedo(canUndo = tweaking.canUndo, canRedo = tweaking.canRedo,
+		undo = { scope.launch(worker + safe) { tweaking.undo(); bump() } }, redo = { scope.launch(worker + safe) { tweaking.redo(); bump() } })
+	Column(Modifier.undoTaps(undoRedo).fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
 		Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
 			Text("Tweak ${outcome.name} by hand", color = Text1, fontSize = 16.sp, fontWeight = FontWeight.Bold)
 			Text("Back without keeping tweaks", color = Accent, fontSize = 15.sp, modifier = Modifier.clickable { if (saving == null) onCancel() })
@@ -503,8 +505,8 @@ fun TweakScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 				Text("Strength  ${(strength * 100).roundToInt()}%", color = Muted, fontSize = 12.sp)
 				Slider(strength, { strength = it }, valueRange = 0.05f..1f, colors = sliderColors(), modifier = Modifier.height(30.dp))
 				Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-					Chip("Undo", false, enabled = tweaking.canUndo) { scope.launch(worker + safe) { tweaking.undo(); bump() } }
-					Chip("Redo", false, enabled = tweaking.canRedo) { scope.launch(worker + safe) { tweaking.redo(); bump() } }
+					Chip("Undo", false, enabled = undoRedo.canUndo) { undoRedo.undo() }
+					Chip("Redo", false, enabled = undoRedo.canRedo) { undoRedo.redo() }
 					Text("${tweaking.edits} tweaks", color = Muted, fontSize = 13.sp, modifier = Modifier.align(Alignment.CenterVertically))
 				}
 				Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

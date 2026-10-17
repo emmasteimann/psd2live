@@ -102,7 +102,9 @@ fun ParametersScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel
 		}
 	}
 
-	Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+	val undoRedo = UndoRedo(canUndo = editing.canUndo && busy == null, canRedo = editing.canRedo && busy == null,
+		undo = { editing.undo(); refresh() }, redo = { editing.redo(); refresh() })
+	Column(Modifier.undoTaps(undoRedo).fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
 		Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
 			Text("Parameters for ${outcome.name}", color = Text1, fontSize = 16.sp, fontWeight = FontWeight.Bold)
 			Text("Back without keeping changes", color = Accent, fontSize = 15.sp, modifier = Modifier.clickable { if (busy == null) onCancel() })
@@ -114,8 +116,8 @@ fun ParametersScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel
 			}
 			Column(Modifier.width(400.dp).height(860.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
 				Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-					Chip("Undo", false, enabled = editing.canUndo && busy == null) { editing.undo(); refresh() }
-					Chip("Redo", false, enabled = editing.canRedo && busy == null) { editing.redo(); refresh() }
+					Chip("Undo", false, enabled = undoRedo.canUndo) { undoRedo.undo() }
+					Chip("Redo", false, enabled = undoRedo.canRedo) { undoRedo.redo() }
 					Chip(if (making) "Cancel new" else "New parameter", making) { making = !making }
 				}
 				val b = busy

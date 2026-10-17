@@ -26,6 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -72,6 +73,8 @@ fun WeightsScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: (
 	var draftUndo by remember { mutableStateOf(listOf<SkeletonSpec>()) }
 	var draftRedo by remember { mutableStateOf(listOf<SkeletonSpec>()) }
 	var mesh by remember { mutableStateOf<String?>(null) }
+	var pickingPart by remember { mutableStateOf(false) }
+	val pickingPartNow by rememberUpdatedState(pickingPart)
 	var copyFrom by remember { mutableStateOf<String?>(null) }
 	var copyMirror by remember { mutableStateOf(false) }
 	var bone by remember { mutableStateOf<String?>(null) }
@@ -136,7 +139,14 @@ fun WeightsScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: (
 		} else step("Painting") { RigSimulationWeights.paint(editing, m, kind, points, radius, hardness, simMode, strength) }
 	}
 
-	Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+	// Skeleton mode undoes strokes on the unapplied draft; simulation mode undoes the rig's own steps.
+	val undoRedo = if (skeletonMode) UndoRedo(canUndo = draftUndo.isNotEmpty() && busy == null, canRedo = draftRedo.isNotEmpty() && busy == null,
+		undo = { draftRedo = draftRedo + draft!!; draft = draftUndo.last(); draftUndo = draftUndo.dropLast(1) },
+		redo = { draftUndo = draftUndo + draft!!; draft = draftRedo.last(); draftRedo = draftRedo.dropLast(1) })
+	else UndoRedo(canUndo = editing.canUndo && busy == null, canRedo = editing.canRedo && busy == null,
+		undo = { editing.undo(); tick++ }, redo = { editing.redo(); tick++ })
+	val undoSteps by rememberUpdatedState(undoRedo)
+	Column(Modifier.undoTaps(undoRedo).fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
 		Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
 			Text("Weights of ${outcome.name}", color = Text1, fontSize = 16.sp, fontWeight = FontWeight.Bold)
 			Text("Back without keeping changes", color = Accent, fontSize = 15.sp, modifier = Modifier.clickable { if (busy == null) onCancel() })
@@ -150,6 +160,10 @@ fun WeightsScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: (
 		Text("Mesh", color = Muted, fontSize = 12.sp)
 		Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
 			for (m in meshes) Chip(m.name, m.drawableId == mesh) { mesh = m.drawableId; view = CanvasView() }
+		}
+		Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+			Chip(if (pickingPart) "Tapping her picks the part: on" else "Pick the part on her", pickingPart) { pickingPart = !pickingPart }
+			if (pickingPart) Text("Tap a part to paint it next. Turn this off to paint again.", color = Muted, fontSize = 12.sp)
 		}
 		if (skeletonMode) {
 			Text("Bone", color = Muted, fontSize = 12.sp)
@@ -177,11 +191,23 @@ fun WeightsScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: (
 					object : CanvasTouch {
 						private fun toCanvas(o: Offset): Offset? { val l = layout(view) ?: return null; return Offset((o.x - l[1]) / l[0], (o.y - l[2]) / l[0]) }
 						override fun start(at: Offset, pressure: Float) { if (busy == null) toCanvas(at)?.let { stroke = listOf(it) } }
-						override fun move(at: Offset, pressure: Float) { if (stroke.isNotEmpty()) toCanvas(at)?.let { stroke = stroke + it } }
-						override fun end() { val s = stroke; stroke = emptyList(); if (s.isNotEmpty()) stroked(s.map { it.x to it.y }) }
+						override fun move(at: Offset, pressure: Float) { if (stroke.isNotEmpty() && !pickingPartNow) toCanvas(at)?.let { stroke = stroke + it } }
+						override fun end() {
+							val s = stroke; stroke = emptyList()
+							if (s.isEmpty()) return
+							if (!pickingPartNow) { stroked(s.map { it.x to it.y }); return }
+							// Picking: the part under the finger becomes the one painted, when its weights can be painted here.
+							val p = s.first()
+							scope.launch {
+								val id = withContext(worker) { io.github.psd2live.core.PoseTweaks.meshAt(editing.puppet, emptyMap(), p.x, p.y) }
+								val hit = meshes.firstOrNull { it.drawableId == id }
+								if (hit == null) message = if (id == null) "No part there." else "${editing.puppet.drawables.firstOrNull { it.id.raw == id }?.name ?: id} has no ${if (skeletonMode) "skeleton" else "simulation"} weights to paint."
+								else { message = null; mesh = hit.drawableId; view = CanvasView() }
+							}
+						}
 						override fun cancel() { stroke = emptyList() }
-						override fun undo() {}
-						override fun redo() {}
+						override fun undo() { undoSteps.undo() }
+						override fun redo() { undoSteps.redo() }
 						override fun view() = view
 						override fun setView(view: CanvasView) { setWeightView(view) }
 						override fun layout(view: CanvasView) = layout(view) ?: floatArrayOf(1f, 0f, 0f)
@@ -229,13 +255,8 @@ fun WeightsScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: (
 					Slider(hardness, { hardness = it }, valueRange = 0f..1f, colors = sliderColors(), modifier = Modifier.height(32.dp))
 				}
 				Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-					if (skeletonMode) {
-						Chip("Undo", false, enabled = draftUndo.isNotEmpty() && busy == null) { draftRedo = draftRedo + draft!!; draft = draftUndo.last(); draftUndo = draftUndo.dropLast(1) }
-						Chip("Redo", false, enabled = draftRedo.isNotEmpty() && busy == null) { draftUndo = draftUndo + draft!!; draft = draftRedo.last(); draftRedo = draftRedo.dropLast(1) }
-					} else {
-						Chip("Undo", false, enabled = editing.canUndo && busy == null) { editing.undo(); tick++ }
-						Chip("Redo", false, enabled = editing.canRedo && busy == null) { editing.redo(); tick++ }
-					}
+					Chip("Undo", false, enabled = undoRedo.canUndo) { undoRedo.undo() }
+					Chip("Redo", false, enabled = undoRedo.canRedo) { undoRedo.redo() }
 					Chip("Fit view", false) { view = CanvasView() }
 				}
 				val m = mesh

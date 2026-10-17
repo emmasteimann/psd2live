@@ -98,3 +98,41 @@ fun Modifier.canvasTouch(key: Any, fingersPan: () -> Boolean = { false }, onStyl
 		}
 	}
 }
+
+/**
+ * A screen's undo and redo, described once: its Undo/Redo buttons and the two-/three-finger taps ([undoTaps]) run the
+ * same steps under the same conditions.
+ */
+class UndoRedo(val canUndo: Boolean, val canRedo: Boolean, val undo: () -> Unit, val redo: () -> Unit)
+
+/**
+ * Procreate's taps on a whole screen: a quick two-finger tap undoes, three fingers redo, wherever the fingers land (the
+ * side panel too). A tap the canvas already took ([canvasTouch] consumes its multi-finger touches) is left to it, so
+ * nothing runs twice; a drag, a scroll or a long press is not a tap; the Pencil never counts.
+ */
+@androidx.compose.runtime.Composable
+fun Modifier.undoTaps(steps: UndoRedo): Modifier {
+	val current = androidx.compose.runtime.rememberUpdatedState(steps)
+	return pointerInput(Unit) {
+		awaitEachGesture {
+			val down = awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Main)
+			if (down.type == PointerType.Stylus) return@awaitEachGesture
+			val start = down.uptimeMillis
+			var end = start
+			val origins = HashMap<androidx.compose.ui.input.pointer.PointerId, Offset>().apply { put(down.id, down.position) }
+			var fingers = 1; var moved = 0f; var canvasTook = false
+			while (true) {
+				val event = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Main)
+				event.changes.firstOrNull()?.let { end = it.uptimeMillis }
+				val pressed = event.changes.filter { it.pressed }
+				if (pressed.size >= 2 && event.changes.all { it.isConsumed }) canvasTook = true
+				for (c in event.changes) { val o = origins.getOrPut(c.id) { c.position }; moved = maxOf(moved, hypot(c.position.x - o.x, c.position.y - o.y)) }
+				fingers = maxOf(fingers, pressed.size)
+				if (pressed.isEmpty()) break
+			}
+			if (canvasTook || fingers < 2 || moved >= 12f || end - start >= 350) return@awaitEachGesture
+			val s = current.value
+			if (fingers == 2) { if (s.canUndo) s.undo() } else if (s.canRedo) s.redo()
+		}
+	}
+}

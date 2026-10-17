@@ -112,7 +112,9 @@ fun GlueScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () -
 		}
 	}
 
-	Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+	val undoRedo = UndoRedo(canUndo = editing.canUndo && busy == null, canRedo = editing.canRedo && busy == null,
+		undo = { editing.undo(); tick++ }, redo = { editing.redo(); tick++ })
+	Column(Modifier.undoTaps(undoRedo).fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
 		Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
 			Text("Glue for ${outcome.name}", color = Text1, fontSize = 16.sp, fontWeight = FontWeight.Bold)
 			Text("Back without keeping changes", color = Accent, fontSize = 15.sp, modifier = Modifier.clickable { if (busy == null) onCancel() })
@@ -206,8 +208,8 @@ fun GlueScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () -
 					Chip("Lean body", testPose.containsKey("ParamBodyAngleX")) { testPose = mapOf("ParamBodyAngleX" to 10f, "ParamBodyAngleZ" to 10f) }
 				}
 				Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-					Chip("Undo", false, enabled = editing.canUndo && busy == null) { editing.undo(); tick++ }
-					Chip("Redo", false, enabled = editing.canRedo && busy == null) { editing.redo(); tick++ }
+					Chip("Undo", false, enabled = undoRedo.canUndo) { undoRedo.undo() }
+					Chip("Redo", false, enabled = undoRedo.canRedo) { undoRedo.redo() }
 					Chip("Fit view", false) { view = CanvasView() }
 				}
 				val b = busy

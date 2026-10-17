@@ -191,7 +191,11 @@ private fun LayerPaintView(painting: LayerPainting, all: List<LayerPainting>, on
 	}
 	Text("Pencil or a finger paints; two fingers move and zoom; tap two fingers to undo, three to redo.", color = Muted, fontSize = 13.sp)
 	workError?.let { Text("Something went wrong: $it", color = Danger, fontSize = 13.sp) }
-	Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+	val masking = current.tool == PaintTool.MASK
+	val undoRedo = UndoRedo(canUndo = if (masking) painting.canUndoMask else painting.canUndo, canRedo = if (masking) painting.canRedoMask else painting.canRedo,
+		undo = { scope.launch(worker + safe) { if (masking) painting.undoMask() else painting.undo(); bump() } },
+		redo = { scope.launch(worker + safe) { if (masking) painting.redoMask() else painting.redo(); bump() } })
+	Row(Modifier.undoTaps(undoRedo), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
 		BoxWithConstraints(Modifier.weight(1f).height(860.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF101017))) {
 			val density = LocalDensity.current
 			val w = with(density) { maxWidth.toPx() }; val h = with(density) { maxHeight.toPx() }

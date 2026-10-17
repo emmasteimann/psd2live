@@ -144,7 +144,9 @@ fun SplitScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 		}
 	}
 
-	Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+	val undoRedo = UndoRedo(canUndo = editing.canUndo && busy == null, canRedo = editing.canRedo && busy == null,
+		undo = { undoRedo(false) }, redo = { undoRedo(true) })
+	Column(Modifier.undoTaps(undoRedo).fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
 		Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
 			Text("Split parts of ${outcome.name}", color = Text1, fontSize = 16.sp, fontWeight = FontWeight.Bold)
 			Text("Back without keeping changes", color = Accent, fontSize = 15.sp, modifier = Modifier.clickable { if (saving == null && busy == null) onCancel() })
@@ -174,7 +176,13 @@ fun SplitScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 						override fun move(at: Offset, pressure: Float) { if (drawing) lasso = lasso + toCanvas(at) }
 						override fun end() {
 							val a = at0 ?: return; at0 = null
-							if (drawing) { drawing = false; return }
+							// A drag draws the lasso; a tap (it barely moved) picks the part under it, whatever the tool.
+							if (drawing) {
+								drawing = false
+								val l = layout(w, h, view)
+								if (lasso.any { kotlin.math.hypot(l[1] + it.x * l[0] - a.x, l[2] + it.y * l[0] - a.y) > 12f }) return
+								lasso = emptyList()
+							}
 							if (busy != null) return
 							val p = toCanvas(a)
 							scope.launch(worker + safe) {
@@ -211,8 +219,8 @@ fun SplitScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 			}
 			Column(Modifier.width(380.dp).height(820.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
 				Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-					Chip("Undo", false, enabled = editing.canUndo && busy == null) { undoRedo(false) }
-					Chip("Redo", false, enabled = editing.canRedo && busy == null) { undoRedo(true) }
+					Chip("Undo", false, enabled = undoRedo.canUndo) { undoRedo.undo() }
+					Chip("Redo", false, enabled = undoRedo.canRedo) { undoRedo.redo() }
 					Chip("Fit view", false) { view = CanvasView() }
 				}
 				val s = saving

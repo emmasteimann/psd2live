@@ -123,7 +123,9 @@ fun PartsScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 		}
 	}
 
-	Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+	val undoRedo = UndoRedo(canUndo = editing.canUndo && saving == null, canRedo = editing.canRedo && saving == null,
+		undo = { scope.launch(worker + safe) { editing.undo(); refreshed() } }, redo = { scope.launch(worker + safe) { editing.redo(); refreshed() } })
+	Column(Modifier.undoTaps(undoRedo).fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
 		Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
 			Text("Move parts of ${outcome.name}", color = Text1, fontSize = 16.sp, fontWeight = FontWeight.Bold)
 			Text("Back without keeping changes", color = Accent, fontSize = 15.sp, modifier = Modifier.clickable { if (saving == null) onCancel() })
@@ -177,8 +179,8 @@ fun PartsScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 			}
 			Column(Modifier.width(380.dp).height(820.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
 				Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-					Chip("Undo", false, enabled = editing.canUndo && saving == null) { scope.launch(worker + safe) { editing.undo(); refreshed() } }
-					Chip("Redo", false, enabled = editing.canRedo && saving == null) { scope.launch(worker + safe) { editing.redo(); refreshed() } }
+					Chip("Undo", false, enabled = undoRedo.canUndo) { undoRedo.undo() }
+					Chip("Redo", false, enabled = undoRedo.canRedo) { undoRedo.redo() }
 					Chip("Fit view", false) { view = CanvasView() }
 				}
 				val s = saving

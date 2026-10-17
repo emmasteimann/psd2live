@@ -32,6 +32,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -94,19 +96,27 @@ fun TexturesScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: 
 		image = withContext(Dispatchers.Default) { RigTextures.pages(editing).getOrNull(page)?.image?.toImageBitmap(1600) }
 	}
 
-	Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+	val undoRedo = UndoRedo(canUndo = editing.canUndo && busy == null, canRedo = editing.canRedo && busy == null,
+		undo = { editing.undo(); tick++ }, redo = { editing.redo(); tick++ })
+	Column(Modifier.undoTaps(undoRedo).fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
 		Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
 			Text("Textures of ${outcome.name}", color = Text1, fontSize = 16.sp, fontWeight = FontWeight.Bold)
 			Text("Back without keeping changes", color = Accent, fontSize = 15.sp, modifier = Modifier.clickable { if (busy == null) onCancel() })
 		}
-		Text("The texture pages VTube Studio loads. Tap a part to see its tile and give it more or less detail.", color = Muted, fontSize = 13.sp)
+		Text("The texture pages VTube Studio loads. Tap a tile (or a part in the list) to see it and give it more or less detail.", color = Muted, fontSize = 13.sp)
 		Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
 			Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
 				Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { for (i in pages.indices) Chip("Page ${i + 1}", page == i) { page = i } }
 				BoxWithConstraints(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(8.dp)).background(Color(0xFF2A2838))) {
 					val density = LocalDensity.current
 					val side = with(density) { maxWidth.toPx() }
-					Canvas(Modifier.fillMaxSize()) {
+					Canvas(Modifier.fillMaxSize().pointerInput(page, parts) {
+						// A tap on a tile chooses its part, as the list does.
+						detectTapGestures { at ->
+							val k = side / budget.pageSize
+							parts.lastOrNull { it.page == page && at.x / k in it.x.toFloat()..(it.x + it.w).toFloat() && at.y / k in it.y.toFloat()..(it.y + it.h).toFloat() }?.let { selected = it.layerId }
+						}
+					}) {
 						image?.let { drawImage(it, dstSize = IntSize(side.roundToInt(), side.roundToInt())) }
 						val pageSize = budget.pageSize
 						val k = side / pageSize
@@ -121,8 +131,8 @@ fun TexturesScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: 
 			}
 			Column(Modifier.width(380.dp).height(860.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
 				Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-					Chip("Undo", false, enabled = editing.canUndo && busy == null) { editing.undo(); tick++ }
-					Chip("Redo", false, enabled = editing.canRedo && busy == null) { editing.redo(); tick++ }
+					Chip("Undo", false, enabled = undoRedo.canUndo) { undoRedo.undo() }
+					Chip("Redo", false, enabled = undoRedo.canRedo) { undoRedo.redo() }
 				}
 				val b = busy
 				if (b != null) { Text(b.first, color = Muted, fontSize = 13.sp); LinearProgressIndicator(progress = b.second.toFloat(), modifier = Modifier.fillMaxWidth(), color = Accent) }

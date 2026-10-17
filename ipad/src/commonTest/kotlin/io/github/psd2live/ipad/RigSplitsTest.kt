@@ -24,6 +24,10 @@ class RigSplitsTest {
 		val before = RigParts.list(e)
 		val (part, centers) = before.asSequence().map { it to RigSplits.islands(e, it.layerId) }.firstOrNull { it.second.size >= 2 }
 			?: run { println("SPLITS no part with islands"); return }
+		// The dots marking each island sit on the part (canvas units), not off to one side (Goose saw them adrift 10-16).
+		val box = io.github.psd2live.core.LayerSpace.of(e.model.analysis.source.layers.first { it.id.raw == part.layerId }).canvasBounds()
+		assertTrue(centers.all { (x, y) -> x >= box.left - 1f && x <= box.right + 1f && y >= box.top - 1f && y <= box.bottom + 1f },
+			"island centres $centers inside ${part.name}'s box $box")
 		val names = RigSplits.names(part.name, centers)
 		println("SPLITS ${part.name} -> $names")
 		RigSplits.splitIslands(e, part.layerId, names)

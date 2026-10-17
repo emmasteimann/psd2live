@@ -100,7 +100,9 @@ fun LayerRolesScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel
 		scope.launch { try { withContext(worker) { block() }; tick++ } catch (e: Throwable) { message = e.message ?: e::class.simpleName } finally { busy = null } }
 	}
 
-	Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+	val undoRedo = UndoRedo(canUndo = editing.canUndo && busy == null, canRedo = editing.canRedo && busy == null,
+		undo = { editing.undo(); tick++ }, redo = { editing.redo(); tick++ })
+	Column(Modifier.undoTaps(undoRedo).fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
 		Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
 			Text("Layer roles of ${outcome.name}", color = Text1, fontSize = 16.sp, fontWeight = FontWeight.Bold)
 			Text("Back without keeping changes", color = Accent, fontSize = 15.sp, modifier = Modifier.clickable { if (busy == null) onCancel() })
@@ -177,8 +179,8 @@ fun LayerRolesScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel
 					}
 				} else Text("Tap a layer on her or below.", color = Muted, fontSize = 13.sp)
 				Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-					Chip("Undo", false, enabled = editing.canUndo && busy == null) { editing.undo(); tick++ }
-					Chip("Redo", false, enabled = editing.canRedo && busy == null) { editing.redo(); tick++ }
+					Chip("Undo", false, enabled = undoRedo.canUndo) { undoRedo.undo() }
+					Chip("Redo", false, enabled = undoRedo.canRedo) { undoRedo.redo() }
 					Chip("Done - keep the changes", true, enabled = editing.canUndo && busy == null) {
 						busy = "Writing the runtime files" to 0.1
 						scope.launch {

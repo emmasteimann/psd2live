@@ -28,6 +28,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -103,7 +105,9 @@ fun SwingScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 		}
 	}
 
-	Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+	val undoRedo = UndoRedo(canUndo = editing.canUndo, canRedo = editing.canRedo,
+		undo = { editing.undo(); tick++ }, redo = { editing.redo(); tick++ })
+	Column(Modifier.undoTaps(undoRedo).fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
 		Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
 			Text("Swings of ${outcome.name}", color = Text1, fontSize = 16.sp, fontWeight = FontWeight.Bold)
 			Text("Back without keeping changes", color = Accent, fontSize = 15.sp, modifier = Modifier.clickable { if (busy == null) onCancel() })
@@ -111,7 +115,19 @@ fun SwingScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 		Text("A sway for hair, ribbons or cloth: choose what swings, shape it, watch it, keep it.", color = Muted, fontSize = 13.sp)
 		Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
 			Box(Modifier.weight(1f).height(820.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF101017)), contentAlignment = Alignment.Center) {
-				frame?.let { Image(it, "The swing audition", Modifier.fillMaxSize(), contentScale = ContentScale.Fit) } ?: Text("Drawing…", color = Muted, fontSize = 14.sp)
+				// Choosing parts: a tap on her adds the part under the finger, a second tap takes it out.
+				frame?.let { Image(it, "The swing audition", Modifier.fillMaxSize().pointerInput(draft == null) {
+					if (draft != null) return@pointerInput
+					detectTapGestures { at ->
+						val cw = editing.puppet.canvasWidth; val ch = editing.puppet.canvasHeight
+						val k = minOf(size.width / cw, size.height / ch)
+						val x = (at.x - (size.width - cw * k) / 2f) / k; val y = (at.y - (size.height - ch * k) / 2f) / k
+						scope.launch {
+							val id = withContext(worker) { io.github.psd2live.core.PoseTweaks.meshAt(editing.puppet, emptyMap(), x, y) }
+							if (id == null) message = "No part there." else { message = null; targets = if (id in targets) targets - id else targets + id }
+						}
+					}
+				}, contentScale = ContentScale.Fit) } ?: Text("Drawing…", color = Muted, fontSize = 14.sp)
 			}
 			Column(Modifier.width(380.dp).height(820.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
 				val d = draft
@@ -129,7 +145,7 @@ fun SwingScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 						}
 						Text("Bake keeps the motion as plain keyforms and stops it regenerating.", color = Muted, fontSize = 12.sp)
 					}
-					Text("New swing: tap what should swing", color = Muted, fontSize = 12.sp)
+					Text("New swing: tap what should swing - on her, or in the list", color = Muted, fontSize = 12.sp)
 					// The start button above the list, so a choice never needs a scroll to the bottom.
 					Chip(if (targets.isEmpty()) "Start a swing (choose parts below)" else "Start a swing on ${targets.size} part${if (targets.size == 1) "" else "s"}",
 						targets.isNotEmpty(), enabled = targets.isNotEmpty() && busy == null) {
@@ -189,8 +205,8 @@ fun SwingScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel: () 
 				if (b != null) { Text(b.first, color = Muted, fontSize = 13.sp); LinearProgressIndicator(progress = b.second.toFloat(), modifier = Modifier.fillMaxWidth(), color = Accent) }
 				else if (d == null) {
 					Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-						Chip("Undo", false, enabled = editing.canUndo) { editing.undo(); tick++ }
-						Chip("Redo", false, enabled = editing.canRedo) { editing.redo(); tick++ }
+						Chip("Undo", false, enabled = undoRedo.canUndo) { undoRedo.undo() }
+						Chip("Redo", false, enabled = undoRedo.canRedo) { undoRedo.redo() }
 					}
 					Chip("Done - keep the changes", true, enabled = editing.canUndo) {
 						busy = "Writing the runtime files" to 0.1

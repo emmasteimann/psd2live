@@ -169,6 +169,7 @@ fun ParametersScreen(outcome: RigOutcome, onDone: (RigOutcome) -> Unit, onCancel
 					Definition(current) { name, min, max, def, blend, repeat ->
 						edit("Saving ${current.name}") { RigParameters.update(editing, current, name, min, max, def, blend, repeat) }
 					}
+					if (current.blendShape) BlendLimitsPanel(editing, current, busy == null) { label, block -> edit(label, block) }
 					if (current.created) Chip("Delete this parameter", false, enabled = busy == null && !current.generated) {
 						edit("Deleting ${current.name}") { RigParameters.delete(editing, current) }
 					}
@@ -243,5 +244,42 @@ private fun Chip(label: String, selected: Boolean, enabled: Boolean = true, onCl
 	Box(Modifier.clip(RoundedCornerShape(8.dp)).background(if (selected) Color(0xFF5B4B8A) else Color(0xFF2B283C))
 		.clickable(enabled = enabled, onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp)) {
 		Text(label, color = if (enabled) Text1 else Muted, fontSize = 13.sp)
+	}
+}
+
+/**
+ * A blend shape's weight limits (the desktop's blend limits): another slider that fades this blend shape out - a smile
+ * that eases off as the mouth opens. Each limit here is a simple fade over a range of that slider.
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun BlendLimitsPanel(editing: RigEditing, current: RigParameters.Info, enabled: Boolean, edit: (String, () -> Unit) -> Unit) {
+	val limits = RigBlendLimits.limits(editing, current.id)
+	val others = editing.puppet.parameters.filter { it.id.raw != current.id && it.kind != org.umamo.runtime.model.ParameterKind.BLEND_SHAPE }
+	var by by remember(current.id) { mutableStateOf<String?>(null) }
+	var choosing by remember(current.id) { mutableStateOf(false) }
+	val p = others.firstOrNull { it.id.raw == by }
+	var from by remember(by) { mutableStateOf(p?.default ?: 0f) }
+	var to by remember(by) { mutableStateOf(p?.max ?: 1f) }
+	Text("Limits (another slider fades this blend shape out)", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+	if (limits.isEmpty()) Text("None: it always applies fully.", color = Muted, fontSize = 12.sp)
+	for (l in limits) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+		val name = editing.puppet.parameters.firstOrNull { it.id == l.parameterId }?.name ?: l.parameterId.raw
+		Text("$name: " + l.points.joinToString(" → ") { "${fmt(it.value)} ${(it.weight * 100).roundToInt()}%" }, color = Text1, fontSize = 12.sp, modifier = Modifier.weight(1f))
+		Chip("Remove", false, enabled = enabled) { val rest = limits - l; edit("Removing the limit") { RigBlendLimits.put(editing, current.id, rest) } }
+	}
+	Chip(if (p == null) "Add a limit - choose the slider" else "Limited by ${p.name}", choosing) { choosing = !choosing }
+	if (choosing) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+		for (o in others.filter { o -> limits.none { it.parameterId == o.id } }) Chip(o.name, o.id.raw == by) { by = o.id.raw; choosing = false }
+	}
+	if (p != null) {
+		Text("Full until ${fmt(from)}, gone by ${fmt(to)}", color = Muted, fontSize = 12.sp)
+		Slider(from, { from = it.coerceAtMost(to) }, valueRange = p.min..p.max, colors = sliderColors(), modifier = Modifier.height(28.dp))
+		Slider(to, { to = it.coerceAtLeast(from) }, valueRange = p.min..p.max, colors = sliderColors(), modifier = Modifier.height(28.dp))
+		Chip("Add this limit", true, enabled = enabled && to > from) {
+			val id = p.id.raw; val a = from; val b = to
+			edit("Adding the limit") { RigBlendLimits.put(editing, current.id, limits + RigBlendLimits.fade(editing, id, a, b)) }
+			by = null
+		}
 	}
 }

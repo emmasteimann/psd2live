@@ -92,7 +92,24 @@ fun MotionEditorScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onC
 	val scope = rememberCoroutineScope()
 	val clip = clips.firstOrNull { it.id == selected }
 
-	fun update(c: MotionClip) { clips = clips.map { if (it.id == c.id) c else it } }
+	// Undo history of the motions: a slider drag or a key drag is one step (changes within a moment of each other merge).
+	var past by remember(outcome) { mutableStateOf(listOf<List<MotionClip>>()) }
+	var future by remember(outcome) { mutableStateOf(listOf<List<MotionClip>>()) }
+	var lastChange by remember { mutableStateOf<kotlin.time.TimeMark?>(null) }
+	var copied by remember { mutableStateOf<List<Pair<String, MotionKey>>>(emptyList()) }
+	var lipSyncing by remember { mutableStateOf(false) }
+	fun change(next: List<MotionClip>) {
+		if (next == clips) return
+		val merge = lastChange?.let { it.elapsedNow() < kotlin.time.Duration.parse("600ms") } == true
+		if (!merge) { past = (past + listOf(clips)).takeLast(80); future = emptyList() }
+		lastChange = kotlin.time.TimeSource.Monotonic.markNow()
+		clips = next
+	}
+	fun update(c: MotionClip) = change(clips.map { if (it.id == c.id) c else it })
+	fun undoMotions() { val p = past.lastOrNull() ?: return; future = future + listOf(clips); past = past.dropLast(1); clips = p; lastChange = null
+		if (clips.none { it.id == selected }) selected = clips.firstOrNull()?.id }
+	fun redoMotions() { val n = future.lastOrNull() ?: return; past = past + listOf(clips); future = future.dropLast(1); clips = n; lastChange = null
+		if (clips.none { it.id == selected }) selected = clips.firstOrNull()?.id }
 	fun poseAt(c: MotionClip?, t: Float): Map<String, Float> =
 		defaults + (c?.let { MotionClips.sampleAll(it, t.toDouble(), loop = false).mapKeys { e -> e.key.raw } } ?: emptyMap())
 
@@ -136,7 +153,9 @@ fun MotionEditorScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onC
 		if (acc.isEmpty() || abs(acc.last() - t) > SAME_KEY) acc += t; acc } ?: emptyList()
 	val atKey = keyTimes.firstOrNull { abs(it - playhead) <= SAME_KEY }
 
-	Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+	val undoRedo = UndoRedo(canUndo = past.isNotEmpty() && applying == null, canRedo = future.isNotEmpty() && applying == null,
+		undo = { playing = false; undoMotions() }, redo = { playing = false; redoMotions() })
+	Column(Modifier.undoTaps(undoRedo).fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
 		Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
 			Text("Your motions for ${outcome.name}", color = Text1, fontSize = 16.sp, fontWeight = FontWeight.Bold)
 			Text("Back without keeping changes", color = Accent, fontSize = 15.sp, modifier = Modifier.clickable { if (applying == null) onCancel() })
@@ -146,8 +165,10 @@ fun MotionEditorScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onC
 		Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
 			Chip("New motion", false) {
 				val c = MotionClip(MotionClips.newId(clips + outcome.config.rigEdits.motionClips), MotionClips.uniqueName(clips, "Motion"), duration = 2f, fadeIn = 0.3f, fadeOut = 0.3f)
-				clips = clips + c; selected = c.id; playhead = 0f; playing = false
+				change(clips + c); selected = c.id; playhead = 0f; playing = false
 			}
+			Chip("Undo", false, enabled = undoRedo.canUndo) { undoRedo.undo() }
+			Chip("Redo", false, enabled = undoRedo.canRedo) { undoRedo.redo() }
 			for (c in clips) Chip(c.name, c.id == selected) { selected = c.id; playhead = 0f; playing = false }
 		}
 		if (clip == null) {
@@ -160,19 +181,31 @@ fun MotionEditorScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onC
 							?: Text("Drawing…", color = Muted)
 					}
 					// The timeline: keys as diamonds, the playhead as a line; drag anywhere to scrub, tap a diamond to jump to it.
-					Canvas(Modifier.fillMaxWidth().height(64.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF24222F)).pointerInput(clip.id, clip.duration, keyTimes) {
+					// Drag a diamond sideways to move that key (every slider keyed there) in time; drag elsewhere to scrub.
+					Canvas(Modifier.fillMaxWidth().height(64.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF24222F)).pointerInput(clip.id, clip.duration, keyTimes, clips) {
 						awaitEachGesture {
 							val down = awaitFirstDown(); playing = false
 							fun at(x: Float): Float {
 								val t = (x / size.width).coerceIn(0f, 1f) * clip.duration
 								return keyTimes.firstOrNull { abs(it - t) / clip.duration * size.width < 14f } ?: ((t * 30f).roundToInt() / 30f)
 							}
+							val grabbed = keyTimes.firstOrNull { abs(it / clip.duration * size.width - down.position.x) < 14f }
+							val before = clip
+							var moving = false
 							playhead = at(down.position.x); down.consume()
 							while (true) {
 								val e = awaitPointerEvent(); val ch = e.changes.firstOrNull { it.id == down.id } ?: break
 								if (!ch.pressed) break
-								playhead = at(ch.position.x); ch.consume()
+								if (grabbed != null && (moving || abs(ch.position.x - down.position.x) > 10f)) {
+									moving = true
+									val dt = ((ch.position.x - down.position.x) / size.width * clip.duration * 30f).roundToInt() / 30f
+									val selection = before.curves.flatMap { cv -> cv.keys.filter { abs(it.time - grabbed) <= SAME_KEY }.map { io.github.psd2live.core.MotionKeyRef(cv.parameterId, it.time) } }.toSet()
+									update(io.github.psd2live.core.MotionKeyEdits.move(before, selection, dt, 0f).first)
+									playhead = (grabbed + dt).coerceIn(0f, clip.duration)
+								} else playhead = at(ch.position.x)
+								ch.consume()
 							}
+							lastChange = null
 						}
 					}) {
 						val w = size.width; val h = size.height
@@ -191,6 +224,18 @@ fun MotionEditorScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onC
 						Text("${(playhead * 100).roundToInt() / 100.0} s of ${(clip.duration * 10).roundToInt() / 10.0} s", color = Muted, fontSize = 13.sp)
 						Chip("◀ key", false, enabled = keyTimes.any { it < playhead - SAME_KEY }) { playing = false; playhead = keyTimes.last { it < playhead - SAME_KEY } }
 						Chip("key ▶", false, enabled = keyTimes.any { it > playhead + SAME_KEY }) { playing = false; playhead = keyTimes.first { it > playhead + SAME_KEY } }
+					}
+					Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+						Chip("Copy this key", false, enabled = atKey != null) {
+							val t = atKey!!
+							val sel = clip.curves.flatMap { cv -> cv.keys.filter { abs(it.time - t) <= SAME_KEY }.map { io.github.psd2live.core.MotionKeyRef(cv.parameterId, it.time) } }.toSet()
+							copied = io.github.psd2live.core.MotionKeyEdits.copy(clip, sel)
+						}
+						Chip("Paste at ${(playhead * 100).roundToInt() / 100.0} s", false, enabled = copied.isNotEmpty()) {
+							playing = false; lastChange = null
+							update(io.github.psd2live.core.MotionKeyEdits.paste(clip, copied, playhead.coerceIn(0f, clip.duration)).first)
+						}
+						if (copied.isNotEmpty()) Text("${copied.size} slider${if (copied.size == 1) "" else "s"} copied", color = Muted, fontSize = 12.sp)
 					}
 					if (atKey != null) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
 						Text("This key eases:", color = Muted, fontSize = 13.sp)
@@ -213,17 +258,43 @@ fun MotionEditorScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onC
 						modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(Color(0xFF2B283C)).padding(10.dp))
 					Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
 						Chip(if (clip.loop) "Loops (an idle)" else "One-shot (a hotkey)", clip.loop) { update(clip.copy(loop = !clip.loop)) }
-						Chip("Delete motion", false) { clips = clips.filter { it.id != clip.id }; selected = clips.firstOrNull()?.id }
+						Chip("Duplicate", false) {
+							val copy = clip.copy(id = MotionClips.newId(clips + outcome.config.rigEdits.motionClips), name = MotionClips.uniqueName(clips, clip.name + " copy"))
+							lastChange = null; change(clips + copy); selected = copy.id
+						}
+						Chip("Delete motion", false) { lastChange = null; change(clips.filter { it.id != clip.id }); selected = clips.firstOrNull()?.id }
 					}
 					Text("Length  ${(clip.duration * 10).roundToInt() / 10.0} s", color = Muted, fontSize = 12.sp)
 					Slider(clip.duration, { d ->
 						val len = (d * 10).roundToInt() / 10f
-						update(clip.copy(duration = len, curves = clip.curves.mapNotNull { cv -> cv.keys.filter { it.time <= len + 1e-4f }.takeIf { it.isNotEmpty() }?.let { cv.copy(keys = it) } }))
+						update(io.github.psd2live.core.MotionKeyEdits.withDuration(clip, len))
 						playhead = playhead.coerceAtMost(len)
 					}, valueRange = 0.5f..10f, colors = sliderColors(), modifier = Modifier.height(28.dp))
 					Text("Fade in  ${(clip.fadeIn * 10).roundToInt() / 10.0} s   ·   fade out  ${(clip.fadeOut * 10).roundToInt() / 10.0} s", color = Muted, fontSize = 12.sp)
 					Slider(clip.fadeIn, { update(clip.copy(fadeIn = it)) }, valueRange = 0f..2f, colors = sliderColors(), modifier = Modifier.height(26.dp))
 					Slider(clip.fadeOut, { update(clip.copy(fadeOut = it)) }, valueRange = 0f..2f, colors = sliderColors(), modifier = Modifier.height(26.dp))
+					// Lip sync: a voice recording becomes this motion's mouth keys (open from loudness, shape from brightness).
+					val mouthOpen = params.firstOrNull { it.id == io.github.psd2live.core.StandardParameters.MOUTH_OPEN }
+					Chip(if (lipSyncing) "Listening…" else "Lip sync from a recording…", false, enabled = !lipSyncing && mouthOpen != null) {
+						val target = clip; val open = mouthOpen!!
+						val form = params.firstOrNull { it.id == io.github.psd2live.core.StandardParameters.MOUTH_FORM }
+						Exchange.pick(setOf("wav", "m4a", "mp3", "aac", "caf", "aif", "aiff"), multiple = false) { names ->
+							val name = names.firstOrNull() ?: return@pick
+							lipSyncing = true; failure = null
+							scope.launch {
+								try {
+									val path = RigFiles.psdPath(name)
+									val baked = withContext(Dispatchers.Default) {
+										val result = io.github.psd2live.core.LipSync.analyze(readAudioMono(path), target.fps)
+										io.github.psd2live.core.LipSync.bake(target, result, open, form, path)
+									}
+									lastChange = null; update(baked); playhead = 0f
+								} catch (e: Throwable) { failure = e.message ?: e::class.simpleName } finally { lipSyncing = false }
+							}
+						}
+					}
+					if (mouthOpen == null) Text("Lip sync needs a mouth-open slider (ParamMouthOpenY).", color = Muted, fontSize = 12.sp)
+					else if (clip.sound != null) Text("Sound: ${clip.sound!!.substringAfterLast('/')} - it plays with the motion in VTube Studio.", color = Muted, fontSize = 12.sp)
 					Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
 						Text("Pose at the playhead", color = Text1, fontSize = 15.sp, fontWeight = FontWeight.Bold)
 						Text(if (showAll) "Keyed only" else "Every parameter", color = Accent, fontSize = 13.sp, modifier = Modifier.clickable { showAll = !showAll })
@@ -234,8 +305,13 @@ fun MotionEditorScreen(outcome: RigOutcome, onApplied: (RigOutcome) -> Unit, onC
 						val id = p.id.raw
 						val value = pose[id] ?: p.default
 						val here = clip.curve(id)?.keys?.any { abs(it.time - playhead) <= SAME_KEY } == true
-						Text("${if (here) "◆ " else if (id in keyedIds) "◇ " else ""}${p.name}  ${(value * 100).roundToInt() / 100.0}",
-							color = if (here) Text1 else Muted, fontSize = 12.sp)
+						Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+							Text("${if (here) "◆ " else if (id in keyedIds) "◇ " else ""}${p.name}  ${(value * 100).roundToInt() / 100.0}",
+								color = if (here) Text1 else Muted, fontSize = 12.sp)
+							if (id in keyedIds) Text("Clear ✕", color = Accent, fontSize = 12.sp, modifier = Modifier.clickable {
+								playing = false; lastChange = null; update(clip.copy(curves = clip.curves.filter { it.parameterId != id }))
+							})
+						}
 						Slider(value, { v -> playing = false; update(keyed(clip, id, v)) }, valueRange = p.min..p.max, colors = sliderColors(), modifier = Modifier.height(28.dp))
 					}
 				}

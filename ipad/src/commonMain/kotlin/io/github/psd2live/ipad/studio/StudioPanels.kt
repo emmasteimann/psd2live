@@ -85,7 +85,7 @@ private fun AiRequest(h: PanelHost, part: StudioPart, operation: String, prompt:
 		}
 		return
 	}
-	if (!signed) { Chip("Sign in to your private studio", true) { PrivateStudio.signIn { ok -> signed = ok; h.say(if (ok) "Signed in for 12 hours." else "Not signed in.") } }; return }
+	if (!signed) { Chip("Sign in to your private studio", true) { PrivateStudio.signIn { ok -> signed = ok; h.say(if (ok) "Signed in - this iPad stays signed in for 90 days." else "Not signed in.") } }; return }
 	Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
 		Chip("Check (free)", enabled = !h.busy && part.mask != null) {
 			h.run("Checking the request") { val now = h.latest() ?: return@run; h.say(StudioRepairAI.check(now, part.id, prompt, operation)) }
@@ -676,7 +676,7 @@ private fun ExpressionGenSection(h: PanelHost) {
 	}
 	var signed by remember { mutableStateOf(false) }
 	LaunchedEffect(Unit) { PrivateStudio.signedIn { signed = it } }
-	if (!signed) { Chip("Sign in to your private studio", true) { PrivateStudio.signIn { ok -> signed = ok; h.say(if (ok) "Signed in for 12 hours." else "Not signed in.") } }; return }
+	if (!signed) { Chip("Sign in to your private studio", true) { PrivateStudio.signIn { ok -> signed = ok; h.say(if (ok) "Signed in - this iPad stays signed in for 90 days." else "Not signed in.") } }; return }
 	Chip("Generate blink", true, enabled = !h.busy && (face.left.isNotEmpty() || face.right.isNotEmpty())) {
 		h.run("Closing both eyes (one image edit, about 30-60 s)") {
 			val now = h.latest() ?: return@run
@@ -738,7 +738,7 @@ private fun GapsSection(h: PanelHost) {
 		Text("Behind parts that move, some of the body was never drawn: ${todo.joinToString { it.name }}. This paints it in, one image edit per part.", color = Muted, fontSize = 12.sp)
 		var signed by remember { mutableStateOf(false) }
 		LaunchedEffect(Unit) { PrivateStudio.signedIn { signed = it } }
-		if (!signed) Chip("Sign in to your private studio", true) { PrivateStudio.signIn { ok -> signed = ok; h.say(if (ok) "Signed in for 12 hours." else "Not signed in.") } }
+		if (!signed) Chip("Sign in to your private studio", true) { PrivateStudio.signIn { ok -> signed = ok; h.say(if (ok) "Signed in - this iPad stays signed in for 90 days." else "Not signed in.") } }
 		else Chip("Paint in ${todo.size} part${if (todo.size == 1) "" else "s"}", true, enabled = !h.busy) {
 			val ids = todo.map { it.id }
 			h.run("Painting in the hidden gaps (about 30-60 s each)") {

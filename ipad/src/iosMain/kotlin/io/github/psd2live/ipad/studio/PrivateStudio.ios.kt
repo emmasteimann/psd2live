@@ -36,16 +36,17 @@ import platform.posix.memcpy
 private const val COOKIE = "__Host-layerloom-owner"
 
 /**
- * The private studio (the Cloudflare worker that makes the paid image edits). Signing in happens on the worker's own
- * page in a web view - the app never sees the password; the session cookie it sets lives in the app's web storage
- * (12 hours). Requests are sent natively with that cookie and the studio's own Origin, as the worker requires.
+ * The private studio (the Cloudflare worker that makes the paid image edits). Signing in is the app's own sign-in
+ * (AppSignIn: Apple's sign-in sheet on the worker's password page, OAuth code + PKCE) - the app never sees the
+ * password and keeps a 90-day key in the Keychain. Requests go natively with that key and the studio's own Origin;
+ * a 12-hour web cookie from the older sign-in still works until it runs out.
  */
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 actual object PrivateStudio {
-	actual val url = "https://layerloom-repair.emmagracesteimann.workers.dev"
+	// LAYERLOOM_STUDIO_URL points a simulator test at a local `wrangler dev`; the app itself always uses the real one.
+	actual val url = platform.Foundation.NSProcessInfo.processInfo.environment["LAYERLOOM_STUDIO_URL"] as? String
+		?: "https://layerloom-repair.emmagracesteimann.workers.dev"
 	private val store get() = WKWebsiteDataStore.defaultDataStore().httpCookieStore
-	private var sheet: UIViewController? = null
-	private var keeper: NSObject? = null
 
 	private fun session(onDone: (NSHTTPCookie?) -> Unit) {
 		store.getAllCookies { all ->
@@ -54,38 +55,15 @@ actual object PrivateStudio {
 		}
 	}
 
-	actual fun signedIn(onDone: (Boolean) -> Unit) { session { onDone(it != null) } }
-
-	actual fun signIn(onDone: (Boolean) -> Unit) {
-		var top = UIApplication.sharedApplication.keyWindow?.rootViewController ?: return onDone(false)
-		while (top.presentedViewController != null) top = top.presentedViewController!!
-		val configuration = WKWebViewConfiguration().apply { websiteDataStore = WKWebsiteDataStore.defaultDataStore() }
-		val web = WKWebView(frame = kotlinx.cinterop.cValue { }, configuration = configuration)
-		val controller = UIViewController()
-		controller.view = web
-		controller.title = "Sign in to your private studio"
-		var finished = false
-		fun finish(ok: Boolean) {
-			if (finished) return; finished = true
-			sheet?.dismissViewControllerAnimated(true, completion = null); sheet = null; keeper = null
-			onDone(ok)
-		}
-		val nav = object : NSObject(), WKNavigationDelegateProtocol {
-			// After the password is accepted the worker sends the browser back to its home page: the cookie is there then.
-			override fun webView(webView: WKWebView, didFinishNavigation: WKNavigation?) { session { if (it != null) dispatch_async(dispatch_get_main_queue()) { finish(true) } } }
-		}
-		val cancel = CancelTarget { finish(false) }
-		keeper = object : NSObject() { val n = nav; val c = cancel }
-		web.navigationDelegate = nav
-		controller.navigationItem.leftBarButtonItem = UIBarButtonItem(title = "Cancel", style = UIBarButtonItemStyle.UIBarButtonItemStylePlain, target = cancel,
-			action = platform.objc.sel_registerName("cancel"))
-		val wrap = UINavigationController(rootViewController = controller)
-		sheet = wrap
-		top.presentViewController(wrap, animated = true, completion = null)
-		web.loadRequest(NSURLRequest.requestWithURL(NSURL.URLWithString("$url/")!!))
+	actual fun signedIn(onDone: (Boolean) -> Unit) {
+		if (AppSignIn.key() != null) return onDone(true)
+		session { c -> dispatch_async(dispatch_get_main_queue()) { onDone(c != null) } }
 	}
 
+	actual fun signIn(onDone: (Boolean) -> Unit) = AppSignIn.signIn(url) { ok, _ -> onDone(ok) }
+
 	actual fun signOut(onDone: () -> Unit) {
+		AppSignIn.forget()
 		store.getAllCookies { all ->
 			val c = all?.mapNotNull { it as? NSHTTPCookie }?.firstOrNull { it.name == COOKIE }
 			if (c == null) dispatch_async(dispatch_get_main_queue()) { onDone() } else store.deleteCookie(c) { dispatch_async(dispatch_get_main_queue()) { onDone() } }
@@ -93,14 +71,16 @@ actual object PrivateStudio {
 	}
 
 	actual fun post(path: String, contentType: String, body: ByteArray, onDone: (status: Int, text: String) -> Unit) {
+		val appKey = AppSignIn.key()
 		session { cookie ->
-			if (cookie == null) { dispatch_async(dispatch_get_main_queue()) { onDone(401, "{\"error\":\"Sign in to your private studio first.\"}") }; return@session }
+			if (appKey == null && cookie == null) { dispatch_async(dispatch_get_main_queue()) { onDone(401, "{\"error\":\"Sign in to your private studio first.\"}") }; return@session }
 			val req = NSMutableURLRequest.requestWithURL(NSURL.URLWithString(url + path)!!)
 			req.setHTTPMethod("POST")
 			req.setValue(contentType, forHTTPHeaderField = "Content-Type")
 			req.setValue(url, forHTTPHeaderField = "Origin")
 			req.setValue("same-origin", forHTTPHeaderField = "Sec-Fetch-Site")
-			req.setValue("$COOKIE=${cookie.value}", forHTTPHeaderField = "Cookie")
+			if (appKey != null) req.setValue("Bearer $appKey", forHTTPHeaderField = "Authorization")
+			else req.setValue("$COOKIE=${cookie!!.value}", forHTTPHeaderField = "Cookie")
 			req.setTimeoutInterval(320.0)
 			req.setHTTPBody(body.toNSData())
 			NSURLSession.sharedSession.dataTaskWithRequest(req) { data, response, error ->
@@ -117,8 +97,3 @@ actual object PrivateStudio {
 	private fun NSData.toByteArray(): ByteArray { val n = length.toInt(); val out = ByteArray(n); if (n > 0) out.usePinned { memcpy(it.addressOf(0), bytes, length) }; return out }
 }
 
-/** The Cancel button's target (UIKit calls it by selector). */
-@OptIn(BetaInteropApi::class)
-private class CancelTarget(val onCancel: () -> Unit) : NSObject() {
-	@kotlinx.cinterop.ObjCAction fun cancel() { onCancel() }
-}

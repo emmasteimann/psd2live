@@ -819,7 +819,7 @@ fun NativeStudio(modifier: Modifier, onSendToRig: (psdName: String) -> Unit = {}
 					}
 					val needsAi = peelMode == "reveal" || peelRepaint
 					if (needsAi && !aiSignedIn) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-						Chip("Sign in to your private studio", true) { PrivateStudio.signIn { ok -> aiSignedIn = ok; status = if (ok) "Signed in for 12 hours." else "Not signed in." } }
+						Chip("Sign in to your private studio", true) { PrivateStudio.signIn { ok -> aiSignedIn = ok; status = if (ok) "Signed in - this iPad stays signed in for 90 days." else "Not signed in." } }
 					}
 					val pending = peelPending
 					if (pending != null && pending.first == selected.id) {

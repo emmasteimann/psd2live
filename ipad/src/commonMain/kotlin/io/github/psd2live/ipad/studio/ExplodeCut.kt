@@ -1,9 +1,11 @@
 package io.github.psd2live.ipad.studio
 
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -39,17 +41,41 @@ object ExplodeCut {
 			Part("Neck", "the neck, long enough to stay covered when the head tilts", under = true))
 	}
 
-	fun parts(project: StudioProject): List<Part> =
-		(project.json["explode"] as? JsonObject)?.get("parts")?.let { it as? JsonArray }?.mapNotNull { (it as? JsonObject)?.let(Part::of) } ?: starter(project)
+	// What Explode keeps in the project (`explode`): the part list, the sheet, the pieces split by hand, and the map.
+	private fun kept(project: StudioProject) = (project.json["explode"] as? JsonObject) ?: JsonObject(emptyMap())
+	private fun keep(project: StudioProject, key: String, value: JsonElement, event: String? = null) =
+		project.with(mapOf("explode" to JsonObject(kept(project) + (key to value))), event)
 
-	fun withParts(project: StudioProject, parts: List<Part>): StudioProject =
-		project.with(mapOf("explode" to JsonObject(((project.json["explode"] as? JsonObject) ?: JsonObject(emptyMap())) + ("parts" to JsonArray(parts.map { it.json() })))))
+	fun parts(project: StudioProject): List<Part> =
+		(kept(project)["parts"] as? JsonArray)?.mapNotNull { (it as? JsonObject)?.let(Part::of) } ?: starter(project)
+
+	fun withParts(project: StudioProject, parts: List<Part>): StudioProject = keep(project, "parts", JsonArray(parts.map { it.json() }))
 
 	/** The sheet generated earlier (a PNG data URL), so re-cutting costs nothing. */
-	fun sheet(project: StudioProject): String? = (project.json["explode"] as? JsonObject)?.str("sheet")
+	fun sheet(project: StudioProject): String? = kept(project).str("sheet")
 
-	fun withSheet(project: StudioProject, png: ByteArray): StudioProject =
-		project.with(mapOf("explode" to JsonObject(((project.json["explode"] as? JsonObject) ?: JsonObject(emptyMap())) + ("sheet" to JsonPrimitive(pngDataUrl(png))))), "Generated a parts sheet")
+	/** A new sheet; the splits and the map were for the old one, so they go. */
+	fun withSheet(project: StudioProject, png: ByteArray): StudioProject = project.with(mapOf("explode" to JsonObject(kept(project) - "splits" - "map" +
+		("sheet" to JsonPrimitive(pngDataUrl(png))))), "Generated a parts sheet")
+
+	/** Pieces split by hand, in order: (piece number, by rows). */
+	fun splits(project: StudioProject): List<Pair<Int, Boolean>> = (kept(project)["splits"] as? JsonArray)?.mapNotNull { e ->
+		(e as? JsonArray)?.let { (it[0] as? JsonPrimitive)?.intOrNull?.to((it.getOrNull(1) as? JsonPrimitive)?.booleanOrNull == true) }
+	} ?: emptyList()
+
+	fun withSplit(project: StudioProject, n: Int, rows: Boolean): StudioProject =
+		keep(project, "splits", JsonArray(splits(project).plus(n to rows).map { (k, r) -> JsonArray(listOf(JsonPrimitive(k), JsonPrimitive(r))) }))
+
+	/** Which pieces are which part: part name -> piece numbers. */
+	fun map(project: StudioProject): Map<String, List<Int>> = (kept(project)["map"] as? JsonObject)?.mapValues { (_, v) ->
+		(v as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.intOrNull } ?: emptyList() } ?: emptyMap()
+
+	fun withMap(project: StudioProject, map: Map<String, List<Int>>): StudioProject =
+		keep(project, "map", JsonObject(map.filterValues { it.isNotEmpty() }.mapValues { (_, v) -> JsonArray(v.map(::JsonPrimitive)) }))
+
+	/** The sheet cut, with the splits made by hand replayed. */
+	fun recut(sheet: Pixels, splits: List<Pair<Int, Boolean>>): Cut =
+		splits.fold(cut(sheet)) { c, (n, rows) -> if (c.pieces.any { it.n == n }) split(c, n, rows) else c }
 
 	/** The Mac's prompt, word for word, so both ask alike. */
 	fun prompt(parts: List<Part>): String {
@@ -71,10 +97,12 @@ object ExplodeCut {
 	/**
 	 * Keys the green and splits the sheet into pieces: connected shapes after closing gaps up to [join] px (a tassel's
 	 * threads, a cord), pieces over [minArea] px (a hair clip or thin glasses are real parts), numbered row by row.
+	 * Join 5, as Boo's real run used: the Mac's 9 merged neighbours there, and an extra piece is one more tap to map
+	 * while a merged pair needs a split.
 	 */
-	fun cut(sheet: Pixels, join: Int = 9, minArea: Int = 200): Cut {
+	fun cut(sheet: Pixels, join: Int = 5, minArea: Int = 200): Cut {
 		val w = sheet.width; val h = sheet.height
-		val keyed = StudioRedraw.keyGreen(sheet.argb, w, h)
+		val keyed = dropSpecks(StudioRedraw.keyGreen(sheet.argb, w, h), w, h)
 		val alpha = ByteArray(w * h) { if ((keyed[it] ushr 24) > 40) 1 else 0 }
 		val joined = if (join > 1) StudioMatch.dilate(alpha, w, h, join / 2) else alpha
 		val labels = IntArray(w * h); val queue = IntArray(w * h)
@@ -105,6 +133,29 @@ object ExplodeCut {
 			})
 		}
 		return Cut(w, h, keyed, pieces)
+	}
+
+	/**
+	 * Leftover green specks gone (the bench's key_green does this last): tiny isolated islands only, under 12 px, so
+	 * thin lines stay. Left in, the joining step bridges neighbouring pieces through them.
+	 */
+	private fun dropSpecks(argb: IntArray, w: Int, h: Int): IntArray {
+		val seen = BooleanArray(w * h); val queue = IntArray(w * h)
+		for (start in argb.indices) {
+			if (seen[start] || (argb[start] ushr 24) <= 24) continue
+			var head = 0; var tail = 0; queue[tail++] = start; seen[start] = true
+			while (head < tail) {
+				val i = queue[head++]; val x = i % w; val y = i / w
+				for (dy in -1..1) for (dx in -1..1) {
+					val nx = x + dx; val ny = y + dy
+					if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue
+					val j = ny * w + nx
+					if (!seen[j] && (argb[j] ushr 24) > 24) { seen[j] = true; queue[tail++] = j }
+				}
+			}
+			if (tail < 12) for (k in 0 until tail) argb[queue[k]] = argb[queue[k]] and 0x00FFFFFF
+		}
+		return argb
 	}
 
 	/**
@@ -164,21 +215,33 @@ object ExplodeCut {
 		return out
 	}
 
-	/** A box for [name]: the outline of the project's part with that name, when it has art; null when she must draw one. */
+	/**
+	 * Where a piece of a part with no art of its own to line up with starts: its spot on the sheet, scaled to the
+	 * canvas. Only a start; Fit by hand moves it.
+	 */
+	fun sheetBox(piece: IntArray, sw: Int, sh: Int, cw: Int, ch: Int): IntArray {
+		val k = min(cw.toDouble() / sw, ch.toDouble() / sh)
+		return IntArray(4) { (piece[it] * k).roundToInt() }
+	}
+
+	/** A box for [name]: the outline of the project's part with that name, when it has art; null when there is none. */
 	fun boxFor(project: StudioProject, name: String): IntArray? {
 		val part = project.parts.firstOrNull { it.name.equals(name.trim(), true) && it.cutout != null } ?: return null
 		val px = decodeImage(dataUrlBytes(part.cutout!!)) ?: return null
 		return bounds(px.argb, px.width, px.height)
 	}
 
-	/** The placed pieces as new parts, each right above the part it stands for (or on top), visible, ready to Fit by hand. */
+	/**
+	 * The placed pieces as new parts ("Hat (new)"), each right above the part it stands for (or on top), visible,
+	 * ready to Fit by hand.
+	 */
 	fun addParts(project: StudioProject, placed: List<Pair<String, IntArray>>): StudioProject {
 		val parts = project.parts.toMutableList()
 		for ((name, argb) in placed) {
-			val part = StudioPart.blank(name, project.parts.firstOrNull { it.name.equals(name, true) }?.group ?: "Custom")
+			val part = StudioPart.blank("$name (new)", project.parts.firstOrNull { it.name.equals(name, true) }?.group ?: "Custom")
 				.with(mapOf("cutout" to JsonPrimitive(pngDataUrl(encodePng(project.width, project.height, argb))), "imported" to JsonPrimitive(true),
 					"explodedFrom" to JsonPrimitive(name)))
-			val at = parts.indexOfLast { it.name.equals(name, true) }
+			val at = parts.indexOfLast { it.name.equals(name, true) || it.name.equals("$name (new)", true) }
 			if (at >= 0) parts.add(at + 1, part) else parts.add(part)
 		}
 		return project.withParts(parts, "Exploded ${placed.size} piece${if (placed.size == 1) "" else "s"} onto the drawing")

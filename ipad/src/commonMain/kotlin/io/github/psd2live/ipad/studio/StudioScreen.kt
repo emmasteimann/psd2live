@@ -128,6 +128,8 @@ fun NativeStudio(modifier: Modifier, onSendToRig: (psdName: String) -> Unit = {}
 	var pendingCommit by remember { mutableStateOf<Job?>(null) }
 	// The part being fitted by hand (Fit mode takes the whole screen), or null.
 	var fitting by remember { mutableStateOf<String?>(null) }
+	// Explode into pieces (takes the whole screen; Fit by hand opens over it and comes back to it).
+	var exploding by remember { mutableStateOf(false) }
 	// Peel and Split apart: the new piece's name, the islands found, their names, and the last split (for Join back).
 	var peelName by remember { mutableStateOf("") }
 	var splitOpen by remember { mutableStateOf(false) }
@@ -442,6 +444,10 @@ fun NativeStudio(modifier: Modifier, onSendToRig: (psdName: String) -> Unit = {}
 				onClose = { fitting = null })
 			return@Column
 		}
+		if (exploding) {
+			ExplodeScreen(p, onChange = { change(it) }, onFit = { id -> selectedId = id; fitting = id }, onClose = { exploding = false })
+			return@Column
+		}
 		val selected = p.part(selectedId)
 		// Read on every stroke, so undo, redo and Extract follow the mask.
 		@Suppress("UNUSED_VARIABLE") val strokes = maskTick
@@ -453,6 +459,7 @@ fun NativeStudio(modifier: Modifier, onSendToRig: (psdName: String) -> Unit = {}
 			Chip("Undo", enabled = mask?.canUndo == true) { scope.launch(worker + safe) { maskNow?.let { it.undo(); bump(); commitMaskSoon(it, 300) } } }
 			Chip("Redo", enabled = mask?.canRedo == true) { scope.launch(worker + safe) { maskNow?.let { it.redo(); bump(); commitMaskSoon(it, 300) } } }
 			Chip("Clear mask", enabled = mask != null) { scope.launch(worker + safe) { maskNow?.let { it.clear(); bump(); commitMaskSoon(it, 0) } } }
+			Chip("Explode into pieces") { scope.launch(safe) { flushMask(); exploding = true } }
 			Chip("Fit view") { view = CanvasView() }
 			Chip(if (showMask) "Mask shown" else "Mask hidden", showMask) { showMask = !showMask }
 			Chip(if (pencilOnly) "Pencil only · fingers pan" else "Fingers draw", pencilOnly) { pencilOnly = !pencilOnly }

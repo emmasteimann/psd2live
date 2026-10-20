@@ -1,5 +1,7 @@
 package io.github.psd2live.ipad.studio
 
+import okio.FileSystem
+import okio.Path.Companion.toPath
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -79,6 +81,34 @@ class ExplodeTest {
 		assertNotNull(ExplodeCut.sheet(project))
 		assertEquals(listOf(0, 0, 8, 8), ExplodeCut.boxFor(project, "hair")?.toList())
 		val added = ExplodeCut.addParts(project, listOf("Hair" to IntArray(64) { GOLD }, "Hat" to IntArray(64)))
-		assertEquals(listOf("Hair", "Hair", "Hat"), added.parts.map { it.name }, "the new Hair right above the old, Hat on top")
+		assertEquals(listOf("Hair", "Hair (new)", "Hat (new)"), added.parts.map { it.name }, "the new Hair right above the old, Hat on top")
+	}
+
+	@Test fun splitsAndMapLiveInTheProjectAndANewSheetClearsThem() {
+		val src = pngDataUrl(encodePng(8, 8, IntArray(64) { TEAL }))
+		var project = StudioProject.parse("""{"format":"layerloom-project","version":1,"id":"p","name":"T","source":"$src","width":8,"height":8,"parts":[
+			{"id":"a","name":"Hair","group":"Hair","visible":true,"mask":null,"repairs":[]}],"history":[]}""")
+		val s = sheet()
+		project = ExplodeCut.withSheet(project, encodePng(s.width, s.height, s.argb))
+		project = ExplodeCut.withSplit(project, 3, false)
+		project = ExplodeCut.withMap(project, mapOf("Hat" to listOf(0, 4), "Hair" to emptyList()))
+		assertEquals(listOf(3 to false), ExplodeCut.splits(project))
+		assertEquals(mapOf("Hat" to listOf(0, 4)), ExplodeCut.map(project))
+		assertEquals(5, ExplodeCut.recut(s, ExplodeCut.splits(project)).pieces.size, "the split is replayed on a re-cut")
+		project = ExplodeCut.withSheet(project, encodePng(2, 2, IntArray(4) { GREEN }))
+		assertTrue(ExplodeCut.splits(project).isEmpty() && ExplodeCut.map(project).isEmpty())
+	}
+
+	/** Boo's real parts sheet from the Mac (2026-10-07): the same 15 pieces as parts-sheet.py cut, in the same order. */
+	@Test fun cutsARealSheetLikeTheMac() {
+		val dir = "/Users/goosible/Downloads/neuro-goose/layerloom/.work/partsheet2"
+		val sheetPath = "$dir/sheet-raw.png".toPath()
+		if (!FileSystem.SYSTEM.exists(sheetPath)) return
+		val px = assertNotNull(decodeImage(FileSystem.SYSTEM.read(sheetPath) { readByteArray() }))
+		val mac = Regex("\\[\\s*(\\d+),\\s*(\\d+),\\s*(\\d+),\\s*(\\d+)\\s*\\]").findAll(FileSystem.SYSTEM.read("$dir/parts.json".toPath()) { readUtf8() })
+			.map { m -> m.groupValues.drop(1).map(String::toInt) }.toList()
+		val cut = ExplodeCut.cut(px)  // that run used --join 5, the iPad's default
+		assertEquals(mac.size, cut.pieces.size, "mine: ${cut.pieces.map { it.box.toList() }}")
+		for ((p, m) in cut.pieces.zip(mac)) assertTrue(p.box.toList().zip(m).all { (a, b) -> kotlin.math.abs(a - b) <= 6 }, "piece ${p.n}: ${p.box.toList()} vs the Mac's $m")
 	}
 }
